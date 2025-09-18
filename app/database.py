@@ -50,9 +50,8 @@ SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 def apply_schema_upgrades() -> None:
     """确保新增列存在并对旧数据进行补齐。"""
 
-    inspector = inspect(engine)
-
     def ensure(table: str, column: str, ddl: str) -> bool:
+        inspector = inspect(engine)
         columns = {col["name"] for col in inspector.get_columns(table)}
         if column not in columns:
             column_ddl = ddl.strip()
