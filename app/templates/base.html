@@ -27,10 +27,16 @@
         <a href="/dashboard" class="nav__link">仪表盘</a>
         <a href="/dashboard/crawlers" class="nav__link">爬虫中心</a>
         <a href="/files" class="nav__link">文件空间</a>
-        {% if user and user.role in ['admin', 'superadmin'] %}
+        {% if user.role in ['admin', 'superadmin'] %}
         <a href="/admin" class="nav__link">管理控制台</a>
         {% endif %}
-        <a href="/logout" class="nav__link">退出</a>
+        <div class="nav__user">
+          <span class="nav__user-name">{{ user.username }}</span>
+          <div class="nav__user-menu">
+            <a href="/dashboard">个人主页</a>
+            <a href="/logout">退出</a>
+          </div>
+        </div>
         {% else %}
         <a href="/login" class="nav__link">登录</a>
         <a href="/register" class="nav__link">注册</a>
