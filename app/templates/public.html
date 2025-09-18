@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="page-header">
+    <h2>公开监控专区</h2>
+    <p>这里展示团队选择公开的 API Key 与爬虫运行情况，便于匿名访客快速了解当前状态。</p>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h3>公开 API Key</h3>
+    </div>
+    {% if keys %}
+    <table class="data-table">
+      <thead><tr><th>ID</th><th>Key</th><th>更新时间</th></tr></thead>
+      <tbody>
+        {% for k in keys %}
+        <tr>
+          <td>{{ k.id }}</td>
+          <td><code>{{ k.key }}</code></td>
+          <td>{{ k.created_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="hint">公开的 Key 仅用于只读查询，请勿滥用。</p>
+    {% else %}
+    <div class="empty-hint">暂无公开的 API Key。</div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h3>公开爬虫日志</h3>
+      <div class="table-actions">
+        <button class="text" type="button" onclick="resetPublicFilters()">重置</button>
+        <button type="button" onclick="loadPublicLogs()">刷新</button>
+      </div>
+    </div>
+    {% if crawlers %}
+    <div class="filters">
+      <div>
+        <label for="public-crawlers">选择爬虫</label>
+        <select id="public-crawlers" multiple>
+          {% for c in crawlers %}
+          <option value="{{ c.id }}" selected>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="public-start">开始日期</label>
+        <input type="date" id="public-start" />
+      </div>
+      <div>
+        <label for="public-end">结束日期</label>
+        <input type="date" id="public-end" />
+      </div>
+      <div>
+        <label for="public-min-level">最小等级</label>
+        <select id="public-min-level"></select>
+      </div>
+      <div>
+        <label for="public-max-level">最大等级</label>
+        <select id="public-max-level"></select>
+      </div>
+      <div>
+        <label for="public-limit">最多条数</label>
+        <input type="number" id="public-limit" min="1" max="500" value="200" />
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-hint">暂无公开的爬虫。</div>
+    {% endif %}
+    <div class="log-list" id="public-log-list"></div>
+    <div class="empty-hint" id="public-log-empty" style="display:none;">暂无日志，可调整筛选后再次查询。</div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const publicLevels = (window.LOG_LEVEL_OPTIONS || []).slice().sort((a, b) => a.code - b.code);
+const publicMin = document.getElementById('public-min-level');
+const publicMax = document.getElementById('public-max-level');
+function fillPublicLevel(select, selected) {
+  select.innerHTML = publicLevels.map(item => {
+    const flag = Number(selected) === Number(item.code) ? 'selected' : '';
+    return `<option value="${item.code}" ${flag}>${item.code} - ${item.name}</option>`;
+  }).join('');
+}
+if (publicMin && publicMax) {
+  fillPublicLevel(publicMin, 0);
+  fillPublicLevel(publicMax, 50);
+}
+
+function getPublicIds() {
+  const select = document.getElementById('public-crawlers');
+  if (!select) return [];
+  return Array.from(select.selectedOptions).map(opt => opt.value).filter(Boolean);
+}
+
+function resetPublicFilters() {
+  const select = document.getElementById('public-crawlers');
+  if (select) {
+    select.querySelectorAll('option').forEach(opt => opt.selected = true);
+  }
+  const start = document.getElementById('public-start');
+  const end = document.getElementById('public-end');
+  if (start) start.value = '';
+  if (end) end.value = '';
+  if (publicMin) publicMin.value = 0;
+  if (publicMax) publicMax.value = 50;
+  const limit = document.getElementById('public-limit');
+  if (limit) limit.value = 200;
+  loadPublicLogs();
+}
+
+async function loadPublicLogs() {
+  const container = document.getElementById('public-log-list');
+  const empty = document.getElementById('public-log-empty');
+  if (!container) return;
+  const ids = getPublicIds();
+  const params = new URLSearchParams();
+  if (ids.length) params.append('crawler_ids', ids.join(','));
+  const start = document.getElementById('public-start');
+  const end = document.getElementById('public-end');
+  if (start && start.value) params.append('start', start.value);
+  if (end && end.value) params.append('end', end.value);
+  if (publicMin) params.append('min_level', publicMin.value);
+  if (publicMax) params.append('max_level', publicMax.value);
+  const limit = document.getElementById('public-limit');
+  if (limit && limit.value) params.append('limit', limit.value);
+  const res = await fetch(`/api/crawlers/public/logs?${params.toString()}`);
+  if (!res.ok) {
+    container.innerHTML = '';
+    empty.style.display = '';
+    empty.textContent = '日志加载失败，请稍后重试。';
+    return;
+  }
+  const data = await res.json();
+  if (!data.length) {
+    container.innerHTML = '';
+    empty.style.display = '';
+    empty.textContent = '暂无日志，可调整筛选后再次查询。';
+    return;
+  }
+  empty.style.display = 'none';
+  const levelMap = Object.fromEntries(publicLevels.map(item => [item.code, item.name]));
+  container.innerHTML = data.map(item => {
+    const code = Number(item.level_code || 20);
+    const badgeClass = `badge level-${code}`;
+    const levelText = levelMap[code] || item.level || 'INFO';
+    const crawlerName = item.crawler_name || `#${item.crawler_id}`;
+    return `<div class="log-item">
+      <div class="log-head">
+        <span>${new Date(item.ts).toLocaleString()}</span>
+        <div class="table-actions" style="gap:8px;">
+          <span class="badge ${badgeClass}">${levelText}</span>
+          <span class="hint">${crawlerName}</span>
+        </div>
+      </div>
+      <div>${item.message}</div>
+    </div>`;
+  }).join('');
+}
+
+loadPublicLogs();
+</script>
+{% endblock %}

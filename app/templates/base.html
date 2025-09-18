@@ -6,27 +6,77 @@
   <title>{{ title or 'Crawler Hub' }}</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
+{% set preset_key = user.theme_name if user else 'classic' %}
+{% set active_preset_key = preset_key if preset_key in theme_presets else 'classic' %}
+{% set preset = theme_presets[active_preset_key] %}
+{% set theme_config = {
+  'primary': (user.theme_primary if user else preset['primary']),
+  'secondary': (user.theme_secondary if user else preset['secondary']),
+  'background': (user.theme_background if user else preset['background']),
+  'text': preset['text'],
+  'preset': active_preset_key,
+  'dark': (user.is_dark_mode if user else False)
+} %}
 <body>
   <header class="topbar">
-    <div class="container">
+    <div class="container topbar__inner">
       <div class="brand">Crawler Hub</div>
       <nav class="nav">
+        <a href="/public" class="nav__link">公开专区</a>
         {% if user %}
-        <a href="/dashboard">仪表盘</a>
-        <a href="/dashboard/crawlers">爬虫监控</a>
-        <a href="/logout">退出</a>
+        <a href="/dashboard" class="nav__link">仪表盘</a>
+        <a href="/dashboard/crawlers" class="nav__link">爬虫监控</a>
+        <a href="/logout" class="nav__link">退出</a>
         {% else %}
-        <a href="/login">登录</a>
+        <a href="/login" class="nav__link">登录</a>
+        <a href="/register" class="nav__link">注册</a>
         {% endif %}
       </nav>
     </div>
   </header>
-  <main class="container">
+  <main class="container main">
     {% block content %}{% endblock %}
   </main>
   <footer class="footer">
-    <div class="container">© 2025 Crawler Hub</div>
+    <div class="container footer__inner">
+      <span>© 2025 Crawler Hub</span>
+      {% if site_icp %}
+      <span class="footer__icp"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">{{ site_icp }}</a></span>
+      {% endif %}
+    </div>
   </footer>
+  <script>
+    window.THEME_PRESETS = {{ theme_presets | tojson }};
+    window.LOG_LEVEL_OPTIONS = {{ log_levels | tojson }};
+    window.ACTIVE_THEME = {{ theme_config | tojson }};
+    (function () {
+      const presets = window.THEME_PRESETS || {};
+      function ensureContrastColor(theme) {
+        if (!theme.text) {
+          const preset = presets[theme.preset] || presets['classic'] || {};
+          theme.text = theme.dark ? '#f9fafb' : (preset.text || '#111827');
+        }
+        return theme;
+      }
+      function applyTheme(theme) {
+        const current = ensureContrastColor({ ...theme });
+        const root = document.documentElement;
+        const body = document.body;
+        root.style.setProperty('--color-primary', current.primary);
+        root.style.setProperty('--color-secondary', current.secondary);
+        root.style.setProperty('--color-background', current.background);
+        root.style.setProperty('--color-surface', current.dark ? '#1f2937' : '#ffffff');
+        root.style.setProperty('--color-border', current.dark ? '#2d3748' : '#e5e7eb');
+        root.style.setProperty('--color-muted', current.dark ? '#a3adc2' : '#6b7280');
+        root.style.setProperty('--color-text', current.text);
+        body.classList.toggle('theme-dark', Boolean(current.dark));
+        window.ACTIVE_THEME = current;
+      }
+      window.applyTheme = applyTheme;
+      applyTheme(window.ACTIVE_THEME || {});
+    })();
+  </script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>
 

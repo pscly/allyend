@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .database import Base, engine
+from .database import Base, engine, apply_schema_upgrades
 from .routers import auth as auth_router
 from .routers import crawlers as crawlers_router
 from .routers import dashboard as dashboard_router
@@ -35,6 +35,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 def on_startup():
     # 创建表（开发环境方便使用；生产建议迁移工具）
     Base.metadata.create_all(bind=engine)
+    apply_schema_upgrades()
 
 
 # 路由注册
@@ -46,4 +47,6 @@ app.include_router(dashboard_router.router)
 # 便于 uv run 直接引用
 def get_app():
     return app
+
+
 

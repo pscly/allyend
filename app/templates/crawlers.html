@@ -1,39 +1,76 @@
 {% extends "base.html" %}
 {% block content %}
-  <h2>爬虫监控</h2>
+  <section class="page-header">
+    <h2>爬虫监控中心</h2>
+    <p>管理 API Key、观察运行健康状态，并按需公开日志给外部伙伴。</p>
+  </section>
 
   <section class="card">
-    <h3>API Key 管理</h3>
-    <div>
-      <button onclick="createKey()">生成新 Key</button>
+    <div class="card-header">
+      <h3>API Key 管理</h3>
+      <div class="table-actions">
+        <button type="button" onclick="createKey()">生成新 Key</button>
+      </div>
     </div>
-    <table>
-      <thead><tr><th>ID</th><th>Key</th><th>创建时间</th><th>操作</th></tr></thead>
-      <tbody id="keys-body">
+    <table class="data-table">
+      <thead>
+        <tr><th>ID</th><th>Key</th><th>创建时间</th><th>公开</th><th>操作</th></tr>
+      </thead>
+      <tbody>
         {% for k in keys %}
-        <tr>
+        <tr data-key-id="{{ k.id }}">
           <td>{{ k.id }}</td>
           <td><code>{{ k.key }}</code></td>
           <td>{{ k.created_at }}</td>
-          <td><button onclick="delKey({{ k.id }})">删除</button></td>
+          <td>
+            <label class="switch">
+              <input type="checkbox" data-key-id="{{ k.id }}" {% if k.is_public %}checked{% endif %} onchange="toggleKeyPublic(event)">
+              <span></span>
+            </label>
+          </td>
+          <td>
+            <button class="text" type="button" onclick="deleteKey({{ k.id }})">删除</button>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
-    <p class="hint">注意：示例项目为简化未对 Key 做哈希隐藏，生产请改为只展示一次明文并存库哈希。</p>
+    <p class="hint">示例项目为演示采用明文 Key，生产环境请仅展示一次明文并在数据库中保存哈希。</p>
   </section>
 
   <section class="card">
-    <h3>爬虫列表</h3>
-    <table>
-      <thead><tr><th>ID</th><th>名称</th><th>最近心跳</th><th>操作</th></tr></thead>
+    <div class="card-header">
+      <h3>爬虫列表</h3>
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr><th>ID</th><th>名称</th><th>最近心跳</th><th>公开</th><th>分享链接</th><th>操作</th></tr>
+      </thead>
       <tbody>
         {% for c in crawlers %}
-        <tr>
+        <tr data-crawler-id="{{ c.id }}">
           <td>{{ c.id }}</td>
           <td>{{ c.name }}</td>
-          <td>{{ c.last_heartbeat or '-' }}</td>
-          <td><button onclick="showDetail({{ c.id }}, '{{ c.name }}')">详情</button></td>
+          <td>{{ c.last_heartbeat or '未上报' }}</td>
+          <td>
+            <label class="switch">
+              <input type="checkbox" data-crawler-id="{{ c.id }}" {% if c.is_public %}checked{% endif %} onchange="toggleCrawlerPublic(event)">
+              <span></span>
+            </label>
+          </td>
+          <td>
+            {% if c.public_slug %}
+            <span class="public-link" data-slug="{{ c.public_slug }}" id="slug-{{ c.id }}">
+              /public?slug={{ c.public_slug }}
+              <button class="text" type="button" onclick="copySlug('{{ c.public_slug }}')">复制</button>
+            </span>
+            {% else %}
+            <span class="hint">未公开</span>
+            {% endif %}
+          </td>
+          <td>
+            <button class="text" type="button" onclick="showDetail({{ c.id }}, '{{ c.name }}')">运行详情</button>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -41,67 +78,260 @@
   </section>
 
   <section class="card">
-    <h3>最近日志（每个爬虫取 5 条）</h3>
-    {% for c in crawlers %}
-      <h4>#{{ c.id }} - {{ c.name }}</h4>
-      <ul>
-        {% for log in latest_logs[c.id] %}
-          <li>[{{ log.ts }}] <strong>{{ log.level }}</strong> - {{ log.message }}</li>
-        {% else %}
-          <li>暂无日志</li>
-        {% endfor %}
-      </ul>
-    {% endfor %}
+    <div class="card-header">
+      <h3>日志筛选</h3>
+      <div class="table-actions">
+        <button class="text" type="button" onclick="resetFilters()">重置</button>
+        <button type="button" onclick="loadLogs()">刷新</button>
+      </div>
+    </div>
+    <div class="filters">
+      <div>
+        <label for="log-crawlers">选择爬虫</label>
+        <select id="log-crawlers" multiple>
+          {% for c in crawlers %}
+          <option value="{{ c.id }}" selected>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="log-start">开始日期</label>
+        <input type="date" id="log-start" />
+      </div>
+      <div>
+        <label for="log-end">结束日期</label>
+        <input type="date" id="log-end" />
+      </div>
+      <div>
+        <label for="log-min-level">最小等级</label>
+        <select id="log-min-level"></select>
+      </div>
+      <div>
+        <label for="log-max-level">最大等级</label>
+        <select id="log-max-level"></select>
+      </div>
+      <div>
+        <label for="log-limit">最多条数</label>
+        <input type="number" id="log-limit" min="1" max="500" value="200" />
+      </div>
+    </div>
+    <div class="log-list" id="log-list"></div>
+    <div class="empty-hint" id="log-empty" style="display:none;">暂无日志，可调整筛选后再次查询。</div>
   </section>
 
-  <section class="card" id="detail" style="display:none">
-    <h3 id="detail-title">详情</h3>
+  <section class="card" id="detail" style="display:none;">
+    <div class="card-header">
+      <h3 id="detail-title">爬虫详情</h3>
+    </div>
     <div class="grid">
       <div>
         <h4>最近运行</h4>
-        <table>
+        <table class="data-table">
           <thead><tr><th>ID</th><th>状态</th><th>开始</th><th>结束</th></tr></thead>
           <tbody id="runs-body"></tbody>
         </table>
       </div>
       <div>
         <h4>最近日志</h4>
-        <ul id="logs-list"></ul>
+        <div class="log-list" id="logs-list"></div>
       </div>
     </div>
   </section>
+{% endblock %}
 
-  <script>
-    async function createKey() {
-      const res = await fetch('/api/keys', { method: 'POST' });
-      if (res.ok) location.reload();
-      else alert('生成失败');
-    }
-    async function delKey(id) {
-      const ok = confirm('确认删除此 Key?');
-      if (!ok) return;
-      const res = await fetch('/api/keys/' + id, { method: 'DELETE' });
-      if (res.ok) location.reload();
-      else alert('删除失败');
-    }
+{% block scripts %}
+<script>
+const logLevels = (window.LOG_LEVEL_OPTIONS || []).slice().sort((a, b) => a.code - b.code);
+function renderLevelSelectOptions(select, selectedCode) {
+  select.innerHTML = logLevels.map(item => {
+    const selected = Number(selectedCode) === Number(item.code) ? 'selected' : '';
+    return `<option value="${item.code}" ${selected}>${item.code} - ${item.name}</option>`;
+  }).join('');
+}
+const minSelect = document.getElementById('log-min-level');
+const maxSelect = document.getElementById('log-max-level');
+renderLevelSelectOptions(minSelect, 0);
+renderLevelSelectOptions(maxSelect, 50);
 
-    async function showDetail(id, name) {
-      document.getElementById('detail').style.display = '';
-      document.getElementById('detail-title').innerText = `#${id} - ${name}`;
-      const [runsRes, logsRes] = await Promise.all([
-        fetch(`/api/crawlers/me/${id}/runs`),
-        fetch(`/api/crawlers/me/${id}/logs?limit=50`),
-      ]);
-      if (runsRes.ok) {
-        const runs = await runsRes.json();
-        const tbody = document.getElementById('runs-body');
-        tbody.innerHTML = runs.map(r => `<tr><td>${r.id}</td><td>${r.status}</td><td>${r.started_at}</td><td>${r.ended_at || '-'}</td></tr>`).join('');
+function getSelectedCrawlerIds() {
+  const select = document.getElementById('log-crawlers');
+  return Array.from(select.selectedOptions).map(opt => opt.value).filter(Boolean);
+}
+
+function getDateValue(id) {
+  const value = document.getElementById(id).value;
+  return value || '';
+}
+
+function resetFilters() {
+  const select = document.getElementById('log-crawlers');
+  select.querySelectorAll('option').forEach(opt => opt.selected = true);
+  document.getElementById('log-start').value = '';
+  document.getElementById('log-end').value = '';
+  minSelect.value = 0;
+  maxSelect.value = 50;
+  document.getElementById('log-limit').value = 200;
+  loadLogs();
+}
+
+async function loadLogs() {
+  const ids = getSelectedCrawlerIds();
+  const limit = document.getElementById('log-limit').value || '200';
+  const params = new URLSearchParams();
+  if (ids.length) params.append('crawler_ids', ids.join(','));
+  const start = getDateValue('log-start');
+  const end = getDateValue('log-end');
+  if (start) params.append('start', start);
+  if (end) params.append('end', end);
+  params.append('min_level', minSelect.value);
+  params.append('max_level', maxSelect.value);
+  params.append('limit', limit);
+  const res = await fetch(`/api/crawlers/me/logs?${params.toString()}`);
+  const container = document.getElementById('log-list');
+  const empty = document.getElementById('log-empty');
+  if (!res.ok) {
+    container.innerHTML = '';
+    empty.style.display = '';
+    empty.textContent = '日志加载失败，请稍后重试。';
+    return;
+  }
+  const data = await res.json();
+  if (!data.length) {
+    container.innerHTML = '';
+    empty.style.display = '';
+    empty.textContent = '暂无日志，可调整筛选后再次查询。';
+    return;
+  }
+  empty.style.display = 'none';
+  const levelMap = Object.fromEntries(logLevels.map(item => [item.code, item.name]));
+  container.innerHTML = data.map(item => {
+    const code = Number(item.level_code || 20);
+    const badgeClass = `badge level-${code}`;
+    const levelText = levelMap[code] || item.level || 'INFO';
+    const runInfo = item.run_id ? `<span>Run #${item.run_id}</span>` : '';
+    const crawlerName = item.crawler_name || `#${item.crawler_id}`;
+    return `<div class="log-item">
+      <div class="log-head">
+        <span>${new Date(item.ts).toLocaleString()}</span>
+        <div class="table-actions" style="gap:8px;">
+          <span class="badge ${badgeClass}">${levelText}</span>
+          <span class="hint">${crawlerName}</span>
+          ${runInfo}
+        </div>
+      </div>
+      <div>${item.message}</div>
+    </div>`;
+  }).join('');
+}
+
+async function toggleKeyPublic(event) {
+  const input = event.target;
+  const id = input.dataset.keyId;
+  const next = input.checked;
+  try {
+    const res = await fetch(`/api/keys/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_public: next }),
+    });
+    if (!res.ok) throw new Error();
+  } catch (error) {
+    input.checked = !next;
+    alert('更新失败，请稍后再试。');
+  }
+}
+
+async function deleteKey(id) {
+  if (!confirm('确认删除此 Key 吗？')) return;
+  const res = await fetch(`/api/keys/${id}`, { method: 'DELETE' });
+  if (res.ok) {
+    location.reload();
+  } else {
+    alert('删除失败，请稍后再试。');
+  }
+}
+
+async function createKey() {
+  const res = await fetch('/api/keys', { method: 'POST' });
+  if (res.ok) {
+    location.reload();
+  } else {
+    alert('生成失败，请稍后再试。');
+  }
+}
+
+async function toggleCrawlerPublic(event) {
+  const input = event.target;
+  const row = input.closest('tr');
+  const id = row.dataset.crawlerId;
+  const next = input.checked;
+  try {
+    const res = await fetch(`/api/crawlers/me/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_public: next }),
+    });
+    if (!res.ok) throw new Error();
+    const crawler = await res.json();
+    const cell = row.querySelector('.public-link');
+    if (crawler.is_public && crawler.public_slug) {
+      const html = `/public?slug=${crawler.public_slug}<button class="text" type="button" onclick="copySlug('${crawler.public_slug}')">复制</button>`;
+      if (cell) {
+        cell.dataset.slug = crawler.public_slug;
+        cell.innerHTML = html;
+      } else {
+        const placeholder = row.querySelector('.hint');
+        if (placeholder) {
+          placeholder.outerHTML = `<span class="public-link" data-slug="${crawler.public_slug}" id="slug-${id}">${html}</span>`;
+        }
       }
-      if (logsRes.ok) {
-        const logs = await logsRes.json();
-        const ul = document.getElementById('logs-list');
-        ul.innerHTML = logs.map(l => `<li>[${l.ts}] <strong>${l.level}</strong> - ${l.message}</li>`).join('');
-      }
+    } else {
+      const link = row.querySelector('.public-link');
+      if (link) link.outerHTML = '<span class="hint">未公开</span>';
     }
-  </script>
+  } catch (error) {
+    input.checked = !next;
+    alert('更新失败，请稍后再试。');
+  }
+}
+
+function copySlug(slug) {
+  const url = `${location.origin}/public?slug=${slug}`;
+  navigator.clipboard.writeText(url).then(() => {
+    alert('链接已复制：' + url);
+  }).catch(() => {
+    alert('复制失败，请手动复制：' + url);
+  });
+}
+
+async function showDetail(id, name) {
+  document.getElementById('detail').style.display = '';
+  document.getElementById('detail-title').textContent = `#${id} - ${name}`;
+  const runsRes = fetch(`/api/crawlers/me/${id}/runs`);
+  const logsRes = fetch(`/api/crawlers/me/${id}/logs?limit=50`);
+  const [runsResp, logsResp] = await Promise.all([runsRes, logsRes]);
+  const runsBody = document.getElementById('runs-body');
+  const logsList = document.getElementById('logs-list');
+  if (runsResp.ok) {
+    const runs = await runsResp.json();
+    runsBody.innerHTML = runs.map(run => `<tr><td>${run.id}</td><td>${run.status}</td><td>${new Date(run.started_at).toLocaleString()}</td><td>${run.ended_at ? new Date(run.ended_at).toLocaleString() : '-'}</td></tr>`).join('');
+  } else {
+    runsBody.innerHTML = '<tr><td colspan="4">运行记录加载失败</td></tr>';
+  }
+  if (logsResp.ok) {
+    const logs = await logsResp.json();
+    const levelMap = Object.fromEntries(logLevels.map(item => [item.code, item.name]));
+    logsList.innerHTML = logs.map(item => {
+      const code = Number(item.level_code || 20);
+      const badgeClass = `badge level-${code}`;
+      const levelText = levelMap[code] || item.level || 'INFO';
+      return `<div class="log-item"><div class="log-head"><span>${new Date(item.ts).toLocaleString()}</span><span class="badge ${badgeClass}">${levelText}</span></div><div>${item.message}</div></div>`;
+    }).join('');
+  } else {
+    logsList.innerHTML = '<div class="hint">日志加载失败</div>';
+  }
+}
+
+loadLogs();
+</script>
 {% endblock %}

@@ -17,7 +17,7 @@ from ..auth import create_access_token, get_password_hash, verify_password
 from ..config import settings
 from ..dependencies import get_db, get_current_user
 from ..models import User, APIKey
-from ..schemas import Token, UserCreate, APIKeyOut
+from ..schemas import Token, UserCreate, APIKeyOut, APIKeyUpdate, PublicAPIKeyOut
 
 
 router = APIRouter()
@@ -25,9 +25,6 @@ router = APIRouter()
 
 @router.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-    from fastapi.templating import Jinja2Templates
-
-    templates = Jinja2Templates(directory="app/templates")
     return templates.TemplateResponse("login.html", {"request": request, "mode": "login"})
 
 
@@ -44,9 +41,6 @@ def login_form(response: Response, username: str = Form(...), password: str = Fo
 
 @router.get("/register", response_class=HTMLResponse)
 def register_page(request: Request):
-    from fastapi.templating import Jinja2Templates
-
-    templates = Jinja2Templates(directory="app/templates")
     return templates.TemplateResponse("login.html", {"request": request, "mode": "register"})
 
 
@@ -109,6 +103,19 @@ def create_key(current_user: User = Depends(get_current_user), db: Session = Dep
     return rec
 
 
+@router.patch("/api/keys/{key_id}", response_model=APIKeyOut)
+def update_key(key_id: int, payload: APIKeyUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    rec = db.query(APIKey).filter(APIKey.id == key_id, APIKey.user_id == current_user.id).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Key 不存在")
+    if payload.active is not None:
+        rec.active = payload.active
+    if payload.is_public is not None:
+        rec.is_public = payload.is_public
+    db.commit()
+    db.refresh(rec)
+    return rec
+
 @router.delete("/api/keys/{key_id}")
 def delete_key(key_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     rec = db.query(APIKey).filter(APIKey.id == key_id, APIKey.user_id == current_user.id).first()
@@ -118,3 +125,17 @@ def delete_key(key_id: int, current_user: User = Depends(get_current_user), db: 
     db.commit()
     return {"ok": True}
 
+
+
+
+
+
+@router.get("/api/public/keys", response_model=list[PublicAPIKeyOut])
+def list_public_keys(db: Session = Depends(get_db)):
+    keys = (
+        db.query(APIKey)
+        .filter(APIKey.is_public == True, APIKey.active == True)
+        .order_by(APIKey.created_at.desc())
+        .all()
+    )
+    return keys

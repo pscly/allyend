@@ -19,9 +19,9 @@ class Settings(BaseSettings):
 
     HOST: str = "0.0.0.0"
     PORT: int = 9093
+    SITE_ICP: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
 settings = Settings()
-

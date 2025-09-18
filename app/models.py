@@ -22,6 +22,10 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    theme_name: Mapped[str] = mapped_column(String(32), default="classic")
+    theme_primary: Mapped[str] = mapped_column(String(16), default="#10b981")
+    theme_secondary: Mapped[str] = mapped_column(String(16), default="#1f2937")
+    is_dark_mode: Mapped[bool] = mapped_column(Boolean, default=False)
 
     api_keys: Mapped[List["APIKey"]] = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
     crawlers: Mapped[List["Crawler"]] = relationship("Crawler", back_populates="user", cascade="all, delete-orphan")
@@ -34,6 +38,7 @@ class APIKey(Base):
     key: Mapped[str] = mapped_column(String(128), unique=True, index=True)  # 简化起见明文存储（生产建议哈希）
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     user: Mapped[User] = relationship("User", back_populates="api_keys")
@@ -46,6 +51,8 @@ class Crawler(Base):
     name: Mapped[str] = mapped_column(String(128), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_heartbeat: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    public_slug: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True)
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     user: Mapped[User] = relationship("User", back_populates="crawlers")
@@ -74,6 +81,7 @@ class LogEntry(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     level: Mapped[str] = mapped_column(String(16), default="INFO")
+    level_code: Mapped[int] = mapped_column(Integer, default=20, index=True)
     message: Mapped[str] = mapped_column(Text)
     ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -82,4 +90,9 @@ class LogEntry(Base):
 
     run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("crawler_runs.id"), nullable=True)
     run: Mapped[Optional[CrawlerRun]] = relationship("CrawlerRun", back_populates="logs")
+
+
+
+
+
 

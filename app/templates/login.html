@@ -1,19 +1,22 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="card">
-    <h2>{{ '注册' if mode == 'register' else '登录' }}</h2>
-    <form method="post" action="/{{ 'register' if mode == 'register' else 'login' }}">
-      <label>用户名</label>
-      <input type="text" name="username" required />
-      <label>密码</label>
-      <input type="password" name="password" required />
-      <button type="submit">{{ '注册' if mode == 'register' else '登录' }}</button>
+  <section class="page-header">
+    <h2>{{ '注册新账号' if mode == 'register' else '登录控制台' }}</h2>
+    <p>认证后即可接入 SDK、查看运行数据并自定义主题。</p>
+  </section>
+  <div class="card" style="max-width: 420px; margin: 0 auto;">
+    <h3 style="margin-top: 0;">{{ '注册' if mode == 'register' else '登录' }}</h3>
+    <form method="post" action="/{{ 'register' if mode == 'register' else 'login' }}" class="form">
+      <label for="username">用户名</label>
+      <input id="username" type="text" name="username" required />
+      <label for="password">密码</label>
+      <input id="password" type="password" name="password" required />
+      <button type="submit">{{ '注册并进入' if mode == 'register' else '登录系统' }}</button>
     </form>
     {% if mode == 'register' %}
-    <p>已有账号？<a href="/login">去登录</a></p>
+    <p class="hint">已有账号？<a href="/login">返回登录</a></p>
     {% else %}
-    <p>没有账号？<a href="/register">去注册</a></p>
+    <p class="hint">还没有账号？<a href="/register">立即注册</a></p>
     {% endif %}
   </div>
 {% endblock %}
-

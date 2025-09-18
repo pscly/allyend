@@ -1,15 +1,198 @@
 {% extends "base.html" %}
 {% block content %}
-  <h2>欢迎，{{ user.username }}</h2>
-  <div class="grid">
-    <a class="feature" href="/dashboard/crawlers">
-      <h3>爬虫监控</h3>
-      <p>查看爬虫状态与最新日志，管理 API Key</p>
-    </a>
-    <div class="feature disabled">
-      <h3>更多功能（开发中）</h3>
-      <p>未来将支持任务调度、报警、指标看板等</p>
+  <section class="page-header">
+    <h2>欢迎，{{ user.username }}</h2>
+    <p>自定义你的控制台主题，并快速进入常用功能。</p>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h3>个性化主题</h3>
+      <button class="text" id="theme-reset" type="button">恢复预设</button>
     </div>
-  </div>
+    <div class="theme-panel">
+      <div>
+        <label for="theme-preset">预设风格</label>
+        <select id="theme-preset">
+          {% for key, info in theme_presets.items() %}
+          <option value="{{ key }}">{{ info.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="theme-primary">主色</label>
+        <input type="color" id="theme-primary" />
+      </div>
+      <div>
+        <label for="theme-secondary">导航色</label>
+        <input type="color" id="theme-secondary" />
+      </div>
+      <div>
+        <label for="theme-background">背景色</label>
+        <input type="color" id="theme-background" />
+      </div>
+      <div>
+        <label>暗色模式</label>
+        <label class="switch">
+          <input type="checkbox" id="theme-dark" />
+          <span></span>
+        </label>
+      </div>
+      <div class="theme-preview">
+        <div class="theme-chip" id="preview-primary"></div>
+        <div class="theme-chip" id="preview-secondary"></div>
+        <div class="theme-chip" id="preview-background"></div>
+        <span class="hint">选择后点击保存即可立即生效</span>
+      </div>
+    </div>
+    <div class="table-actions" style="margin-top: 16px;">
+      <button id="theme-save" type="button">保存主题设置</button>
+    </div>
+    <div class="hint" id="theme-hint"></div>
+  </section>
+
+  <section class="grid">
+    <a class="feature" href="/dashboard/crawlers">
+      <h3>爬虫监控中心</h3>
+      <p>管理 API Key、查看运行与日志、配置公开分享。</p>
+    </a>
+    <a class="feature" href="/public">
+      <h3>公开展示页</h3>
+      <p>将公开的 API Key 与爬虫动态分享给团队或合作伙伴。</p>
+    </a>
+    <div class="feature">
+      <h3>更多能力</h3>
+      <p class="hint">指标看板、报警策略与任务调度将陆续上线，敬请期待。</p>
+    </div>
+  </section>
 {% endblock %}
 
+{% block scripts %}
+<script>
+(() => {
+  const presets = window.THEME_PRESETS || {};
+  const state = { ...window.ACTIVE_THEME };
+  const presetSelect = document.getElementById('theme-preset');
+  const primaryInput = document.getElementById('theme-primary');
+  const secondaryInput = document.getElementById('theme-secondary');
+  const backgroundInput = document.getElementById('theme-background');
+  const darkInput = document.getElementById('theme-dark');
+  const hint = document.getElementById('theme-hint');
+  const previewPrimary = document.getElementById('preview-primary');
+  const previewSecondary = document.getElementById('preview-secondary');
+  const previewBackground = document.getElementById('preview-background');
+  const defaultPreset = state.preset || 'classic';
+
+  function updatePreview() {
+    previewPrimary.style.background = state.primary || '#10b981';
+    previewSecondary.style.background = state.secondary || '#1f2937';
+    previewBackground.style.background = state.background || '#f9fafb';
+  }
+
+  function syncInputs() {
+    presetSelect.value = state.preset || defaultPreset;
+    primaryInput.value = state.primary || '#10b981';
+    secondaryInput.value = state.secondary || '#1f2937';
+    backgroundInput.value = state.background || '#f9fafb';
+    darkInput.checked = Boolean(state.dark);
+    updatePreview();
+  }
+
+  function applyPreset(key) {
+    const preset = presets[key];
+    if (!preset) return;
+    state.preset = key;
+    state.primary = preset.primary;
+    state.secondary = preset.secondary;
+    state.background = preset.background;
+    state.text = preset.text;
+    updatePreview();
+    window.applyTheme(state);
+  }
+
+  presetSelect.addEventListener('change', (event) => {
+    applyPreset(event.target.value);
+    syncInputs();
+  });
+
+  primaryInput.addEventListener('input', (event) => {
+    state.primary = event.target.value;
+    updatePreview();
+    window.applyTheme(state);
+  });
+
+  secondaryInput.addEventListener('input', (event) => {
+    state.secondary = event.target.value;
+    updatePreview();
+    window.applyTheme(state);
+  });
+
+  backgroundInput.addEventListener('input', (event) => {
+    state.background = event.target.value;
+    updatePreview();
+    window.applyTheme(state);
+  });
+
+  darkInput.addEventListener('change', (event) => {
+    state.dark = event.target.checked;
+    window.applyTheme(state);
+  });
+
+  document.getElementById('theme-reset').addEventListener('click', () => {
+    applyPreset(presetSelect.value);
+    syncInputs();
+    hint.textContent = '已恢复预设但未保存，记得点击“保存主题设置”。';
+    hint.style.color = 'var(--color-muted)';
+  });
+
+  document.getElementById('theme-save').addEventListener('click', async () => {
+    hint.textContent = '';
+    const payload = {
+      theme_name: presetSelect.value,
+      theme_primary: state.primary,
+      theme_secondary: state.secondary,
+      theme_background: state.background,
+      is_dark_mode: state.dark,
+    };
+    try {
+      const btn = document.getElementById('theme-save');
+      btn.disabled = true;
+      const res = await fetch('/api/users/me/theme', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        throw new Error('保存失败，请稍后再试。');
+      }
+      const data = await res.json();
+      const preset = presets[data.theme_name] || presets[state.preset] || presets['classic'] || {};
+      const updated = {
+        preset: data.theme_name,
+        primary: data.theme_primary,
+        secondary: data.theme_secondary,
+        background: data.theme_background,
+        text: preset.text || state.text,
+        dark: data.is_dark_mode,
+      };
+      Object.assign(state, updated);
+      window.applyTheme(state);
+      hint.textContent = '保存成功，主题已更新。';
+      hint.style.color = 'var(--color-primary)';
+    } catch (error) {
+      hint.textContent = error.message || '保存失败，请稍后再试。';
+      hint.style.color = '#b91c1c';
+    } finally {
+      document.getElementById('theme-save').disabled = false;
+      syncInputs();
+    }
+  });
+
+  if (!state.preset || !presets[state.preset]) {
+    state.preset = defaultPreset;
+    applyPreset(defaultPreset);
+  }
+  syncInputs();
+})();
+</script>
+{% endblock %}
