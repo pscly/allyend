@@ -30,11 +30,12 @@
         {% if user.role in ['admin', 'superadmin'] %}
         <a href="/admin" class="nav__link">管理控制台</a>
         {% endif %}
-        <div class="nav__user">
-          <span class="nav__user-name">{{ user.username }}</span>
+        <div class="nav__user" data-dropdown>
+          <button type="button" class="nav__user-btn">{{ user.username }}</button>
           <div class="nav__user-menu">
             <a href="/dashboard">个人主页</a>
-            <a href="/logout">退出</a>
+            <span class="menu-divider"></span>
+            <a href="/logout">退出登录</a>
           </div>
         </div>
         {% else %}
@@ -85,6 +86,27 @@
       window.applyTheme = applyTheme;
       applyTheme(window.ACTIVE_THEME || {});
     })();
+  </script>
+  <script>
+    window.addEventListener('DOMContentLoaded', function () {
+      const dropdown = document.querySelector('[data-dropdown]');
+      if (!dropdown) return;
+      const button = dropdown.querySelector('.nav__user-btn');
+      const menu = dropdown.querySelector('.nav__user-menu');
+      const closeMenu = () => dropdown.classList.remove('open');
+      button.addEventListener('click', function (event) {
+        event.stopPropagation();
+        dropdown.classList.toggle('open');
+      });
+      document.addEventListener('click', function (event) {
+        if (!dropdown.contains(event.target)) {
+          closeMenu();
+        }
+      });
+      menu.addEventListener('click', function () {
+        closeMenu();
+      });
+    });
   </script>
   {% block scripts %}{% endblock %}
 </body>

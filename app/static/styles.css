@@ -84,12 +84,14 @@ a:hover {
 }
 
 .nav__user { position: relative; display: inline-flex; align-items: center; margin-left: 16px; }
-.nav__user-name { color: #f8fafc; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
-.nav__user-name::after { content: "▾"; font-size: 0.75rem; opacity: 0.8; }
-.nav__user-menu { display: none; position: absolute; right: 0; top: calc(100% + 10px); min-width: 148px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); overflow: hidden; z-index: 20; }
-.nav__user-menu a { display: block; padding: 10px 14px; color: var(--color-text); text-decoration: none; font-size: 14px; }
+.nav__user-btn { background: transparent; border: none; color: #f8fafc; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 15px; padding: 6px 10px; border-radius: var(--radius-sm); transition: background var(--transition); }
+.nav__user-btn::after { content: "▾"; font-size: 0.7rem; opacity: 0.8; }
+.nav__user-btn:hover, .nav__user-btn:focus { background: rgba(255, 255, 255, 0.15); outline: none; }
+.nav__user-menu { display: none; position: absolute; right: 0; top: calc(100% + 10px); min-width: 160px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); overflow: hidden; z-index: 20; padding: 4px 0; }
+.nav__user.open .nav__user-menu { display: block; }
+.nav__user-menu a { display: block; padding: 10px 16px; color: var(--color-text); text-decoration: none; font-size: 14px; }
 .nav__user-menu a:hover { background: rgba(148, 163, 184, 0.16); }
-.nav__user:hover .nav__user-menu { display: block; }
+.menu-divider { display: block; height: 1px; margin: 4px 14px; background: rgba(148, 163, 184, 0.35); }
 
 .nav__link:hover {
   background: rgba(255, 255, 255, 0.15);

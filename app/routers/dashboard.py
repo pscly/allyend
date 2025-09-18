@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..constants import THEME_PRESETS, LOG_LEVEL_OPTIONS
-from ..dependencies import get_current_user, get_db, get_optional_user
+from ..dependencies import get_current_user, get_optional_user, get_db, get_optional_user
 from ..models import Crawler, APIKey, User
 from ..schemas import ThemeSettingOut, ThemeSettingUpdate
 
