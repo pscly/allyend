@@ -1,5 +1,4 @@
-[
-project]
+[project]
 name = "crawler-hub"
 version = "0.1.0"
 description = "爬虫信息汇总与监控平台（FastAPI + SQLAlchemy + Jinja2 + SDK）"
@@ -19,6 +18,5 @@ dependencies = [
 ]
 
 [tool.uv]
-# 允许 uv 创建项目内虚拟环境（可按需使用 uv venv）
-package = true
-
+# 当前仓库不作为可安装包，仅使用依赖管理
+package = false
