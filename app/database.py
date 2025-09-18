@@ -78,6 +78,8 @@ def apply_schema_upgrades() -> None:
     ensure("users", "theme_secondary", "VARCHAR(16) DEFAULT '#1f2937'")
     ensure("users", "theme_background", "VARCHAR(16) DEFAULT '#f9fafb'")
     ensure("users", "is_dark_mode", "BOOLEAN DEFAULT 0")
+    ensure("users", "display_name", "VARCHAR(128)")
+    ensure("users", "email", "VARCHAR(128)")
 
     # 新增权限相关字段
     ensure("users", "role", "VARCHAR(32) DEFAULT 'user'")
@@ -155,6 +157,7 @@ def bootstrap_defaults() -> None:
             root_user = User(
                 username=root_username,
                 hashed_password=get_password_hash(password_source),
+                display_name=root_username,
                 role=ROLE_SUPERADMIN,
                 is_root_admin=True,
                 is_active=True,
@@ -168,6 +171,8 @@ def bootstrap_defaults() -> None:
                 root_user.is_root_admin = True
             if root_user.group_id is None:
                 root_user.group = admin_group
+            if not root_user.display_name:
+                root_user.display_name = root_user.username
         session.flush()
 
         # 3. 默认邀请码
