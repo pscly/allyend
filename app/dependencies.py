@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from fastapi import Depends, HTTPException, Request, status
+from typing import Optional
 from sqlalchemy.orm import Session
 
 from .database import SessionLocal
@@ -33,3 +34,14 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户不存在或被禁用")
     return user
 
+
+
+
+def get_optional_user(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
+    """可选当前用户，未登录返回 None"""
+    try:
+        return get_current_user(request, db)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            return None
+        raise
