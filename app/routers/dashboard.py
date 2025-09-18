@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..constants import THEME_PRESETS, LOG_LEVEL_OPTIONS
-from ..dependencies import get_current_user, get_db
+from ..dependencies import get_current_user, get_db, get_optional_user
 from ..models import Crawler, APIKey, User
 from ..schemas import ThemeSettingOut, ThemeSettingUpdate
 
@@ -65,7 +65,7 @@ def crawlers_page(request: Request, current_user: User = Depends(get_current_use
 
 
 @router.get("/public", response_class=HTMLResponse)
-def public_space(request: Request, db: Session = Depends(get_db)):
+def public_space(request: Request, current_user: Optional[User] = Depends(get_optional_user), db: Session = Depends(get_db)):
     keys = (
         db.query(APIKey)
         .filter(APIKey.is_public == True, APIKey.active == True)
@@ -96,7 +96,7 @@ def public_space(request: Request, db: Session = Depends(get_db)):
         "public.html",
         {
             "request": request,
-            "user": None,
+            "user": current_user,
             "keys": keys,
             "crawlers": crawlers,
         },
