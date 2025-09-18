@@ -489,3 +489,7 @@ textarea:focus {
 .table-scroll table {
   min-width: 680px;
 }
+
+.hero { text-align: center; margin-bottom: 32px; }
+.hero h1 { margin: 0 0 12px; font-size: 32px; }
+.hero .hint { font-size: 15px; }
