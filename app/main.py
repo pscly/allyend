@@ -5,6 +5,10 @@
 """
 from __future__ import annotations
 
+import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +22,25 @@ from .routers import files as files_router
 from .routers import admin as admin_router
 
 
+
+
+def _configure_logging() -> None:
+    log_dir = Path(settings.LOG_DIR or "logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "allyend.log"
+    root = logging.getLogger()
+    for handler in root.handlers:
+        if isinstance(handler, RotatingFileHandler) and getattr(handler, "baseFilename", None) == str(log_file):
+            return
+    handler = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    handler.setFormatter(formatter)
+    root.addHandler(handler)
+    if root.level == logging.NOTSET or root.level > logging.INFO:
+        root.setLevel(logging.INFO)
+    logging.getLogger("uvicorn.access").addHandler(handler)
+
+_configure_logging()
 app = FastAPI(title=settings.SITE_NAME, version="0.2.0")
 
 # CORS（按需开放）

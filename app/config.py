@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     ALLOW_DIRECT_SIGNUP: bool = True
 
     FILE_STORAGE_DIR: str = "data/files"
+    LOG_DIR: str = "logs"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

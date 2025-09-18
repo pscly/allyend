@@ -142,6 +142,7 @@ client.finish_run(crawler_id=crawler["id"], run_id=run["id"], status="success")
 - `DEFAULT_ADMIN_INVITE_CODE`、`DEFAULT_USER_INVITE_CODE`：预置邀请码（可选）。
 - `ALLOW_DIRECT_SIGNUP`：是否允许无邀请码注册。
 - `FILE_STORAGE_DIR`：文件存储目录。
+- `LOG_DIR`：本地日志目录（默认 logs/allyend.log，支持滚动保存）。
 
 ## 后续路线
 
