@@ -24,9 +24,32 @@ templates = Jinja2Templates(directory="app/templates")
 templates.env.globals.update(site_icp=settings.SITE_ICP, theme_presets=THEME_PRESETS, log_levels=LOG_LEVEL_OPTIONS, site_name=settings.SITE_NAME)
 
 
-@router.get("/")
-def root():
-    return RedirectResponse(url="/dashboard")
+
+DAILY_QUOTES = [
+    "愿你所想都能如愿，所行皆有回应。",
+    "给自己一个微笑，给世界一份善意。",
+    "保持热爱，奔赴下一场山海。",
+    "每天醒来，都是全新的自己。",
+]
+
+
+def _daily_quote() -> str:
+    if not DAILY_QUOTES:
+        return "这是一个美好的一天。"
+    idx = datetime.utcnow().timetuple().tm_yday % len(DAILY_QUOTES)
+    return DAILY_QUOTES[idx]
+
+
+@router.get("/", response_class=HTMLResponse)
+def home(request: Request, current_user: Optional[User] = Depends(get_optional_user)):
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "user": current_user,
+            "quote": _daily_quote(),
+        },
+    )
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
