@@ -55,8 +55,11 @@ def apply_schema_upgrades() -> None:
     def ensure(table: str, column: str, ddl: str) -> bool:
         columns = {col["name"] for col in inspector.get_columns(table)}
         if column not in columns:
+            column_ddl = ddl.strip()
+            if not column_ddl.lower().startswith(column.lower() + " "):
+                column_ddl = f"{column} {column_ddl}"
             with engine.begin() as conn:
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column_ddl}"))
             return True
         return False
 

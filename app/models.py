@@ -57,6 +57,7 @@ class InviteCode(Base):
     target_group: Mapped[Optional[UserGroup]] = relationship("UserGroup")
 
     usages: Mapped[List["InviteUsage"]] = relationship("InviteUsage", back_populates="invite", cascade="all, delete-orphan")
+    users: Mapped[List["User"]] = relationship("User", back_populates="invite_code", foreign_keys="User.invite_code_id")
 
 
 class InviteUsage(Base):
@@ -108,7 +109,7 @@ class User(Base):
     invited_users: Mapped[List["User"]] = relationship("User", back_populates="invited_by", foreign_keys=[invited_by_id])
 
     invite_code_id: Mapped[Optional[int]] = mapped_column(ForeignKey("invite_codes.id"), nullable=True)
-    invite_code: Mapped[Optional[InviteCode]] = relationship("InviteCode")
+    invite_code: Mapped[Optional[InviteCode]] = relationship("InviteCode", foreign_keys=[invite_code_id], back_populates="users")
 
     invite_codes_created: Mapped[List[InviteCode]] = relationship("InviteCode", back_populates="creator", foreign_keys=[InviteCode.creator_id])
     invite_usage: Mapped[Optional[InviteUsage]] = relationship("InviteUsage", back_populates="user", uselist=False)
