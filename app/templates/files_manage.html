@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
   <section class="page-header">
-    <h2>文件空间</h2>
+    <h2>文件管理</h2>
     <p>在这里管理团队文件，支持分组共享与 API 令牌自动同步。</p>
   </section>
 
@@ -72,7 +72,7 @@
         <tbody></tbody>
       </table>
     </div>
-    <p class="hint">上传：<code>POST /files/&lt;token&gt;/up</code>，列出：<code>GET /files/&lt;token&gt;</code></p>
+    <p class="hint">上传：<code>POST /files/api/tokens/&lt;token&gt;/up</code>，列出：<code>GET /files/api/tokens/&lt;token&gt;</code></p>
   </section>
   {% else %}
   <section class="card">

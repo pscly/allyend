@@ -86,9 +86,10 @@ flowchart LR
 - **用户网盘**：登录后访问 `/files`，可选择可见性（私有 / 分组 / 公开）。
 - **API 令牌**：
   - 创建：`POST /files/api/tokens`
-  - 上传：`POST /files/{token}/up`
-  - 列表：`GET /files/{token}`
+  - 上传：`POST /files/api/tokens/{token}/up`
+  - 列表：`GET /files/api/tokens/{token}`
 - **访问限制**：令牌支持 `allowed_ips` 与 `allowed_cidrs`，且所有操作会写入访问日志。
+- **公开下载**：`GET /files/<文件名>`（最新上传优先，首页直接展示列表）。
 
 示例：
 ```bash

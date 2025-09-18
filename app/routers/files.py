@@ -36,9 +36,44 @@ templates.env.globals.update(site_icp=settings.SITE_ICP, theme_presets=THEME_PRE
 STORAGE_ROOT = Path(settings.FILE_STORAGE_DIR or FILE_STORAGE_DIR)
 ALLOWED_VISIBILITY = {"private", "group", "public"}
 
+
 @router.get("/files", response_class=HTMLResponse)
-def files_console(request: Request, current_user: Optional[User] = Depends(get_optional_user)):
-    return templates.TemplateResponse("files.html", {"request": request, "user": current_user})
+def files_list(request: Request, current_user: Optional[User] = Depends(get_optional_user), db: Session = Depends(get_db)):
+    files = (
+        db.query(FileEntry)
+        .order_by(FileEntry.created_at.desc())
+        .all()
+    )
+    table = []
+    for entry in files:
+        storage_name = Path(entry.storage_path).name
+        owner_name = None
+        if entry.owner:
+            owner_name = entry.owner.display_name or entry.owner.username
+        elif entry.uploaded_by_user:
+            owner_name = entry.uploaded_by_user.display_name or entry.uploaded_by_user.username
+        elif entry.uploaded_by_token:
+            owner_name = entry.uploaded_by_token.name or f"令牌 {entry.uploaded_by_token.id}"
+        table.append({
+            "name": entry.original_name,
+            "size": entry.size_bytes,
+            "created": entry.created_at,
+            "owner": owner_name,
+            "download": f"/files/{storage_name}",
+        })
+    return templates.TemplateResponse(
+        "files_list.html",
+        {
+            "request": request,
+            "user": current_user,
+            "files": table,
+        },
+    )
+
+
+@router.get("/files/manage", response_class=HTMLResponse)
+def files_manage(request: Request, current_user: User = Depends(get_current_user)):
+    return templates.TemplateResponse("files_manage.html", {"request": request, "user": current_user})
 
 
 
@@ -150,6 +185,29 @@ def _serialize_files(files: List[FileEntry]) -> List[FileEntryOut]:
             )
         )
     return payload
+
+
+
+@router.get("/files/{filename}")
+def download_by_filename(filename: str, request: Request, db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_optional_user)):
+    if "/" in filename or ".." in filename:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    entry = (
+        db.query(FileEntry)
+        .filter(FileEntry.storage_path.like(f"%/{filename}"))
+        .first()
+    )
+    if not entry:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    _ensure_file_permission(entry, current_user, None)
+    storage_path = STORAGE_ROOT / entry.storage_path
+    if not storage_path.exists():
+        _log_action(db, "download", entry, request, user=current_user, token=None, status_text="missing")
+        raise HTTPException(status_code=410, detail="文件已失效")
+    entry.download_count += 1
+    db.commit()
+    _log_action(db, "download", entry, request, user=current_user, token=None)
+    return FileResponse(storage_path, media_type=entry.content_type or "application/octet-stream", filename=entry.original_name)
 
 
 @router.get("/files/public", response_model=list[FileEntryOut])
@@ -394,7 +452,7 @@ def list_access_logs(
         ]
 
 
-@router.post("/files/{token_value}/up", response_model=FileUploadResponse)
+@router.post("/files/api/tokens/{token_value}/up", response_model=FileUploadResponse)
 def token_upload(
     token_value: str,
     request: Request,
@@ -443,7 +501,7 @@ def token_upload(
     )
 
 
-@router.get("/files/{token_value}", response_model=list[FileEntryOut])
+@router.get("/files/api/tokens/{token_value}", response_model=list[FileEntryOut])
 def token_list(
     token_value: str,
     request: Request,
