@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# Envs
+.venv/
+.env
+
+# IDE
+.idea/
+.vscode/
+
+# uv
+uv.lock
+
+# Data
+data/
+

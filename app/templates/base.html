@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title or 'Crawler Hub' }}</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="container">
+      <div class="brand">Crawler Hub</div>
+      <nav class="nav">
+        {% if user %}
+        <a href="/dashboard">仪表盘</a>
+        <a href="/dashboard/crawlers">爬虫监控</a>
+        <a href="/logout">退出</a>
+        {% else %}
+        <a href="/login">登录</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="footer">
+    <div class="container">© 2025 Crawler Hub</div>
+  </footer>
+</body>
+</html>
+

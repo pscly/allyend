@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>{{ '注册' if mode == 'register' else '登录' }}</h2>
+    <form method="post" action="/{{ 'register' if mode == 'register' else 'login' }}">
+      <label>用户名</label>
+      <input type="text" name="username" required />
+      <label>密码</label>
+      <input type="password" name="password" required />
+      <button type="submit">{{ '注册' if mode == 'register' else '登录' }}</button>
+    </form>
+    {% if mode == 'register' %}
+    <p>已有账号？<a href="/login">去登录</a></p>
+    {% else %}
+    <p>没有账号？<a href="/register">去注册</a></p>
+    {% endif %}
+  </div>
+{% endblock %}
+

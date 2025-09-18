@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+  <h2>爬虫监控</h2>
+
+  <section class="card">
+    <h3>API Key 管理</h3>
+    <div>
+      <button onclick="createKey()">生成新 Key</button>
+    </div>
+    <table>
+      <thead><tr><th>ID</th><th>Key</th><th>创建时间</th><th>操作</th></tr></thead>
+      <tbody id="keys-body">
+        {% for k in keys %}
+        <tr>
+          <td>{{ k.id }}</td>
+          <td><code>{{ k.key }}</code></td>
+          <td>{{ k.created_at }}</td>
+          <td><button onclick="delKey({{ k.id }})">删除</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="hint">注意：示例项目为简化未对 Key 做哈希隐藏，生产请改为只展示一次明文并存库哈希。</p>
+  </section>
+
+  <section class="card">
+    <h3>爬虫列表</h3>
+    <table>
+      <thead><tr><th>ID</th><th>名称</th><th>最近心跳</th></tr></thead>
+      <tbody>
+        {% for c in crawlers %}
+        <tr>
+          <td>{{ c.id }}</td>
+          <td>{{ c.name }}</td>
+          <td>{{ c.last_heartbeat or '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h3>最近日志（每个爬虫取 5 条）</h3>
+    {% for c in crawlers %}
+      <h4>#{{ c.id }} - {{ c.name }}</h4>
+      <ul>
+        {% for log in latest_logs[c.id] %}
+          <li>[{{ log.ts }}] <strong>{{ log.level }}</strong> - {{ log.message }}</li>
+        {% else %}
+          <li>暂无日志</li>
+        {% endfor %}
+      </ul>
+    {% endfor %}
+  </section>
+
+  <script>
+    async function createKey() {
+      const res = await fetch('/api/keys', { method: 'POST' });
+      if (res.ok) location.reload();
+      else alert('生成失败');
+    }
+    async function delKey(id) {
+      const ok = confirm('确认删除此 Key?');
+      if (!ok) return;
+      const res = await fetch('/api/keys/' + id, { method: 'DELETE' });
+      if (res.ok) location.reload();
+      else alert('删除失败');
+    }
+  </script>
+{% endblock %}
+

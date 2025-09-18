@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+  <h2>欢迎，{{ user.username }}</h2>
+  <div class="grid">
+    <a class="feature" href="/dashboard/crawlers">
+      <h3>爬虫监控</h3>
+      <p>查看爬虫状态与最新日志，管理 API Key</p>
+    </a>
+    <div class="feature disabled">
+      <h3>更多功能（开发中）</h3>
+      <p>未来将支持任务调度、报警、指标看板等</p>
+    </div>
+  </div>
+{% endblock %}
+
