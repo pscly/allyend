@@ -26,7 +26,7 @@ flowchart TB
         filesR[/files/]
         dashR[/dashboard/]
         adminR[/admin/]
-        publicR[/pa/{slug}/, /public/]
+        publicR["/pa/<slug>/, /public"]
     end
 
     subgraph Services[业务服务]
@@ -224,3 +224,4 @@ client.finish_run(crawler_id=crawler["id"], run_id=run["id"], status="success")
 - 分布式部署支持（消息队列、任务调度、对象存储适配）。
 
 欢迎提交 Issue 或 Pull Request，一起让 AllYend 更稳、更好用。
+
