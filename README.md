@@ -83,7 +83,6 @@ flowchart LR
 
 ### 2. 文件中转服务（/files）
 
-- **匿名上传**：`POST /files/up`，字段 `file`、`file_name`（可选）。文件默认公开。
 - **用户网盘**：登录后访问 `/files`，可选择可见性（私有 / 分组 / 公开）。
 - **API 令牌**：
   - 创建：`POST /files/api/tokens`
@@ -93,9 +92,6 @@ flowchart LR
 
 示例：
 ```bash
-# 匿名上传
-curl -F "file=@report.zip" -F "file_name=日报.zip" https://host/files/up
-
 # 使用令牌上传（限制外网访问）
 curl -F "file=@data.csv" -F "visibility=group" https://host/files/<token>/up
 ```

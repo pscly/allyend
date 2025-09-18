@@ -77,11 +77,15 @@ def _perform_registration(
     db: Session,
     username: str,
     password: str,
+    display_name: Optional[str],
+    email: Optional[str],
     invite_code: Optional[str],
     request_ip: Optional[str] = None,
 ) -> User:
     if db.query(User).filter(User.username == username).first():
         raise HTTPException(status_code=400, detail="用户名已存在")
+    if email and db.query(User).filter(User.email == email).first():
+        raise HTTPException(status_code=400, detail="邮箱已被占用")
 
     mode = _get_registration_mode(db)
     invite: Optional[InviteCode] = None
@@ -181,11 +185,21 @@ def register_form(
     response: Response,
     username: str = Form(...),
     password: str = Form(...),
+    display_name: Optional[str] = Form(default=None),
+    email: Optional[str] = Form(default=None),
     invite_code: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
 ):
     try:
-        _perform_registration(db, username.strip(), password, invite_code, request.client.host if request.client else None)
+        _perform_registration(
+            db,
+            username.strip(),
+            password,
+            display_name,
+            email.strip() if email else None,
+            invite_code,
+            request.client.host if request.client else None,
+        )
     except HTTPException as exc:
         return templates.TemplateResponse(
             "login.html",
@@ -195,6 +209,8 @@ def register_form(
                 "registration_mode": _get_registration_mode(db),
                 "error": exc.detail,
                 "username": username,
+                "display_name": display_name,
+                "email": email,
                 "invite_code": invite_code,
             },
             status_code=exc.status_code if exc.status_code < 500 else 400,
@@ -214,7 +230,15 @@ def logout():
 
 @router.post("/api/auth/register", response_model=Token)
 def api_register(payload: UserCreate, request: Request, db: Session = Depends(get_db)):
-    _perform_registration(db, payload.username.strip(), payload.password, payload.invite_code, request.client.host if request.client else None)
+    _perform_registration(
+        db,
+        payload.username.strip(),
+        payload.password,
+        payload.display_name,
+        payload.email.strip() if payload.email else None,
+        payload.invite_code,
+        request.client.host if request.client else None,
+    )
     user = db.query(User).filter(User.username == payload.username.strip()).first()
     token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return Token(access_token=token)

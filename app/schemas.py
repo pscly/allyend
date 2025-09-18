@@ -17,6 +17,8 @@ class Token(BaseModel):
 class UserCreate(BaseModel):
     username: str
     password: str
+    display_name: Optional[str] = None
+    email: Optional[str] = None
     invite_code: Optional[str] = None
 
 

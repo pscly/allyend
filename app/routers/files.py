@@ -1,5 +1,5 @@
 """
-文件服务：匿名/注册/令牌上传与访问
+文件服务：用户网盘与令牌上传访问
 """
 from __future__ import annotations
 
@@ -152,37 +152,6 @@ def _serialize_files(files: List[FileEntry]) -> List[FileEntryOut]:
     return payload
 
 
-@router.post("/files/up", response_model=FileUploadResponse)
-def anonymous_upload(
-    request: Request,
-    upload: UploadFile = File(...),
-    file_name: Optional[str] = Form(default=None),
-    db: Session = Depends(get_db),
-):
-    storage_name, size, checksum = _save_upload_file(upload)
-    entry = FileEntry(
-        storage_path=str(Path("objects") / storage_name),
-        original_name=file_name or (upload.filename or storage_name),
-        content_type=upload.content_type,
-        size_bytes=size,
-        checksum_sha256=checksum,
-        visibility="public",
-        is_anonymous=True,
-        owner=None,
-        owner_group=None,
-    )
-    db.add(entry)
-    db.commit()
-    db.refresh(entry)
-    _log_action(db, "upload", entry, request, user=None, token=None)
-    return FileUploadResponse(
-        file_id=entry.id,
-        original_name=entry.original_name,
-        visibility=entry.visibility,
-        size_bytes=entry.size_bytes,
-    )
-
-
 @router.get("/files/public", response_model=list[FileEntryOut])
 def list_public_files(
     limit: int = Query(100, ge=1, le=500),
@@ -278,8 +247,6 @@ def list_my_files(
     query = db.query(FileEntry).filter(FileEntry.owner_id == current_user.id)
     if scope in ALLOWED_VISIBILITY:
         query = query.filter(FileEntry.visibility == scope)
-    elif scope == "anonymous":
-        query = db.query(FileEntry).filter(FileEntry.is_anonymous == True)
     files = query.order_by(FileEntry.created_at.desc()).all()
     return _serialize_files(files)
 

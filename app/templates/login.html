@@ -24,8 +24,12 @@
       <input id="username" type="text" name="username" value="{{ username or '' }}" required />
       <label for="password">密码</label>
       <input id="password" type="password" name="password" required />
-      {% if mode == 'register' and registration_mode != 'open' %}
-      <label for="invite_code">邀请码</label>
+      {% if mode == 'register' %}
+      <label for="display_name">显示名称</label>
+      <input id="display_name" type="text" name="display_name" value="{{ display_name or '' }}" placeholder="可选，默认与用户名一致" />
+      <label for="email">邮箱</label>
+      <input id="email" type="email" name="email" value="{{ email or '' }}" placeholder="可选，用于通知" />
+      <label for="invite_code">邀请码（可选）</label>
       <input id="invite_code" type="text" name="invite_code" value="{{ invite_code or '' }}" {% if registration_mode == 'invite' %}required{% endif %} />
       {% endif %}
       <button type="submit">{{ '注册并进入' if mode == 'register' else '登录系统' }}</button>
