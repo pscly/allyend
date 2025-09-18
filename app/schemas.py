@@ -188,6 +188,8 @@ class QuickLinkOut(BaseModel):
     is_active: bool
     allow_logs: bool
     created_at: datetime
+    crawler_id: Optional[int] = None
+    api_key_id: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -261,3 +263,28 @@ class SystemSettingOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AdminUserOut(BaseModel):
+    id: int
+    username: str
+    role: str
+    is_active: bool
+    is_root_admin: bool
+    group: Optional[UserGroupOut] = None
+    invited_by: Optional[str] = None
+    created_at: datetime
+
+
+class AdminUserUpdate(BaseModel):
+    role: Optional[str] = None
+    group_id: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class RegistrationSettingUpdate(BaseModel):
+    mode: str = Field(..., pattern='^(open|invite|closed)$')
+
+
+class SystemSettingsResponse(BaseModel):
+    registration_mode: str

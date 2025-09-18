@@ -2,79 +2,69 @@
 {% block content %}
   <section class="page-header">
     <h2>爬虫监控中心</h2>
-    <p>管理 API Key、观察运行健康状态，并按需公开日志给外部伙伴。</p>
+    <p>通过统一的 /pa 接入上报运行状态，支持快捷匿名链接与日志筛选。</p>
   </section>
 
   <section class="card">
     <div class="card-header">
       <h3>API Key 管理</h3>
       <div class="table-actions">
-        <button type="button" onclick="createKey()">生成新 Key</button>
+        <button onclick="createKey()">生成新 Key</button>
       </div>
     </div>
-    <table class="data-table">
-      <thead>
-        <tr><th>ID</th><th>Key</th><th>创建时间</th><th>公开</th><th>操作</th></tr>
-      </thead>
-      <tbody>
-        {% for k in keys %}
-        <tr data-key-id="{{ k.id }}">
-          <td>{{ k.id }}</td>
-          <td><code>{{ k.key }}</code></td>
-          <td>{{ k.created_at }}</td>
-          <td>
-            <label class="switch">
-              <input type="checkbox" data-key-id="{{ k.id }}" {% if k.is_public %}checked{% endif %} onchange="toggleKeyPublic(event)">
-              <span></span>
-            </label>
-          </td>
-          <td>
-            <button class="text" type="button" onclick="deleteKey({{ k.id }})">删除</button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    <p class="hint">示例项目为演示采用明文 Key，生产环境请仅展示一次明文并在数据库中保存哈希。</p>
+    <div class="table-scroll">
+      <table class="data-table" id="keys-table">
+        <thead><tr><th>ID</th><th>Key</th><th>名称</th><th>状态</th><th>最近使用</th><th>公开</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="hint">接口路径已迁移至 <code>/pa/api</code>，请在 SDK 中更新基础地址。</p>
   </section>
 
   <section class="card">
     <div class="card-header">
       <h3>爬虫列表</h3>
     </div>
-    <table class="data-table">
-      <thead>
-        <tr><th>ID</th><th>名称</th><th>最近心跳</th><th>公开</th><th>分享链接</th><th>操作</th></tr>
-      </thead>
-      <tbody>
-        {% for c in crawlers %}
-        <tr data-crawler-id="{{ c.id }}">
-          <td>{{ c.id }}</td>
-          <td>{{ c.name }}</td>
-          <td>{{ c.last_heartbeat or '未上报' }}</td>
-          <td>
-            <label class="switch">
-              <input type="checkbox" data-crawler-id="{{ c.id }}" {% if c.is_public %}checked{% endif %} onchange="toggleCrawlerPublic(event)">
-              <span></span>
-            </label>
-          </td>
-          <td>
-            {% if c.public_slug %}
-            <span class="public-link" data-slug="{{ c.public_slug }}" id="slug-{{ c.id }}">
-              /public?slug={{ c.public_slug }}
-              <button class="text" type="button" onclick="copySlug('{{ c.public_slug }}')">复制</button>
-            </span>
-            {% else %}
-            <span class="hint">未公开</span>
-            {% endif %}
-          </td>
-          <td>
-            <button class="text" type="button" onclick="showDetail({{ c.id }}, '{{ c.name }}')">运行详情</button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="table-scroll">
+      <table class="data-table" id="crawlers-table">
+        <thead><tr><th>ID</th><th>名称</th><th>最近心跳</th><th>来源 IP</th><th>公开</th><th>快捷链接</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h3>快捷访问链接</h3>
+      <div class="table-actions">
+        <button type="button" onclick="refreshLinks()">刷新</button>
+      </div>
+    </div>
+    <form id="link-form" class="form-grid">
+      <label for="link-target-type">目标类型</label>
+      <select id="link-target-type" name="target_type">
+        <option value="crawler">爬虫</option>
+        <option value="api_key">API Key</option>
+      </select>
+      <label for="link-target-id">目标 ID</label>
+      <input id="link-target-id" name="target_id" type="number" required />
+      <label for="link-slug">自定义路径（可选）</label>
+      <input id="link-slug" name="slug" type="text" placeholder="至少 6 位，例如 mybot01" />
+      <label>
+        <input type="checkbox" id="link-logs" name="allow_logs" checked /> 允许访问日志
+      </label>
+      <label for="link-desc">备注说明</label>
+      <input id="link-desc" name="description" type="text" placeholder="例如：合作方查看" />
+      <button type="submit">生成快捷链接</button>
+      <div class="hint" id="link-hint"></div>
+    </form>
+    <div class="table-scroll">
+      <table class="data-table" id="links-table">
+        <thead><tr><th>Slug</th><th>类型</th><th>目标</th><th>日志</th><th>创建时间</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="hint">访问地址示例：<code>{{ request.url.scheme }}://{{ request.url.netloc }}/pa/&lt;slug&gt;</code></p>
   </section>
 
   <section class="card">
@@ -88,11 +78,7 @@
     <div class="filters">
       <div>
         <label for="log-crawlers">选择爬虫</label>
-        <select id="log-crawlers" multiple>
-          {% for c in crawlers %}
-          <option value="{{ c.id }}" selected>{{ c.name }}</option>
-          {% endfor %}
-        </select>
+        <select id="log-crawlers" multiple></select>
       </div>
       <div>
         <label for="log-start">开始日期</label>
@@ -126,10 +112,12 @@
     <div class="grid">
       <div>
         <h4>最近运行</h4>
-        <table class="data-table">
-          <thead><tr><th>ID</th><th>状态</th><th>开始</th><th>结束</th></tr></thead>
-          <tbody id="runs-body"></tbody>
-        </table>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th>ID</th><th>状态</th><th>开始</th><th>结束</th><th>来源 IP</th></tr></thead>
+            <tbody id="runs-body"></tbody>
+          </table>
+        </div>
       </div>
       <div>
         <h4>最近日志</h4>
@@ -141,197 +129,221 @@
 
 {% block scripts %}
 <script>
-const logLevels = (window.LOG_LEVEL_OPTIONS || []).slice().sort((a, b) => a.code - b.code);
-function renderLevelSelectOptions(select, selectedCode) {
-  select.innerHTML = logLevels.map(item => {
-    const selected = Number(selectedCode) === Number(item.code) ? 'selected' : '';
-    return `<option value="${item.code}" ${selected}>${item.code} - ${item.name}</option>`;
-  }).join('');
-}
-const minSelect = document.getElementById('log-min-level');
-const maxSelect = document.getElementById('log-max-level');
-renderLevelSelectOptions(minSelect, 0);
-renderLevelSelectOptions(maxSelect, 50);
+(() => {
+  const levelOptions = (window.LOG_LEVEL_OPTIONS || []).slice().sort((a, b) => a.code - b.code);
+  const minSelect = document.getElementById('log-min-level');
+  const maxSelect = document.getElementById('log-max-level');
+  const crawlersSelect = document.getElementById('log-crawlers');
 
-function getSelectedCrawlerIds() {
-  const select = document.getElementById('log-crawlers');
-  return Array.from(select.selectedOptions).map(opt => opt.value).filter(Boolean);
-}
-
-function getDateValue(id) {
-  const value = document.getElementById(id).value;
-  return value || '';
-}
-
-function resetFilters() {
-  const select = document.getElementById('log-crawlers');
-  select.querySelectorAll('option').forEach(opt => opt.selected = true);
-  document.getElementById('log-start').value = '';
-  document.getElementById('log-end').value = '';
-  minSelect.value = 0;
-  maxSelect.value = 50;
-  document.getElementById('log-limit').value = 200;
-  loadLogs();
-}
-
-async function loadLogs() {
-  const ids = getSelectedCrawlerIds();
-  const limit = document.getElementById('log-limit').value || '200';
-  const params = new URLSearchParams();
-  if (ids.length) params.append('crawler_ids', ids.join(','));
-  const start = getDateValue('log-start');
-  const end = getDateValue('log-end');
-  if (start) params.append('start', start);
-  if (end) params.append('end', end);
-  params.append('min_level', minSelect.value);
-  params.append('max_level', maxSelect.value);
-  params.append('limit', limit);
-  const res = await fetch(`/api/crawlers/me/logs?${params.toString()}`);
-  const container = document.getElementById('log-list');
-  const empty = document.getElementById('log-empty');
-  if (!res.ok) {
-    container.innerHTML = '';
-    empty.style.display = '';
-    empty.textContent = '日志加载失败，请稍后重试。';
-    return;
+  function renderLevelOptions(select, selected) {
+    select.innerHTML = levelOptions.map(opt => `<option value="${opt.code}" ${Number(selected) === Number(opt.code) ? 'selected' : ''}>${opt.code} - ${opt.name}</option>`).join('');
   }
-  const data = await res.json();
-  if (!data.length) {
-    container.innerHTML = '';
-    empty.style.display = '';
-    empty.textContent = '暂无日志，可调整筛选后再次查询。';
-    return;
-  }
-  empty.style.display = 'none';
-  const levelMap = Object.fromEntries(logLevels.map(item => [item.code, item.name]));
-  container.innerHTML = data.map(item => {
-    const code = Number(item.level_code || 20);
-    const badgeClass = `badge level-${code}`;
-    const levelText = levelMap[code] || item.level || 'INFO';
-    const runInfo = item.run_id ? `<span>Run #${item.run_id}</span>` : '';
-    const crawlerName = item.crawler_name || `#${item.crawler_id}`;
-    return `<div class="log-item">
-      <div class="log-head">
-        <span>${new Date(item.ts).toLocaleString()}</span>
-        <div class="table-actions" style="gap:8px;">
-          <span class="badge ${badgeClass}">${levelText}</span>
-          <span class="hint">${crawlerName}</span>
-          ${runInfo}
-        </div>
-      </div>
-      <div>${item.message}</div>
-    </div>`;
-  }).join('');
-}
+  renderLevelOptions(minSelect, 0);
+  renderLevelOptions(maxSelect, 50);
 
-async function toggleKeyPublic(event) {
-  const input = event.target;
-  const id = input.dataset.keyId;
-  const next = input.checked;
-  try {
-    const res = await fetch(`/api/keys/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_public: next }),
-    });
-    if (!res.ok) throw new Error();
-  } catch (error) {
-    input.checked = !next;
-    alert('更新失败，请稍后再试。');
-  }
-}
-
-async function deleteKey(id) {
-  if (!confirm('确认删除此 Key 吗？')) return;
-  const res = await fetch(`/api/keys/${id}`, { method: 'DELETE' });
-  if (res.ok) {
-    location.reload();
-  } else {
-    alert('删除失败，请稍后再试。');
-  }
-}
-
-async function createKey() {
-  const res = await fetch('/api/keys', { method: 'POST' });
-  if (res.ok) {
-    location.reload();
-  } else {
-    alert('生成失败，请稍后再试。');
-  }
-}
-
-async function toggleCrawlerPublic(event) {
-  const input = event.target;
-  const row = input.closest('tr');
-  const id = row.dataset.crawlerId;
-  const next = input.checked;
-  try {
-    const res = await fetch(`/api/crawlers/me/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_public: next }),
-    });
-    if (!res.ok) throw new Error();
-    const crawler = await res.json();
-    const cell = row.querySelector('.public-link');
-    if (crawler.is_public && crawler.public_slug) {
-      const html = `/public?slug=${crawler.public_slug}<button class="text" type="button" onclick="copySlug('${crawler.public_slug}')">复制</button>`;
-      if (cell) {
-        cell.dataset.slug = crawler.public_slug;
-        cell.innerHTML = html;
-      } else {
-        const placeholder = row.querySelector('.hint');
-        if (placeholder) {
-          placeholder.outerHTML = `<span class="public-link" data-slug="${crawler.public_slug}" id="slug-${id}">${html}</span>`;
-        }
-      }
-    } else {
-      const link = row.querySelector('.public-link');
-      if (link) link.outerHTML = '<span class="hint">未公开</span>';
+  async function fetchJSON(url, options) {
+    const res = await fetch(url, options);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || `请求失败(${res.status})`);
     }
-  } catch (error) {
-    input.checked = !next;
-    alert('更新失败，请稍后再试。');
+    return res.json();
   }
-}
 
-function copySlug(slug) {
-  const url = `${location.origin}/public?slug=${slug}`;
-  navigator.clipboard.writeText(url).then(() => {
-    alert('链接已复制：' + url);
-  }).catch(() => {
-    alert('复制失败，请手动复制：' + url);
-  });
-}
-
-async function showDetail(id, name) {
-  document.getElementById('detail').style.display = '';
-  document.getElementById('detail-title').textContent = `#${id} - ${name}`;
-  const runsRes = fetch(`/api/crawlers/me/${id}/runs`);
-  const logsRes = fetch(`/api/crawlers/me/${id}/logs?limit=50`);
-  const [runsResp, logsResp] = await Promise.all([runsRes, logsRes]);
-  const runsBody = document.getElementById('runs-body');
-  const logsList = document.getElementById('logs-list');
-  if (runsResp.ok) {
-    const runs = await runsResp.json();
-    runsBody.innerHTML = runs.map(run => `<tr><td>${run.id}</td><td>${run.status}</td><td>${new Date(run.started_at).toLocaleString()}</td><td>${run.ended_at ? new Date(run.ended_at).toLocaleString() : '-'}</td></tr>`).join('');
-  } else {
-    runsBody.innerHTML = '<tr><td colspan="4">运行记录加载失败</td></tr>';
+  async function createKey() {
+    try {
+      await fetchJSON('/api/keys', { method: 'POST' });
+      loadKeys();
+    } catch (error) {
+      alert(error.message);
+    }
   }
-  if (logsResp.ok) {
-    const logs = await logsResp.json();
-    const levelMap = Object.fromEntries(logLevels.map(item => [item.code, item.name]));
-    logsList.innerHTML = logs.map(item => {
-      const code = Number(item.level_code || 20);
-      const badgeClass = `badge level-${code}`;
-      const levelText = levelMap[code] || item.level || 'INFO';
-      return `<div class="log-item"><div class="log-head"><span>${new Date(item.ts).toLocaleString()}</span><span class="badge ${badgeClass}">${levelText}</span></div><div>${item.message}</div></div>`;
+
+  async function loadKeys() {
+    const data = await fetchJSON('/api/keys');
+    const tbody = document.querySelector('#keys-table tbody');
+    tbody.innerHTML = data.map(key => {
+      const last = key.last_used_at ? new Date(key.last_used_at).toLocaleString() : '-';
+      const status = key.active ? '启用' : '禁用';
+      const publicFlag = key.is_public ? '是' : '否';
+      const name = key.name || '-';
+      return `<tr>
+        <td>${key.id}</td>
+        <td><code>${key.key}</code></td>
+        <td>${name}</td>
+        <td>${status}</td>
+        <td>${last}</td>
+        <td>${publicFlag}</td>
+        <td>
+          <button class="text" onclick="toggleKey(${key.id}, ${key.active ? 'false' : 'true'})">${key.active ? '禁用' : '启用'}</button>
+          <button class="text" onclick="deleteKey(${key.id})">删除</button>
+        </td>
+      </tr>`;
     }).join('');
-  } else {
-    logsList.innerHTML = '<div class="hint">日志加载失败</div>';
   }
-}
 
-loadLogs();
+  window.toggleKey = async (id, next) => {
+    const payload = { active: next === 'true' };
+    try {
+      await fetchJSON(`/api/keys/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      loadKeys();
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  window.deleteKey = async (id) => {
+    if (!confirm('确认删除此 Key?')) return;
+    try {
+      await fetchJSON(`/api/keys/${id}`, { method: 'DELETE' });
+      loadKeys();
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  async function loadCrawlers() {
+    const data = await fetchJSON('/pa/api/me');
+    crawlersSelect.innerHTML = data.map(crawler => `<option value="${crawler.id}" selected>${crawler.name}</option>`).join('');
+    const tbody = document.querySelector('#crawlers-table tbody');
+    tbody.innerHTML = data.map(crawler => {
+      const hb = crawler.last_heartbeat ? new Date(crawler.last_heartbeat).toLocaleString() : '-';
+      const slug = crawler.public_slug ? `<code>${crawler.public_slug}</code>` : '-';
+      const ip = crawler.last_source_ip || '-';
+      return `<tr>
+        <td>${crawler.id}</td>
+        <td>${crawler.name}</td>
+        <td>${hb}</td>
+        <td>${ip}</td>
+        <td>${crawler.is_public ? '是' : '否'}</td>
+        <td>${slug}</td>
+        <td><button class="text" onclick="showDetail(${crawler.id}, '${crawler.name.replace(/'/g, "")}')">详情</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  window.showDetail = async (id, name) => {
+    document.getElementById('detail').style.display = '';
+    document.getElementById('detail-title').textContent = `#${id} - ${name}`;
+    const runs = await fetchJSON(`/pa/api/me/${id}/runs`);
+    const logs = await fetchJSON(`/pa/api/me/${id}/logs?limit=50`);
+    const runsBody = document.getElementById('runs-body');
+    runsBody.innerHTML = runs.map(run => `<tr><td>${run.id}</td><td>${run.status}</td><td>${new Date(run.started_at).toLocaleString()}</td><td>${run.ended_at ? new Date(run.ended_at).toLocaleString() : '-'}</td><td>${run.source_ip || '-'}</td></tr>`).join('');
+    const levelMap = Object.fromEntries(levelOptions.map(item => [item.code, item.name]));
+    const logsList = document.getElementById('logs-list');
+    logsList.innerHTML = logs.map(item => {
+      const level = levelMap[item.level_code] || item.level;
+      return `<div class="log-item"><div class="log-head"><span>${new Date(item.ts).toLocaleString()}</span><span class="badge level-${item.level_code}">${level}</span></div><div>${item.message}</div></div>`;
+    }).join('');
+  };
+
+  const linkForm = document.getElementById('link-form');
+  const linkHint = document.getElementById('link-hint');
+
+  linkForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const payload = {
+      target_type: document.getElementById('link-target-type').value,
+      target_id: Number(document.getElementById('link-target-id').value),
+      slug: document.getElementById('link-slug').value || null,
+      allow_logs: document.getElementById('link-logs').checked,
+      description: document.getElementById('link-desc').value || null,
+    };
+    try {
+      const res = await fetchJSON('/pa/api/links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      linkHint.textContent = `创建成功：${res.slug}`;
+      linkHint.style.color = 'var(--color-primary)';
+      linkForm.reset();
+      refreshLinks();
+    } catch (error) {
+      linkHint.textContent = error.message;
+      linkHint.style.color = '#b91c1c';
+    }
+  });
+
+  async function refreshLinks() {
+    const data = await fetchJSON('/pa/api/links');
+    const tbody = document.querySelector('#links-table tbody');
+    tbody.innerHTML = data.map(link => {
+      const linkUrl = `/pa/${link.slug}`;
+      const allowLogs = link.allow_logs ? '是' : '否';
+      const target = link.target_type === 'crawler' ? `Crawler #${link.crawler_id || '-'}` : `API Key #${link.api_key_id || '-'}`;
+      return `<tr><td><a href="${linkUrl}" target="_blank">${link.slug}</a></td><td>${link.target_type}</td><td>${target}</td><td>${allowLogs}</td><td>${new Date(link.created_at).toLocaleString()}</td><td><button class="text" onclick="deleteLink(${link.id})">删除</button></td></tr>`;
+    }).join('');
+  }
+
+  window.deleteLink = async (id) => {
+    if (!confirm('确认删除该链接？')) return;
+    await fetchJSON(`/pa/api/links/${id}`, { method: 'DELETE' });
+    refreshLinks();
+  };
+
+  async function deleteKey(id) {
+    await fetchJSON(`/api/keys/${id}`, { method: 'DELETE' });
+    loadKeys();
+  }
+
+  window.deleteKey = deleteKey;
+
+  function resetFilters() {
+    Array.from(crawlersSelect.options).forEach(opt => (opt.selected = true));
+    document.getElementById('log-start').value = '';
+    document.getElementById('log-end').value = '';
+    minSelect.value = 0;
+    maxSelect.value = 50;
+    document.getElementById('log-limit').value = 200;
+    loadLogs();
+  }
+
+  async function loadLogs() {
+    const ids = Array.from(crawlersSelect.selectedOptions).map(opt => opt.value);
+    const params = new URLSearchParams();
+    if (ids.length) params.append('crawler_ids', ids.join(','));
+    const start = document.getElementById('log-start').value;
+    const end = document.getElementById('log-end').value;
+    if (start) params.append('start', start);
+    if (end) params.append('end', end);
+    params.append('min_level', minSelect.value);
+    params.append('max_level', maxSelect.value);
+    params.append('limit', document.getElementById('log-limit').value || '200');
+    try {
+      const data = await fetchJSON(`/pa/api/me/logs?${params.toString()}`);
+      const container = document.getElementById('log-list');
+      const empty = document.getElementById('log-empty');
+      if (!data.length) {
+        container.innerHTML = '';
+        empty.style.display = '';
+        return;
+      }
+      empty.style.display = 'none';
+      const levelMap = Object.fromEntries(levelOptions.map(item => [item.code, item.name]));
+      container.innerHTML = data.map(item => {
+        const code = Number(item.level_code || 20);
+        const badgeClass = `badge level-${code}`;
+        const levelText = levelMap[code] || item.level;
+        const crawler = item.crawler_name || `#${item.crawler_id}`;
+        const ip = item.source_ip || '-';
+        return `<div class="log-item"><div class="log-head"><span>${new Date(item.ts).toLocaleString()}</span><div class="table-actions" style="gap:8px;"><span class="badge ${badgeClass}">${levelText}</span><span class="hint">${crawler}</span><span class="hint">IP: ${ip}</span></div></div><div>${item.message}</div></div>`;
+      }).join('');
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  window.loadLogs = loadLogs;
+  window.resetFilters = resetFilters;
+
+  loadKeys();
+  loadCrawlers().then(loadLogs);
+  refreshLinks();
+})();
 </script>
 {% endblock %}

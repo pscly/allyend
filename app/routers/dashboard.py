@@ -20,7 +20,7 @@ from ..schemas import ThemeSettingOut, ThemeSettingUpdate
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
-templates.env.globals.update(site_icp=settings.SITE_ICP, theme_presets=THEME_PRESETS, log_levels=LOG_LEVEL_OPTIONS)
+templates.env.globals.update(site_icp=settings.SITE_ICP, theme_presets=THEME_PRESETS, log_levels=LOG_LEVEL_OPTIONS, site_name=settings.SITE_NAME)
 
 
 @router.get("/")

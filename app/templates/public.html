@@ -128,7 +128,7 @@ async function loadPublicLogs() {
   if (publicMax) params.append('max_level', publicMax.value);
   const limit = document.getElementById('public-limit');
   if (limit && limit.value) params.append('limit', limit.value);
-  const res = await fetch(`/api/crawlers/public/logs?${params.toString()}`);
+  const res = await fetch(`/pa/public/logs?${params.toString()}`);
   if (!res.ok) {
     container.innerHTML = '';
     empty.style.display = '';

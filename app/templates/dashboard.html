@@ -56,14 +56,20 @@
       <h3>爬虫监控中心</h3>
       <p>管理 API Key、查看运行与日志、配置公开分享。</p>
     </a>
+    <a class="feature" href="/files">
+      <h3>文件中转站</h3>
+      <p>匿名传输、API 同步与网盘式管理，支持访问控制。</p>
+    </a>
     <a class="feature" href="/public">
       <h3>公开展示页</h3>
       <p>将公开的 API Key 与爬虫动态分享给团队或合作伙伴。</p>
     </a>
-    <div class="feature">
-      <h3>更多能力</h3>
-      <p class="hint">指标看板、报警策略与任务调度将陆续上线，敬请期待。</p>
-    </div>
+    {% if user.role in ['admin', 'superadmin'] %}
+    <a class="feature" href="/admin">
+      <h3>管理控制台</h3>
+      <p>维护用户分组、邀请码与注册策略，审计文件访问。</p>
+    </a>
+    {% endif %}
   </section>
 {% endblock %}
 

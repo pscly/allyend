@@ -463,3 +463,19 @@ textarea:focus {
     padding: 10px;
   }
 }
+
+.form-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: 12px;
+}
+.form-grid textarea {
+  resize: vertical;
+}
+.table-scroll {
+  overflow-x: auto;
+}
+.table-scroll table {
+  min-width: 680px;
+}

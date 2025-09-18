@@ -2,15 +2,32 @@
 {% block content %}
   <section class="page-header">
     <h2>{{ '注册新账号' if mode == 'register' else '登录控制台' }}</h2>
-    <p>认证后即可接入 SDK、查看运行数据并自定义主题。</p>
+    {% if mode == 'register' %}
+      {% if registration_mode == 'invite' %}
+      <p>当前注册需提供有效邀请码。</p>
+      {% elif registration_mode == 'closed' %}
+      <p class="hint">注册已暂停，请联系管理员。</p>
+      {% else %}
+      <p>认证后即可接入 SDK、查看运行数据并自定义主题。</p>
+      {% endif %}
+    {% else %}
+      <p>使用已有账号登录 AllYend 控制台。</p>
+    {% endif %}
   </section>
   <div class="card" style="max-width: 420px; margin: 0 auto;">
     <h3 style="margin-top: 0;">{{ '注册' if mode == 'register' else '登录' }}</h3>
-    <form method="post" action="/{{ 'register' if mode == 'register' else 'login' }}" class="form">
+    {% if error %}
+    <div class="notice" style="margin-bottom:12px; color:#b91c1c; background: rgba(248,113,113,0.1);">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/{{ 'register' if mode == 'register' else 'login' }}" class="form-grid">
       <label for="username">用户名</label>
-      <input id="username" type="text" name="username" required />
+      <input id="username" type="text" name="username" value="{{ username or '' }}" required />
       <label for="password">密码</label>
       <input id="password" type="password" name="password" required />
+      {% if mode == 'register' and registration_mode != 'open' %}
+      <label for="invite_code">邀请码</label>
+      <input id="invite_code" type="text" name="invite_code" value="{{ invite_code or '' }}" {% if registration_mode == 'invite' %}required{% endif %} />
+      {% endif %}
       <button type="submit">{{ '注册并进入' if mode == 'register' else '登录系统' }}</button>
     </form>
     {% if mode == 'register' %}

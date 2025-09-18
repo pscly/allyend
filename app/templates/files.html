@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="page-header">
+    <h2>文件空间</h2>
+    <p>支持匿名临时上传与注册用户的分组网盘，API 令牌可实现自动化同步。</p>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h3>匿名上传</h3>
+      <span class="hint">任何人都可以上传，文件默认公开。</span>
+    </div>
+    <form id="anon-upload" class="form-grid">
+      <label for="anon-file">选择文件</label>
+      <input id="anon-file" name="file" type="file" required />
+      <label for="anon-name">显示名称（可选）</label>
+      <input id="anon-name" name="file_name" type="text" placeholder="示例：任务附件.zip" />
+      <button type="submit">立即上传</button>
+      <div class="hint" id="anon-hint"></div>
+    </form>
+  </section>
+
+  {% if user %}
+  <section class="card">
+    <div class="card-header">
+      <h3>我的文件</h3>
+      <div class="table-actions">
+        <select id="file-scope">
+          <option value="private">仅自己</option>
+          <option value="group">所属分组</option>
+          <option value="public">公开</option>
+          <option value="anonymous">匿名文件</option>
+        </select>
+        <button type="button" id="refresh-files">刷新</button>
+      </div>
+    </div>
+    <form id="user-upload" class="form-grid">
+      <label for="user-file">选择文件</label>
+      <input id="user-file" name="file" type="file" required />
+      <label for="user-name">显示名称</label>
+      <input id="user-name" name="file_name" type="text" placeholder="示例：日报.xlsx" />
+      <label for="user-visibility">可见性</label>
+      <select id="user-visibility" name="visibility">
+        <option value="private">仅自己可见</option>
+        <option value="group">分组内可见</option>
+        <option value="public">公开访问</option>
+      </select>
+      <label for="user-desc">备注说明</label>
+      <textarea id="user-desc" name="description" rows="2" placeholder="文件用途说明"></textarea>
+      <button type="submit">上传到我的空间</button>
+      <div class="hint" id="user-hint"></div>
+    </form>
+    <div class="table-scroll">
+      <table class="data-table" id="my-files-table">
+        <thead><tr><th>名称</th><th>可见性</th><th>大小</th><th>上传时间</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h3>API 令牌</h3>
+      <div class="table-actions">
+        <button type="button" id="refresh-tokens">刷新</button>
+      </div>
+    </div>
+    <form id="token-create" class="form-grid">
+      <label for="token-name">令牌名称</label>
+      <input id="token-name" name="name" type="text" placeholder="例如：CI 同步" />
+      <label for="token-ips">允许 IP（逗号分隔，可选）</label>
+      <input id="token-ips" name="allowed_ips" type="text" placeholder="127.0.0.1,10.0.0.2" />
+      <label for="token-cidrs">允许网段（逗号分隔，可选）</label>
+      <input id="token-cidrs" name="allowed_cidrs" type="text" placeholder="192.168.1.0/24" />
+      <button type="submit">创建令牌</button>
+      <div class="hint" id="token-hint"></div>
+    </form>
+    <div class="table-scroll">
+      <table class="data-table" id="token-table">
+        <thead><tr><th>令牌</th><th>名称</th><th>限制</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="hint">使用方式：<code>POST /files/&lt;token&gt;/up</code> 上传，<code>GET /files/&lt;token&gt;</code> 列出可访问文件。</p>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <div class="card-header">
+      <h3>公开文件列表</h3>
+      <div class="table-actions">
+        <button type="button" id="refresh-public">刷新</button>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table" id="public-files-table">
+        <thead><tr><th>名称</th><th>大小</th><th>上传时间</th><th>下载</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const userPresent = {{ 'true' if user else 'false' }};
+
+  async function uploadForm(formId, url, hintId) {
+    const form = document.getElementById(formId);
+    const hint = document.getElementById(hintId);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const res = await fetch(url, { method: 'POST', body: formData });
+      if (res.ok) {
+        const data = await res.json();
+        hint.textContent = `上传成功：${data.original_name}`;
+        hint.style.color = 'var(--color-primary)';
+        form.reset();
+        if (formId === 'anon-upload') {
+          loadPublicFiles();
+        } else {
+          loadMyFiles();
+        }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        hint.textContent = err.detail || '上传失败';
+        hint.style.color = '#b91c1c';
+      }
+    });
+  }
+
+  uploadForm('anon-upload', '/files/up', 'anon-hint');
+  if (userPresent) {
+    uploadForm('user-upload', '/files/me/up', 'user-hint');
+  }
+
+  const formatSize = (bytes) => {
+    if (!bytes && bytes !== 0) return '-';
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let size = bytes / 1024;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex++;
+    }
+    return `${size.toFixed(1)} ${units[unitIndex]}`;
+  };
+
+  async function loadPublicFiles() {
+    const res = await fetch('/files/public?limit=100');
+    if (!res.ok) return;
+    const data = await res.json();
+    const tbody = document.querySelector('#public-files-table tbody');
+    tbody.innerHTML = data.map(file => {
+      const link = `/files/${file.id}/download`;
+      return `<tr><td>${file.original_name}</td><td>${formatSize(file.size_bytes)}</td><td>${new Date(file.created_at).toLocaleString()}</td><td><a href="${link}" target="_blank">下载</a></td></tr>`;
+    }).join('');
+  }
+
+  async function loadMyFiles() {
+    if (!userPresent) return;
+    const scope = document.getElementById('file-scope').value;
+    const res = await fetch(`/files/me?scope=${scope}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const tbody = document.querySelector('#my-files-table tbody');
+    tbody.innerHTML = data.map(file => {
+      const link = `/files/${file.id}/download`;
+      return `<tr><td>${file.original_name}</td><td>${file.visibility}</td><td>${formatSize(file.size_bytes)}</td><td>${new Date(file.created_at).toLocaleString()}</td><td><a href="${link}" target="_blank">下载</a> <button class="text" data-file="${file.id}">删除</button></td></tr>`;
+    }).join('');
+    tbody.querySelectorAll('button[data-file]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const fileId = btn.dataset.file;
+        if (!confirm('确认删除该文件？')) return;
+        const res = await fetch(`/files/me/${fileId}`, { method: 'DELETE' });
+        if (res.ok) {
+          loadMyFiles();
+        }
+      });
+    });
+  }
+
+  async function loadTokens() {
+    if (!userPresent) return;
+    const res = await fetch('/files/api/tokens');
+    if (!res.ok) return;
+    const data = await res.json();
+    const tbody = document.querySelector('#token-table tbody');
+    tbody.innerHTML = data.map(token => {
+      const limit = [token.allowed_ips, token.allowed_cidrs].filter(Boolean).join(' / ') || '-';
+      const state = token.is_active ? '启用' : '禁用';
+      return `<tr><td><code>${token.token}</code></td><td>${token.name || '-'}</td><td>${limit}</td><td>${state}</td><td><button class="text" data-token="${token.id}" data-active="${token.is_active ? '1' : '0'}">${token.is_active ? '禁用' : '启用'}</button></td></tr>`;
+    }).join('');
+    tbody.querySelectorAll('button[data-token]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.token;
+        const next = btn.dataset.active === '1' ? '0' : '1';
+        const formData = new FormData();
+        formData.append('is_active', next === '1');
+        const res = await fetch(`/files/api/tokens/${id}`, { method: 'PATCH', body: formData });
+        if (res.ok) {
+          loadTokens();
+        }
+      });
+    });
+  }
+
+  if (userPresent) {
+    document.getElementById('refresh-files').addEventListener('click', loadMyFiles);
+    document.getElementById('file-scope').addEventListener('change', loadMyFiles);
+    document.getElementById('refresh-tokens').addEventListener('click', loadTokens);
+    const tokenForm = document.getElementById('token-create');
+    tokenForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const hint = document.getElementById('token-hint');
+      const formData = new FormData(tokenForm);
+      const payload = Object.fromEntries(formData.entries());
+      const res = await fetch('/files/api/tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        hint.textContent = `令牌创建成功：${data.token}`;
+        hint.style.color = 'var(--color-primary)';
+        tokenForm.reset();
+        loadTokens();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        hint.textContent = err.detail || '操作失败';
+        hint.style.color = '#b91c1c';
+      }
+    });
+  }
+
+  document.getElementById('refresh-public').addEventListener('click', loadPublicFiles);
+
+  loadPublicFiles();
+  if (userPresent) {
+    loadMyFiles();
+    loadTokens();
+  }
+})();
+</script>
+{% endblock %}

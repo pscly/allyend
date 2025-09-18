@@ -15,6 +15,7 @@ from .routers import auth as auth_router
 from .routers import crawlers as crawlers_router
 from .routers import dashboard as dashboard_router
 from .routers import files as files_router
+from .routers import admin as admin_router
 
 
 app = FastAPI(title=settings.SITE_NAME, version="0.2.0")
@@ -45,6 +46,7 @@ app.include_router(auth_router.router)
 app.include_router(crawlers_router.router)
 app.include_router(crawlers_router.public_router)
 app.include_router(files_router.router)
+app.include_router(admin_router.router)
 app.include_router(dashboard_router.router)
 
 

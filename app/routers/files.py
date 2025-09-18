@@ -11,11 +11,12 @@ from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..constants import FILE_STORAGE_DIR, ROLE_ADMIN, ROLE_SUPERADMIN
+from ..constants import FILE_STORAGE_DIR, ROLE_ADMIN, ROLE_SUPERADMIN, THEME_PRESETS, LOG_LEVEL_OPTIONS
 from ..dependencies import get_current_user, get_db, get_optional_user
 from ..models import FileAPIToken, FileAccessLog, FileEntry, User
 from ..schemas import (
@@ -28,9 +29,17 @@ from ..schemas import (
 
 router = APIRouter(tags=["files"])
 
+templates = Jinja2Templates(directory="app/templates")
+templates.env.globals.update(site_icp=settings.SITE_ICP, theme_presets=THEME_PRESETS, log_levels=LOG_LEVEL_OPTIONS, site_name=settings.SITE_NAME)
+
 
 STORAGE_ROOT = Path(settings.FILE_STORAGE_DIR or FILE_STORAGE_DIR)
 ALLOWED_VISIBILITY = {"private", "group", "public"}
+
+@router.get("/files", response_class=HTMLResponse)
+def files_console(request: Request, current_user: Optional[User] = Depends(get_optional_user)):
+    return templates.TemplateResponse("files.html", {"request": request, "user": current_user})
+
 
 
 def _ensure_storage_dir(subdir: Optional[str] = None) -> Path:
@@ -174,7 +183,7 @@ def anonymous_upload(
     )
 
 
-@router.get("/files/", response_model=list[FileEntryOut])
+@router.get("/files/public", response_model=list[FileEntryOut])
 def list_public_files(
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),

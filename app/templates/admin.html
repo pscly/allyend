@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="page-header">
+    <h2>管理控制台</h2>
+    <p>设置注册策略、管理邀请码与用户分组，支持精细化控制功能启用。</p>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h3>注册策略</h3>
+      <span class="hint">可切换为开放、仅限邀请码或完全关闭注册。</span>
+    </div>
+    <form id="registration-form" class="form-grid">
+      <label><input type="radio" name="mode" value="open" /> 开放注册</label>
+      <label><input type="radio" name="mode" value="invite" /> 仅限邀请码</label>
+      <label><input type="radio" name="mode" value="closed" /> 暂停注册</label>
+      <button type="submit">保存</button>
+      <div class="hint" id="registration-hint"></div>
+    </form>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h3>邀请码管理</h3>
+      <div class="table-actions">
+        <button type="button" id="refresh-invites">刷新</button>
+      </div>
+    </div>
+    <form id="invite-form" class="form-grid">
+      <label for="invite-note">用途说明</label>
+      <input id="invite-note" name="note" type="text" placeholder="例如：运维团队" />
+      <label>
+        <input type="checkbox" id="invite-admin" name="allow_admin" /> 管理员权限
+      </label>
+      <label for="invite-uses">最大使用次数（留空不限）</label>
+      <input id="invite-uses" name="max_uses" type="number" min="1" />
+      <label for="invite-expire">有效期（分钟，可选）</label>
+      <input id="invite-expire" name="expires_in_minutes" type="number" min="1" />
+      <label for="invite-group">绑定用户组（可选）</label>
+      <select id="invite-group" name="target_group_id">
+        <option value="">默认分组</option>
+      </select>
+      <button type="submit">生成邀请码</button>
+      <div class="hint" id="invite-hint"></div>
+    </form>
+    <div class="table-scroll">
+      <table class="data-table" id="invite-table">
+        <thead><tr><th>邀请码</th><th>说明</th><th>管理员</th><th>使用情况</th><th>过期时间</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h3>用户分组与权限</h3>
+      <div class="table-actions">
+        <button type="button" id="refresh-users">刷新</button>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table" id="user-table">
+        <thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>分组</th><th>状态</th><th>邀请人</th><th>创建时间</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const roleOptions = [
+    { value: 'user', label: '普通用户' },
+    { value: 'admin', label: '管理员' },
+    { value: 'superadmin', label: '超级管理员' },
+  ];
+
+  async function fetchJSON(url, options) {
+    const res = await fetch(url, options);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || `请求失败: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  const registrationForm = document.getElementById('registration-form');
+  const registrationHint = document.getElementById('registration-hint');
+
+  async function loadRegistrationMode() {
+    try {
+      const data = await fetchJSON('/admin/api/settings');
+      registrationForm.querySelectorAll('input[name="mode"]').forEach(radio => {
+        radio.checked = radio.value === data.registration_mode;
+      });
+    } catch (error) {
+      registrationHint.textContent = error.message;
+      registrationHint.style.color = '#b91c1c';
+    }
+  }
+
+  registrationForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const formData = new FormData(registrationForm);
+    const mode = formData.get('mode');
+    try {
+      await fetchJSON('/admin/api/settings/registration', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      registrationHint.textContent = '注册策略已更新';
+      registrationHint.style.color = 'var(--color-primary)';
+    } catch (error) {
+      registrationHint.textContent = error.message;
+      registrationHint.style.color = '#b91c1c';
+    }
+  });
+
+  const inviteGroupSelect = document.getElementById('invite-group');
+
+  async function loadGroups() {
+    const groups = await fetchJSON('/admin/api/groups');
+    inviteGroupSelect.innerHTML = '<option value="">默认分组</option>' + groups.map(group => `<option value="${group.id}">${group.name}</option>`).join('');
+    return groups;
+  }
+
+  const inviteTable = document.querySelector('#invite-table tbody');
+  const inviteHint = document.getElementById('invite-hint');
+
+  async function loadInvites() {
+    const invites = await fetchJSON('/admin/api/invites');
+    inviteTable.innerHTML = invites.map(invite => {
+      const limit = invite.max_uses ? `${invite.used_count}/${invite.max_uses}` : `${invite.used_count}`;
+      const adminFlag = invite.allow_admin ? '是' : '否';
+      const expire = invite.expires_at ? new Date(invite.expires_at).toLocaleString() : '永久有效';
+      return `<tr><td><code>${invite.code}</code></td><td>${invite.note || '-'}</td><td>${adminFlag}</td><td>${limit}</td><td>${expire}</td><td><button class="text" data-invite="${invite.id}">删除</button></td></tr>`;
+    }).join('');
+    inviteTable.querySelectorAll('button[data-invite]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('确认删除该邀请码？')) return;
+        await fetchJSON(`/admin/api/invites/${btn.dataset.invite}`, { method: 'DELETE' });
+        loadInvites();
+      });
+    });
+  }
+
+  const inviteForm = document.getElementById('invite-form');
+  inviteForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const formData = new FormData(inviteForm);
+    const payload = Object.fromEntries(formData.entries());
+    payload.allow_admin = formData.get('allow_admin') === 'on';
+    if (!payload.target_group_id) delete payload.target_group_id;
+    if (!payload.max_uses) delete payload.max_uses;
+    if (!payload.expires_in_minutes) delete payload.expires_in_minutes;
+    try {
+      const res = await fetchJSON('/admin/api/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      inviteHint.textContent = `邀请码创建成功：${res.code}`;
+      inviteHint.style.color = 'var(--color-primary)';
+      inviteForm.reset();
+      loadInvites();
+    } catch (error) {
+      inviteHint.textContent = error.message;
+      inviteHint.style.color = '#b91c1c';
+    }
+  });
+
+  const userTable = document.querySelector('#user-table tbody');
+  let groupsCache = [];
+
+  function groupOptions(currentId) {
+    return ['<option value="">默认分组</option>'].concat(groupsCache.map(group => `<option value="${group.id}" ${group.id === currentId ? 'selected' : ''}>${group.name}</option>`)).join('');
+  }
+
+  function roleSelect(role) {
+    return roleOptions.map(opt => `<option value="${opt.value}" ${opt.value === role ? 'selected' : ''}>${opt.label}</option>`).join('');
+  }
+
+  async function loadUsers() {
+    const users = await fetchJSON('/admin/api/users');
+    userTable.innerHTML = users.map(user => {
+      const invited = user.invited_by || '-';
+      return `<tr>
+        <td>${user.id}</td>
+        <td>${user.username}</td>
+        <td><select data-uid="${user.id}" data-field="role">${roleSelect(user.role)}</select></td>
+        <td><select data-uid="${user.id}" data-field="group_id">${groupOptions(user.group ? user.group.id : null)}</select></td>
+        <td>
+          <label class="switch">
+            <input type="checkbox" data-uid="${user.id}" data-field="is_active" ${user.is_active ? 'checked' : ''} />
+            <span></span>
+          </label>
+        </td>
+        <td>${invited}</td>
+        <td>${new Date(user.created_at).toLocaleString()}</td>
+        <td><button class="text" data-save="${user.id}">保存</button></td>
+      </tr>`;
+    }).join('');
+
+    userTable.querySelectorAll('button[data-save]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const row = btn.closest('tr');
+        const id = btn.dataset.save;
+        const role = row.querySelector('select[data-field="role"]').value;
+        const groupIdValue = row.querySelector('select[data-field="group_id"]').value;
+        const group_id = groupIdValue ? Number(groupIdValue) : null;
+        const is_active = row.querySelector('input[data-field="is_active"]').checked;
+        const payload = { role, group_id, is_active };
+        try {
+          await fetchJSON(`/admin/api/users/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          btn.textContent = '已保存';
+          setTimeout(() => (btn.textContent = '保存'), 2000);
+        } catch (error) {
+          btn.textContent = '失败';
+          btn.style.color = '#b91c1c';
+          setTimeout(() => {
+            btn.textContent = '保存';
+            btn.style.color = '';
+          }, 2000);
+        }
+      });
+    });
+  }
+
+  document.getElementById('refresh-invites').addEventListener('click', loadInvites);
+  document.getElementById('refresh-users').addEventListener('click', loadUsers);
+
+  (async () => {
+    await loadRegistrationMode();
+    groupsCache = await loadGroups();
+    await loadInvites();
+    await loadUsers();
+  })();
+})();
+</script>
+{% endblock %}
