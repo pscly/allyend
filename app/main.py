@@ -42,6 +42,7 @@ def on_startup():
 # 路由注册
 app.include_router(auth_router.router)
 app.include_router(crawlers_router.router)
+app.include_router(crawlers_router.public_router)
 app.include_router(dashboard_router.router)
 
 

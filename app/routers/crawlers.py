@@ -1,45 +1,66 @@
 """
 爬虫接入与监控 API：
-- 通过 X-API-Key 认证（对应用户）
-- 注册爬虫、上报心跳、运行开始/结束、日志上报
+- 统一归属到 /pa 路径
+- 支持快捷访问链接、来源 IP 记录
 """
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, date, time
+from datetime import date, datetime, time
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session, joinedload
 
-from ..dependencies import get_db
-from ..constants import LOG_LEVEL_CODE_TO_NAME, LOG_LEVEL_NAME_TO_CODE, LOG_LEVEL_OPTIONS
-from ..models import APIKey, Crawler, CrawlerRun, LogEntry
-from ..schemas import CrawlerRegisterRequest, RunStartResponse, LogCreate, CrawlerOut, RunOut, LogOut, CrawlerUpdate
-from ..dependencies import get_current_user
-from ..models import User
+from ..constants import (
+    LOG_LEVEL_CODE_TO_NAME,
+    LOG_LEVEL_NAME_TO_CODE,
+    MIN_QUICK_LINK_LENGTH,
+    ROLE_ADMIN,
+    ROLE_SUPERADMIN,
+)
+from ..dependencies import get_current_user, get_db
+from ..models import (
+    APIKey,
+    Crawler,
+    CrawlerAccessLink,
+    CrawlerRun,
+    LogEntry,
+    User,
+)
+from ..schemas import (
+    CrawlerOut,
+    CrawlerRegisterRequest,
+    CrawlerUpdate,
+    LogCreate,
+    LogOut,
+    QuickLinkCreate,
+    QuickLinkOut,
+    RunOut,
+    RunStartResponse,
+)
 
 
-router = APIRouter(prefix="/api/crawlers", tags=["crawlers"])
+api_router = APIRouter(prefix="/pa/api", tags=["pa-crawlers"])
+public_router = APIRouter(prefix="/pa", tags=["pa-public"])
+
 LEVEL_CODES = sorted(LOG_LEVEL_CODE_TO_NAME.keys())
 LEVEL_ALIASES = {"WARN": "WARNING", "ERR": "ERROR", "FATAL": "CRITICAL"}
 
 
 def _normalize_level_code(code: int) -> int:
-    """将任意整数映射到标准日志等级。"""
-    closest = min(LEVEL_CODES, key=lambda x: abs(x - code))
-    return closest
+    return min(LEVEL_CODES, key=lambda x: abs(x - code))
 
 
 def _resolve_log_level(payload: LogCreate) -> tuple[str, int]:
-    """根据请求体计算日志等级名称和代码。"""
     if payload.level_code is not None:
         normalized = _normalize_level_code(payload.level_code)
         name = LOG_LEVEL_CODE_TO_NAME.get(normalized, "INFO")
         return name, normalized
     level_name = (payload.level or "INFO").upper()
-    if level_name in LOG_LEVEL_NAME_TO_CODE:
-        return level_name, LOG_LEVEL_NAME_TO_CODE[level_name]
+    canonical = LEVEL_ALIASES.get(level_name, level_name)
+    if canonical in LOG_LEVEL_NAME_TO_CODE:
+        return canonical, LOG_LEVEL_NAME_TO_CODE[canonical]
     return "INFO", LOG_LEVEL_NAME_TO_CODE["INFO"]
 
 
@@ -70,59 +91,93 @@ def _apply_log_filters(query, start: Optional[date], end: Optional[date], min_le
     return query
 
 
-def _ensure_public_slug(crawler: Crawler, db: Session) -> None:
-    if crawler.public_slug:
-        return
+def _ensure_quick_slug(db: Session, slug: Optional[str] = None) -> str:
+    base = slug.strip() if slug else ""
+    if base and len(base) < MIN_QUICK_LINK_LENGTH:
+        raise HTTPException(status_code=400, detail=f"快捷链接长度至少 {MIN_QUICK_LINK_LENGTH} 位")
     while True:
-        candidate = secrets.token_urlsafe(6).replace('-', '').lower()
-        exists = db.query(Crawler).filter(Crawler.public_slug == candidate).first()
+        candidate = base or secrets.token_urlsafe(6)[:12].lower()
+        if len(candidate) < MIN_QUICK_LINK_LENGTH:
+            candidate = f"{candidate}{secrets.token_hex(3)}"
+        exists = db.query(CrawlerAccessLink).filter(CrawlerAccessLink.slug == candidate).first()
         if not exists:
-            crawler.public_slug = candidate
-            break
+            return candidate
+        base = ""
 
 
-def _serialise_logs(logs: List[LogEntry]) -> List[LogEntry]:
-    for log in logs:
-        if not getattr(log, "crawler_name", None) and log.crawler:
-            log.crawler_name = log.crawler.name
-    return logs
-
-@router.get("/levels", tags=["meta"])
-def list_log_levels():
-    """提供前端可用的日志等级列表。"""
-    return LOG_LEVEL_OPTIONS
+def _get_client_ip(request: Request) -> Optional[str]:
+    if request.client and request.client.host:
+        return request.client.host
+    return None
 
 
-def _require_api_key(x_api_key: Optional[str] = Header(None), db: Session = Depends(get_db)):
-    """通过 X-API-Key 获取用户ID"""
+def _ensure_crawler_feature(user: User) -> None:
+    if user.role in {ROLE_ADMIN, ROLE_SUPERADMIN}:
+        return
+    if user.group and not user.group.enable_crawlers:
+        raise HTTPException(status_code=403, detail="当前分组未启用爬虫功能")
+
+
+def _require_api_key(
+    request: Request,
+    x_api_key: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+) -> APIKey:
     if not x_api_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="缺少 X-API-Key")
     key = db.query(APIKey).filter(APIKey.key == x_api_key, APIKey.active == True).first()
     if not key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API Key 无效")
-    return key.user_id
+    key.last_used_at = datetime.utcnow()
+    key.last_used_ip = _get_client_ip(request)
+    db.commit()
+    db.refresh(key)
+    return key
 
 
-@router.post("/register")
-def register_crawler(payload: CrawlerRegisterRequest, user_id: int = Depends(_require_api_key), db: Session = Depends(get_db)):
-    # 同一用户下按名称去重
-    crawler = db.query(Crawler).filter(Crawler.user_id == user_id, Crawler.name == payload.name).first()
+@api_router.post("/register")
+def register_crawler(
+    payload: CrawlerRegisterRequest,
+    request: Request,
+    api_key: APIKey = Depends(_require_api_key),
+    db: Session = Depends(get_db),
+):
+    ip = _get_client_ip(request)
+    crawler = (
+        db.query(Crawler)
+        .filter(Crawler.user_id == api_key.user_id, Crawler.name == payload.name)
+        .first()
+    )
     if not crawler:
-        crawler = Crawler(name=payload.name, user_id=user_id)
+        crawler = Crawler(name=payload.name, user_id=api_key.user_id)
+        crawler.last_source_ip = ip
         db.add(crawler)
         db.commit()
         db.refresh(crawler)
+    else:
+        crawler.last_source_ip = ip or crawler.last_source_ip
+        db.commit()
     return {"id": crawler.id, "name": crawler.name}
 
 
-@router.post("/{crawler_id}/heartbeat")
-def heartbeat(crawler_id: int, user_id: int = Depends(_require_api_key), db: Session = Depends(get_db)):
-    crawler = db.query(Crawler).filter(Crawler.id == crawler_id, Crawler.user_id == user_id).first()
+@api_router.post("/{crawler_id}/heartbeat")
+def heartbeat(
+    crawler_id: int,
+    request: Request,
+    api_key: APIKey = Depends(_require_api_key),
+    db: Session = Depends(get_db),
+):
+    crawler = (
+        db.query(Crawler)
+        .filter(Crawler.id == crawler_id, Crawler.user_id == api_key.user_id)
+        .first()
+    )
     if not crawler:
         raise HTTPException(status_code=404, detail="爬虫不存在")
     now = datetime.utcnow()
+    ip = _get_client_ip(request)
     crawler.last_heartbeat = now
-    # 若有正在运行的 run，同步心跳
+    crawler.last_source_ip = ip or crawler.last_source_ip
     run = (
         db.query(CrawlerRun)
         .filter(CrawlerRun.crawler_id == crawler_id, CrawlerRun.status == "running")
@@ -131,27 +186,51 @@ def heartbeat(crawler_id: int, user_id: int = Depends(_require_api_key), db: Ses
     )
     if run:
         run.last_heartbeat = now
+        run.source_ip = ip or run.source_ip
     db.commit()
     return {"ok": True, "ts": now.isoformat()}
 
 
-@router.post("/{crawler_id}/runs/start", response_model=RunStartResponse)
-def start_run(crawler_id: int, user_id: int = Depends(_require_api_key), db: Session = Depends(get_db)):
-    crawler = db.query(Crawler).filter(Crawler.id == crawler_id, Crawler.user_id == user_id).first()
+@api_router.post("/{crawler_id}/runs/start", response_model=RunStartResponse)
+def start_run(
+    crawler_id: int,
+    request: Request,
+    api_key: APIKey = Depends(_require_api_key),
+    db: Session = Depends(get_db),
+):
+    crawler = (
+        db.query(Crawler)
+        .filter(Crawler.id == crawler_id, Crawler.user_id == api_key.user_id)
+        .first()
+    )
     if not crawler:
         raise HTTPException(status_code=404, detail="爬虫不存在")
-    run = CrawlerRun(crawler_id=crawler_id, status="running", started_at=datetime.utcnow())
+    run = CrawlerRun(
+        crawler_id=crawler_id,
+        status="running",
+        started_at=datetime.utcnow(),
+        source_ip=_get_client_ip(request),
+    )
     db.add(run)
     db.commit()
     db.refresh(run)
     return RunStartResponse(id=run.id, status=run.status, started_at=run.started_at)
 
 
-@router.post("/{crawler_id}/runs/{run_id}/finish")
-def finish_run(crawler_id: int, run_id: int, status_: str = "success", user_id: int = Depends(_require_api_key), db: Session = Depends(get_db)):
+@api_router.post("/{crawler_id}/runs/{run_id}/finish")
+def finish_run(
+    crawler_id: int,
+    run_id: int,
+    status_: str = "success",
+    api_key: APIKey = Depends(_require_api_key),
+    db: Session = Depends(get_db),
+):
     run = (
         db.query(CrawlerRun)
-        .filter(CrawlerRun.id == run_id, CrawlerRun.crawler_id == crawler_id)
+        .filter(
+            CrawlerRun.id == run_id,
+            CrawlerRun.crawler_id == crawler_id,
+        )
         .first()
     )
     if not run:
@@ -162,9 +241,19 @@ def finish_run(crawler_id: int, run_id: int, status_: str = "success", user_id: 
     return {"ok": True}
 
 
-@router.post("/{crawler_id}/logs")
-def write_log(crawler_id: int, payload: LogCreate, user_id: int = Depends(_require_api_key), db: Session = Depends(get_db)):
-    crawler = db.query(Crawler).filter(Crawler.id == crawler_id, Crawler.user_id == user_id).first()
+@api_router.post("/{crawler_id}/logs")
+def write_log(
+    crawler_id: int,
+    payload: LogCreate,
+    request: Request,
+    api_key: APIKey = Depends(_require_api_key),
+    db: Session = Depends(get_db),
+):
+    crawler = (
+        db.query(Crawler)
+        .filter(Crawler.id == crawler_id, Crawler.user_id == api_key.user_id)
+        .first()
+    )
     if not crawler:
         raise HTTPException(status_code=404, detail="爬虫不存在")
     level_name, level_code = _resolve_log_level(payload)
@@ -174,6 +263,8 @@ def write_log(crawler_id: int, payload: LogCreate, user_id: int = Depends(_requi
         message=payload.message,
         crawler_id=crawler_id,
         run_id=payload.run_id,
+        source_ip=_get_client_ip(request),
+        api_key_id=api_key.id,
     )
     db.add(entry)
     db.commit()
@@ -181,56 +272,64 @@ def write_log(crawler_id: int, payload: LogCreate, user_id: int = Depends(_requi
     return {"ok": True, "id": entry.id}
 
 
-# ------- 管理端查询（登录后查看） -------
+# ------- 管理端查询与操作 -------
 
 
-@router.get("/me", response_model=list[CrawlerOut], tags=["me"])
-def my_crawlers(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+@api_router.get("/me", response_model=list[CrawlerOut])
+def my_crawlers(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_crawler_feature(current_user)
     crawlers = (
         db.query(Crawler)
         .filter(Crawler.user_id == current_user.id)
         .order_by(Crawler.created_at.desc())
         .all()
     )
-    need_commit = False
-    for crawler in crawlers:
-        if crawler.is_public and not crawler.public_slug:
-            _ensure_public_slug(crawler, db)
-            need_commit = True
-    if need_commit:
-        db.commit()
-        for crawler in crawlers:
-            db.refresh(crawler)
     return crawlers
 
 
-
-@router.patch("/me/{crawler_id}", response_model=CrawlerOut, tags=["me"])
+@api_router.patch("/me/{crawler_id}", response_model=CrawlerOut)
 def update_my_crawler(
     crawler_id: int,
     payload: CrawlerUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    crawler = db.query(Crawler).filter(Crawler.id == crawler_id, Crawler.user_id == current_user.id).first()
+    _ensure_crawler_feature(current_user)
+    crawler = (
+        db.query(Crawler)
+        .filter(Crawler.id == crawler_id, Crawler.user_id == current_user.id)
+        .first()
+    )
     if not crawler:
         raise HTTPException(status_code=404, detail="爬虫不存在")
-    if payload.name is not None and payload.name.strip():
+    if payload.name and payload.name.strip():
         crawler.name = payload.name.strip()
     if payload.is_public is not None:
         crawler.is_public = payload.is_public
-        if payload.is_public:
-            _ensure_public_slug(crawler, db)
-        else:
+        if payload.is_public and not crawler.public_slug:
+            crawler.public_slug = _ensure_quick_slug(db)
+        if not payload.is_public:
             crawler.public_slug = None
     db.commit()
     db.refresh(crawler)
     return crawler
 
-@router.get("/me/{crawler_id}/runs", response_model=list[RunOut], tags=["me"])
-def my_crawler_runs(crawler_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    # 校验归属
-    c = db.query(Crawler).filter(Crawler.id == crawler_id, Crawler.user_id == current_user.id).first()
+
+@api_router.get("/me/{crawler_id}/runs", response_model=list[RunOut])
+def my_crawler_runs(
+    crawler_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_crawler_feature(current_user)
+    c = (
+        db.query(Crawler)
+        .filter(Crawler.id == crawler_id, Crawler.user_id == current_user.id)
+        .first()
+    )
     if not c:
         raise HTTPException(status_code=404, detail="爬虫不存在")
     runs = (
@@ -242,7 +341,7 @@ def my_crawler_runs(crawler_id: int, current_user: User = Depends(get_current_us
     return runs
 
 
-@router.get("/me/logs", response_model=list[LogOut], tags=["me"])
+@api_router.get("/me/logs", response_model=list[LogOut])
 def my_logs(
     crawler_ids: Optional[str] = Query(None, description="逗号分隔的爬虫ID列表"),
     start: Optional[date] = None,
@@ -253,6 +352,7 @@ def my_logs(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _ensure_crawler_feature(current_user)
     ids = _parse_id_list(crawler_ids)
     min_level = _normalize_level_code(min_level)
     max_level = _normalize_level_code(max_level)
@@ -274,9 +374,19 @@ def my_logs(
     return _serialise_logs(logs)
 
 
-@router.get("/me/{crawler_id}/logs", response_model=list[LogOut], tags=["me"])
-def my_crawler_logs(crawler_id: int, limit: int = 100, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    c = db.query(Crawler).filter(Crawler.id == crawler_id, Crawler.user_id == current_user.id).first()
+@api_router.get("/me/{crawler_id}/logs", response_model=list[LogOut])
+def my_crawler_logs(
+    crawler_id: int,
+    limit: int = 100,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_crawler_feature(current_user)
+    c = (
+        db.query(Crawler)
+        .filter(Crawler.id == crawler_id, Crawler.user_id == current_user.id)
+        .first()
+    )
     if not c:
         raise HTTPException(status_code=404, detail="爬虫不存在")
     q = (
@@ -291,43 +401,150 @@ def my_crawler_logs(crawler_id: int, limit: int = 100, current_user: User = Depe
     return _serialise_logs(logs)
 
 
+# ------- 快捷链接管理 -------
 
 
-
-
-
-
-
-
-
-
-
-
-
-@router.get("/public", response_model=list[CrawlerOut], tags=["public"])
-def public_crawlers(db: Session = Depends(get_db)):
-    crawlers = (
-        db.query(Crawler)
-        .filter(Crawler.is_public == True)
-        .order_by(Crawler.created_at.desc())
+@api_router.get("/links", response_model=list[QuickLinkOut])
+def list_quick_links(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_crawler_feature(current_user)
+    links = (
+        db.query(CrawlerAccessLink)
+        .outerjoin(Crawler)
+        .outerjoin(APIKey)
+        .filter(
+            (Crawler.user_id == current_user.id)
+            | (APIKey.user_id == current_user.id)
+        )
+        .order_by(CrawlerAccessLink.created_at.desc())
         .all()
     )
-    need_commit = False
-    for crawler in crawlers:
-        if crawler.is_public and not crawler.public_slug:
-            _ensure_public_slug(crawler, db)
-            need_commit = True
-    if need_commit:
-        db.commit()
-        for crawler in crawlers:
-            db.refresh(crawler)
-    return crawlers
+    return links
 
 
-@router.get("/public/logs", response_model=list[LogOut], tags=["public"])
+@api_router.post("/links", response_model=QuickLinkOut)
+def create_quick_link(
+    payload: QuickLinkCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_crawler_feature(current_user)
+    slug = _ensure_quick_slug(db, payload.slug or "")
+    if payload.target_type not in {"crawler", "api_key"}:
+        raise HTTPException(status_code=400, detail="target_type 仅支持 crawler 或 api_key")
+
+    crawler: Optional[Crawler] = None
+    api_key: Optional[APIKey] = None
+
+    if payload.target_type == "crawler":
+        crawler = (
+            db.query(Crawler)
+            .filter(Crawler.id == payload.target_id, Crawler.user_id == current_user.id)
+            .first()
+        )
+        if not crawler:
+            raise HTTPException(status_code=404, detail="爬虫不存在或无权访问")
+    else:
+        api_key = (
+            db.query(APIKey)
+            .filter(APIKey.id == payload.target_id, APIKey.user_id == current_user.id)
+            .first()
+        )
+        if not api_key:
+            raise HTTPException(status_code=404, detail="API Key 不存在或无权访问")
+
+    link = CrawlerAccessLink(
+        slug=slug,
+        target_type=payload.target_type,
+        description=payload.description,
+        allow_logs=payload.allow_logs,
+        crawler=crawler,
+        api_key=api_key,
+        created_by=current_user,
+    )
+    db.add(link)
+    db.commit()
+    db.refresh(link)
+    return link
+
+
+@api_router.delete("/links/{link_id}")
+def delete_quick_link(
+    link_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_crawler_feature(current_user)
+    link = db.query(CrawlerAccessLink).filter(CrawlerAccessLink.id == link_id).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="快捷链接不存在")
+    owner_ids = []
+    if link.crawler:
+        owner_ids.append(link.crawler.user_id)
+    if link.api_key:
+        owner_ids.append(link.api_key.user_id)
+    if current_user.id not in owner_ids and current_user.role not in {ROLE_ADMIN, ROLE_SUPERADMIN}:
+        raise HTTPException(status_code=403, detail="无权删除该链接")
+    db.delete(link)
+    db.commit()
+    return {"ok": True}
+
+
+# ------- 公共访问 -------
+
+
+def _serialise_logs(logs: List[LogEntry]) -> List[LogEntry]:
+    for log in logs:
+        if not getattr(log, "crawler_name", None) and log.crawler:
+            log.crawler_name = log.crawler.name
+    return logs
+
+
+def _resolve_link(db: Session, slug: str) -> CrawlerAccessLink:
+    link = (
+        db.query(CrawlerAccessLink)
+        .options(joinedload(CrawlerAccessLink.crawler))
+        .options(joinedload(CrawlerAccessLink.api_key))
+        .filter(CrawlerAccessLink.slug == slug, CrawlerAccessLink.is_active == True)
+        .first()
+    )
+    if not link:
+        raise HTTPException(status_code=404, detail="快捷链接不存在或已停用")
+    return link
+
+
+@public_router.get("/{slug}")
+def public_crawler_summary(slug: str, db: Session = Depends(get_db)):
+    link = _resolve_link(db, slug)
+    if link.target_type == "crawler" and link.crawler:
+        crawler = link.crawler
+        return {
+            "type": "crawler",
+            "slug": slug,
+            "crawler_id": crawler.id,
+            "name": crawler.name,
+            "last_heartbeat": crawler.last_heartbeat,
+            "last_source_ip": crawler.last_source_ip,
+            "is_public": crawler.is_public,
+        }
+    if link.target_type == "api_key" and link.api_key:
+        api_key = link.api_key
+        return {
+            "type": "api_key",
+            "slug": slug,
+            "api_key_id": api_key.id,
+            "name": api_key.name,
+            "last_used_at": api_key.last_used_at,
+            "last_used_ip": api_key.last_used_ip,
+        }
+    raise HTTPException(status_code=400, detail="链接目标不存在")
+
+
+@public_router.get("/{slug}/logs", response_model=list[LogOut])
 def public_logs(
-    crawler_ids: Optional[str] = Query(None, description="逗号分隔的爬虫ID列表"),
-    slug: Optional[str] = None,
+    slug: str,
     start: Optional[date] = None,
     end: Optional[date] = None,
     min_level: int = Query(0, ge=0, le=50),
@@ -335,28 +552,22 @@ def public_logs(
     limit: int = Query(200, ge=1, le=1000),
     db: Session = Depends(get_db),
 ):
-    ids = _parse_id_list(crawler_ids)
+    link = _resolve_link(db, slug)
+    if not link.allow_logs:
+        raise HTTPException(status_code=403, detail="该链接未开放日志访问")
     min_level = _normalize_level_code(min_level)
     max_level = _normalize_level_code(max_level)
     if min_level > max_level:
         min_level, max_level = max_level, min_level
-    query = (
-        db.query(LogEntry)
-        .join(Crawler)
-        .filter(Crawler.is_public == True)
-        .options(joinedload(LogEntry.crawler))
-    )
-    if slug:
-        crawler = (
-            db.query(Crawler)
-            .filter(Crawler.public_slug == slug, Crawler.is_public == True)
-            .first()
-        )
-        if not crawler:
-            raise HTTPException(status_code=404, detail="公开爬虫不存在")
-        query = query.filter(LogEntry.crawler_id == crawler.id)
-    elif ids:
-        query = query.filter(LogEntry.crawler_id.in_(ids))
+
+    query = db.query(LogEntry).options(joinedload(LogEntry.crawler))
+    if link.target_type == "crawler" and link.crawler:
+        query = query.filter(LogEntry.crawler_id == link.crawler.id)
+    elif link.target_type == "api_key" and link.api_key:
+        query = query.filter(LogEntry.api_key_id == link.api_key.id)
+    else:
+        raise HTTPException(status_code=400, detail="链接目标不存在")
+
     query = _apply_log_filters(query, start, end, min_level, max_level)
     query = query.order_by(LogEntry.ts.desc())
     if limit:
@@ -365,10 +576,6 @@ def public_logs(
     return _serialise_logs(logs)
 
 
+router = api_router
 
-
-
-
-
-
-
+__all__ = ["router", "public_router"]
