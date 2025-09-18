@@ -2,10 +2,11 @@
 全局常量定义模块。
 - 日志等级映射
 - 主题预设配置
+- 功能/角色常量
 """
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, List
 
 
 LOG_LEVEL_CODE_TO_NAME: Dict[int, str] = {
@@ -49,3 +50,35 @@ THEME_PRESETS = {
 }
 
 DEFAULT_THEME_KEY = "classic"
+
+# ---- 角色与功能 ----
+ROLE_USER = "user"
+ROLE_ADMIN = "admin"
+ROLE_SUPERADMIN = "superadmin"
+
+FEATURE_CRAWLERS = "crawlers"
+FEATURE_FILES = "files"
+
+DEFAULT_GROUP_BLUEPRINTS: List[dict] = [
+    {
+        "name": "默认用户组",
+        "slug": "general",
+        "description": "普通用户组，默认仅开放文件服务",
+        "is_default": True,
+        "enable_crawlers": False,
+        "enable_files": True,
+    },
+    {
+        "name": "管理员组",
+        "slug": "admins",
+        "description": "具备全部功能的管理员组",
+        "is_default": False,
+        "enable_crawlers": True,
+        "enable_files": True,
+    },
+]
+
+# ---- 其他常量 ----
+MIN_QUICK_LINK_LENGTH = 6
+FILE_STORAGE_DIR = "data/files"
+ANONYMOUS_FILE_PREFIX = "anon"
