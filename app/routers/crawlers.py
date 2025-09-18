@@ -13,7 +13,9 @@ from sqlalchemy.orm import Session
 
 from ..dependencies import get_db
 from ..models import APIKey, Crawler, CrawlerRun, LogEntry
-from ..schemas import CrawlerRegisterRequest, RunStartResponse, LogCreate
+from ..schemas import CrawlerRegisterRequest, RunStartResponse, LogCreate, CrawlerOut, RunOut, LogOut
+from ..dependencies import get_current_user
+from ..models import User
 
 
 router = APIRouter(prefix="/api/crawlers", tags=["crawlers"])
@@ -98,3 +100,46 @@ def write_log(crawler_id: int, payload: LogCreate, user_id: int = Depends(_requi
     db.commit()
     return {"ok": True, "id": entry.id}
 
+
+# ------- 管理端查询（登录后查看） -------
+
+
+@router.get("/me", response_model=list[CrawlerOut], tags=["me"])
+def my_crawlers(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    crawlers = (
+        db.query(Crawler)
+        .filter(Crawler.user_id == current_user.id)
+        .order_by(Crawler.created_at.desc())
+        .all()
+    )
+    return crawlers
+
+
+@router.get("/me/{crawler_id}/runs", response_model=list[RunOut], tags=["me"])
+def my_crawler_runs(crawler_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # 校验归属
+    c = db.query(Crawler).filter(Crawler.id == crawler_id, Crawler.user_id == current_user.id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="爬虫不存在")
+    runs = (
+        db.query(CrawlerRun)
+        .filter(CrawlerRun.crawler_id == crawler_id)
+        .order_by(CrawlerRun.started_at.desc())
+        .all()
+    )
+    return runs
+
+
+@router.get("/me/{crawler_id}/logs", response_model=list[LogOut], tags=["me"])
+def my_crawler_logs(crawler_id: int, limit: int = 100, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    c = db.query(Crawler).filter(Crawler.id == crawler_id, Crawler.user_id == current_user.id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="爬虫不存在")
+    q = (
+        db.query(LogEntry)
+        .filter(LogEntry.crawler_id == crawler_id)
+        .order_by(LogEntry.ts.desc())
+    )
+    if limit:
+        q = q.limit(max(1, min(limit, 1000)))
+    return list(reversed(q.all()))

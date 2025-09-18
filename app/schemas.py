@@ -44,3 +44,36 @@ class LogCreate(BaseModel):
     message: str
     run_id: Optional[int] = None
 
+
+# ------- 查询响应模型（前端/管理端） -------
+
+class CrawlerOut(BaseModel):
+    id: int
+    name: str
+    created_at: datetime
+    last_heartbeat: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class RunOut(BaseModel):
+    id: int
+    status: str
+    started_at: datetime
+    ended_at: Optional[datetime] = None
+    last_heartbeat: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class LogOut(BaseModel):
+    id: int
+    level: str
+    message: str
+    ts: datetime
+    run_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True

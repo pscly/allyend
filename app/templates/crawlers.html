@@ -26,13 +26,14 @@
   <section class="card">
     <h3>爬虫列表</h3>
     <table>
-      <thead><tr><th>ID</th><th>名称</th><th>最近心跳</th></tr></thead>
+      <thead><tr><th>ID</th><th>名称</th><th>最近心跳</th><th>操作</th></tr></thead>
       <tbody>
         {% for c in crawlers %}
         <tr>
           <td>{{ c.id }}</td>
           <td>{{ c.name }}</td>
           <td>{{ c.last_heartbeat or '-' }}</td>
+          <td><button onclick="showDetail({{ c.id }}, '{{ c.name }}')">详情</button></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -53,6 +54,23 @@
     {% endfor %}
   </section>
 
+  <section class="card" id="detail" style="display:none">
+    <h3 id="detail-title">详情</h3>
+    <div class="grid">
+      <div>
+        <h4>最近运行</h4>
+        <table>
+          <thead><tr><th>ID</th><th>状态</th><th>开始</th><th>结束</th></tr></thead>
+          <tbody id="runs-body"></tbody>
+        </table>
+      </div>
+      <div>
+        <h4>最近日志</h4>
+        <ul id="logs-list"></ul>
+      </div>
+    </div>
+  </section>
+
   <script>
     async function createKey() {
       const res = await fetch('/api/keys', { method: 'POST' });
@@ -66,6 +84,24 @@
       if (res.ok) location.reload();
       else alert('删除失败');
     }
+
+    async function showDetail(id, name) {
+      document.getElementById('detail').style.display = '';
+      document.getElementById('detail-title').innerText = `#${id} - ${name}`;
+      const [runsRes, logsRes] = await Promise.all([
+        fetch(`/api/crawlers/me/${id}/runs`),
+        fetch(`/api/crawlers/me/${id}/logs?limit=50`),
+      ]);
+      if (runsRes.ok) {
+        const runs = await runsRes.json();
+        const tbody = document.getElementById('runs-body');
+        tbody.innerHTML = runs.map(r => `<tr><td>${r.id}</td><td>${r.status}</td><td>${r.started_at}</td><td>${r.ended_at || '-'}</td></tr>`).join('');
+      }
+      if (logsRes.ok) {
+        const logs = await logsRes.json();
+        const ul = document.getElementById('logs-list');
+        ul.innerHTML = logs.map(l => `<li>[${l.ts}] <strong>${l.level}</strong> - ${l.message}</li>`).join('');
+      }
+    }
   </script>
 {% endblock %}
-
