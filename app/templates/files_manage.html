@@ -1,117 +1,170 @@
 {% extends "base.html" %}
+{% from _self import public_files_card %}
+
+{% macro public_files_card() %}
+  <section class="card card--surface" data-aos="fade-up" data-aos-delay="200">
+    <div class="card-header">
+      <div>
+        <h3><i class="bx bx-world"></i> 公开文件</h3>
+        <p class="card-subtitle">浏览团队公开共享的资料，支持直接下载。</p>
+      </div>
+      <button type="button" id="refresh-public" class="text"><i class="bx bx-refresh"></i><span>刷新</span></button>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table" id="public-files-table">
+        <thead>
+          <tr>
+            <th>名称</th>
+            <th>大小</th>
+            <th>上传时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+{% endmacro %}
+
 {% block content %}
-  <section class="page-header">
-    <h2>文件管理</h2>
-    <p>在这里管理团队文件，支持分组共享与 API 令牌自动同步。</p>
+  <section class="page-header" data-aos="fade-down">
+    <div class="header-lead">
+      <h2><i class="bx bx-server"></i> 文件管理</h2>
+      <p>在这里管理团队文件，支持分组共享与 API 令牌自动同步。</p>
+    </div>
+    {% if user %}
+    <div class="header-cta">
+      <span class="badge badge--success"><i class="bx bx-user"></i> 已登录</span>
+      <p>当前会话已启用 Cookie，直接使用下方「上传到我的空间」即可，无需额外 API 令牌。</p>
+    </div>
+    {% endif %}
   </section>
 
   {% if user %}
-  <section class="card">
-    <div class="card-header">
-      <h3>上传到我的空间</h3>
-      <span class="hint">选择可见性：仅自己 / 分组 / 公开。</span>
-    </div>
-    <form id="user-upload" class="form-grid">
-      <label for="user-file">选择文件</label>
-      <input id="user-file" name="file" type="file" required />
-      <label for="user-name">显示名称</label>
-      <input id="user-name" name="file_name" type="text" placeholder="示例：日报.xlsx" />
-      <label for="user-visibility">可见性</label>
-      <select id="user-visibility" name="visibility">
-        <option value="private">仅自己</option>
-        <option value="group">分组内</option>
-        <option value="public">公开</option>
-      </select>
-      <label for="user-desc">备注说明</label>
-      <textarea id="user-desc" name="description" rows="2" placeholder="文件用途说明"></textarea>
-      <button type="submit">上传</button>
-      <div class="hint" id="user-hint"></div>
-    </form>
-  </section>
+  <div class="section-group two-column">
+    <section class="card card--accent" data-aos="fade-up" data-aos-delay="70">
+      <div class="card-header">
+        <div>
+          <h3><i class="bx bx-cloud-upload"></i> 上传到我的空间</h3>
+          <p class="card-subtitle">选择可见性：仅自己 / 分组 / 公开。</p>
+        </div>
+      </div>
+      <form id="user-upload" class="form-grid">
+        <label for="user-file">选择文件</label>
+        <input id="user-file" name="file" type="file" required />
 
-  <section class="card">
-    <div class="card-header">
-      <h3>我的文件</h3>
-      <div class="table-actions">
-        <select id="file-scope">
+        <label for="user-name">显示名称</label>
+        <input id="user-name" name="file_name" type="text" placeholder="示例：日报.xlsx" />
+
+        <label for="user-visibility">可见性</label>
+        <select id="user-visibility" name="visibility">
           <option value="private">仅自己</option>
           <option value="group">分组内</option>
           <option value="public">公开</option>
         </select>
-        <button type="button" id="refresh-files">刷新</button>
-      </div>
-    </div>
-    <div class="table-scroll">
-      <table class="data-table" id="my-files-table">
-        <thead><tr><th>名称</th><th>可见性</th><th>大小</th><th>上传时间</th><th>操作</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
 
-  <section class="card">
-    <div class="card-header">
-      <h3>API 令牌</h3>
-      <div class="table-actions">
-        <button type="button" id="refresh-tokens">刷新</button>
+        <label for="user-desc">备注说明</label>
+        <textarea id="user-desc" name="description" rows="2" placeholder="文件用途说明"></textarea>
+
+        <p class="form-note">未填写显示名称时，系统会自动使用原始文件名。</p>
+        <button type="submit"><i class="bx bx-send"></i><span>上传</span></button>
+        <div class="hint" id="user-hint"></div>
+      </form>
+    </section>
+
+    <section class="card card--surface" data-aos="fade-up" data-aos-delay="140">
+      <div class="card-header">
+        <div>
+          <h3><i class="bx bx-key"></i> API 令牌</h3>
+          <p class="card-subtitle">统一使用 <code>up-*</code> 前缀，可自定义后缀或自动生成。</p>
+        </div>
+        <button type="button" id="refresh-tokens" class="text"><i class="bx bx-refresh"></i><span>刷新</span></button>
       </div>
-    </div>
-    <form id="token-create" class="form-grid">
-      <label for="token-name">令牌名称</label>
-      <input id="token-name" name="name" type="text" placeholder="例如：CI 同步" />
-      <label for="token-ips">允许 IP（逗号分隔）</label>
-      <input id="token-ips" name="allowed_ips" type="text" />
-      <label for="token-cidrs">允许网段（逗号分隔）</label>
-      <input id="token-cidrs" name="allowed_cidrs" type="text" />
-      <button type="submit">创建令牌</button>
-      <div class="hint" id="token-hint"></div>
-    </form>
-    <div class="table-scroll">
-      <table class="data-table" id="token-table">
-        <thead><tr><th>令牌</th><th>名称</th><th>限制</th><th>状态</th><th>操作</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <p class="hint">上传：<code>POST /files/api/tokens/&lt;token&gt;/up</code>，列出：<code>GET /files/api/tokens/&lt;token&gt;</code></p>
-  </section>
+      <form id="token-create" class="form-grid">
+        <label for="token-value">自定义令牌</label>
+        <input id="token-value" name="token" type="text" placeholder="例如：up-data-sync 或 data-sync" />
+        <p class="form-note">留空将自动生成；若未填写前缀，系统会自动补齐 <code>up-</code>。</p>
+
+        <label for="token-name">令牌名称</label>
+        <input id="token-name" name="name" type="text" placeholder="例如：CI 同步" />
+
+        <label for="token-ips">允许 IP（逗号分隔）</label>
+        <input id="token-ips" name="allowed_ips" type="text" placeholder="示例：127.0.0.1, 192.168.1.10" />
+
+        <label for="token-cidrs">允许网段（逗号分隔）</label>
+        <input id="token-cidrs" name="allowed_cidrs" type="text" placeholder="示例：10.0.0.0/24" />
+
+        <button type="submit"><i class="bx bx-plus-circle"></i><span>创建令牌</span></button>
+        <div class="hint" id="token-hint"></div>
+      </form>
+      <div class="table-scroll">
+        <table class="data-table" id="token-table">
+          <thead>
+            <tr><th>令牌</th><th>名称</th><th>限制</th><th>状态</th><th>操作</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="hint">上传：<code>POST /files/api/tokens/&lt;token&gt;/up</code>，列出：<code>GET /files/api/tokens/&lt;token&gt;</code></p>
+    </section>
+  </div>
+
+  <div class="section-group two-column">
+    <section class="card" data-aos="fade-up" data-aos-delay="180">
+      <div class="card-header">
+        <div>
+          <h3><i class="bx bx-folder"></i> 我的文件</h3>
+          <p class="card-subtitle">按可见性筛选个人文件，支持直接下载或删除。</p>
+        </div>
+        <div class="table-actions">
+          <select id="file-scope">
+            <option value="private">仅自己</option>
+            <option value="group">分组内</option>
+            <option value="public">公开</option>
+          </select>
+          <button type="button" id="refresh-files" class="text"><i class="bx bx-refresh"></i><span>刷新</span></button>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table" id="my-files-table">
+          <thead><tr><th>名称</th><th>可见性</th><th>大小</th><th>上传时间</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    {{ public_files_card() }}
+  </div>
   {% else %}
-  <section class="card">
+  <section class="card card--surface" data-aos="fade-up" data-aos-delay="60">
     <div class="card-header">
-      <h3>需要登录</h3>
-    </div>
-    <p class="hint">请登录后上传或管理文件，未登录仍可浏览公开文件列表。</p>
-  </section>
-  {% endif %}
-
-  <section class="card">
-    <div class="card-header">
-      <h3>公开文件</h3>
-      <div class="table-actions">
-        <button type="button" id="refresh-public">刷新</button>
+      <div>
+        <h3><i class="bx bx-lock"></i> 需要登录</h3>
+        <p class="card-subtitle">请登录后上传或管理文件，未登录仍可浏览公开文件列表。</p>
       </div>
     </div>
-    <div class="table-scroll">
-      <table class="data-table" id="public-files-table">
-        <thead><tr><th>名称</th><th>大小</th><th>上传时间</th><th>下载</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
+    <p class="hint">登录后可以使用 Cookie 直接上传，无需额外 API 令牌。</p>
   </section>
+  {{ public_files_card() }}
+  {% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
 (() => {
   const userPresent = {{ 'true' if user else 'false' }};
+  const visibilityText = { private: '仅自己', group: '分组内', public: '公开' };
 
-  async function fetchJSON(url, options) {
-    const res = await fetch(url, options);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.detail || `请求失败(${res.status})`);
-    }
-    return res.json();
-  }
+  const escapeHTML = (value) => {
+    if (value === null || value === undefined) return '';
+    return String(value).replace(/[&<>"']/g, (match) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    })[match]);
+  };
 
   const formatSize = (bytes) => {
     if (bytes === null || bytes === undefined) return '-';
@@ -126,13 +179,51 @@
     return `${size.toFixed(1)} ${units[unitIndex]}`;
   };
 
+  const formatDateTime = (value) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString();
+  };
+
+  async function fetchJSON(url, options = {}) {
+    const config = { credentials: 'include', ...options };
+    const response = await fetch(url, config);
+    const contentType = response.headers.get('content-type') || '';
+    let payload = null;
+    if (response.status !== 204) {
+      if (contentType.includes('application/json')) {
+        payload = await response.json().catch(() => null);
+      } else {
+        const text = await response.text();
+        payload = text || null;
+      }
+    }
+    if (!response.ok) {
+      const detail = payload && typeof payload === 'object' ? payload.detail : null;
+      throw new Error(detail || `请求失败(${response.status})`);
+    }
+    return payload;
+  }
+
   async function loadPublicFiles() {
     try {
       const data = await fetchJSON('/files/public?limit=100');
+      const records = Array.isArray(data) ? data : [];
       const tbody = document.querySelector('#public-files-table tbody');
-      tbody.innerHTML = data.map(file => {
+      if (!tbody) return;
+      if (!records.length) {
+        tbody.innerHTML = '<tr><td class="table-empty" colspan="4">暂无公开文件</td></tr>';
+        return;
+      }
+      tbody.innerHTML = records.map(file => {
         const link = `/files/${file.id}/download`;
-        return `<tr><td>${file.original_name}</td><td>${formatSize(file.size_bytes)}</td><td>${new Date(file.created_at).toLocaleString()}</td><td><a href="${link}" target="_blank">下载</a></td></tr>`;
+        return `<tr>
+          <td>${escapeHTML(file.original_name)}</td>
+          <td>${formatSize(file.size_bytes)}</td>
+          <td>${formatDateTime(file.created_at)}</td>
+          <td><a href="${link}" target="_blank">下载</a></td>
+        </tr>`;
       }).join('');
     } catch (error) {
       console.error(error);
@@ -145,6 +236,14 @@
     uploadForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const formData = new FormData(uploadForm);
+      const displayName = formData.get('file_name');
+      if (typeof displayName === 'string' && !displayName.trim()) {
+        formData.delete('file_name');
+      }
+      const description = formData.get('description');
+      if (typeof description === 'string' && !description.trim()) {
+        formData.delete('description');
+      }
       try {
         await fetchJSON('/files/me/up', { method: 'POST', body: formData });
         uploadHint.textContent = '上传成功';
@@ -158,49 +257,86 @@
       }
     });
 
-    async function loadMyFiles() {
+    const loadMyFiles = async () => {
       const scope = document.getElementById('file-scope').value;
       try {
         const data = await fetchJSON(`/files/me?scope=${scope}`);
+        const records = Array.isArray(data) ? data : [];
         const tbody = document.querySelector('#my-files-table tbody');
-        tbody.innerHTML = data.map(file => {
+        if (!tbody) return;
+        if (!records.length) {
+          tbody.innerHTML = '<tr><td class="table-empty" colspan="5">暂无文件</td></tr>';
+          return;
+        }
+        tbody.innerHTML = records.map(file => {
           const link = `/files/${file.id}/download`;
-          return `<tr><td>${file.original_name}</td><td>${file.visibility}</td><td>${formatSize(file.size_bytes)}</td><td>${new Date(file.created_at).toLocaleString()}</td><td><a href="${link}" target="_blank">下载</a> <button class="text" data-file="${file.id}">删除</button></td></tr>`;
+          const badgeClass = `badge badge--${file.visibility}`;
+          const visibilityLabel = visibilityText[file.visibility] || file.visibility;
+          return `<tr>
+            <td>${escapeHTML(file.original_name)}</td>
+            <td><span class="${badgeClass}">${visibilityLabel}</span></td>
+            <td>${formatSize(file.size_bytes)}</td>
+            <td>${formatDateTime(file.created_at)}</td>
+            <td><a href="${link}" target="_blank">下载</a> <button class="text" data-file="${file.id}"><i class="bx bx-trash"></i>删除</button></td>
+          </tr>`;
         }).join('');
         tbody.querySelectorAll('button[data-file]').forEach(btn => {
           btn.addEventListener('click', async () => {
             if (!confirm('确认删除该文件？')) return;
-            await fetchJSON(`/files/me/${btn.dataset.file}`, { method: 'DELETE' });
-            loadMyFiles();
-            loadPublicFiles();
+            try {
+              await fetchJSON(`/files/me/${btn.dataset.file}`, { method: 'DELETE' });
+              loadMyFiles();
+              loadPublicFiles();
+            } catch (error) {
+              alert(error.message);
+            }
           });
         });
       } catch (error) {
         console.error(error);
       }
-    }
+    };
 
-    async function loadTokens() {
+    const loadTokens = async () => {
       try {
         const data = await fetchJSON('/files/api/tokens');
+        const records = Array.isArray(data) ? data : [];
         const tbody = document.querySelector('#token-table tbody');
-        tbody.innerHTML = data.map(token => {
+        if (!tbody) return;
+        if (!records.length) {
+          tbody.innerHTML = '<tr><td class="table-empty" colspan="5">暂无令牌</td></tr>';
+          return;
+        }
+        tbody.innerHTML = records.map(token => {
           const limit = [token.allowed_ips, token.allowed_cidrs].filter(Boolean).join(' / ') || '-';
-          const state = token.is_active ? '启用' : '禁用';
-          return `<tr><td><code>${token.token}</code></td><td>${token.name || '-'}</td><td>${limit}</td><td>${state}</td><td><button class="text" data-token="${token.id}" data-active="${token.is_active ? '1' : '0'}">${token.is_active ? '禁用' : '启用'}</button></td></tr>`;
+          const stateLabel = token.is_active ? '启用' : '禁用';
+          const stateClass = token.is_active ? 'status-pill status-pill--active' : 'status-pill status-pill--inactive';
+          const actionIcon = token.is_active ? 'bx-hide' : 'bx-show';
+          const actionLabel = token.is_active ? '禁用' : '启用';
+          return `<tr>
+            <td><code class="token-code">${escapeHTML(token.token)}</code></td>
+            <td>${escapeHTML(token.name || '-')}</td>
+            <td>${escapeHTML(limit)}</td>
+            <td><span class="${stateClass}"><i class="bx ${token.is_active ? 'bx-check-circle' : 'bx-pause-circle'}"></i>${stateLabel}</span></td>
+            <td><button class="text" data-token="${token.id}" data-active="${token.is_active ? '1' : '0'}"><i class="bx ${actionIcon}"></i>${actionLabel}</button></td>
+          </tr>`;
         }).join('');
         tbody.querySelectorAll('button[data-token]').forEach(btn => {
           btn.addEventListener('click', async () => {
             const formData = new FormData();
             formData.append('is_active', btn.dataset.active === '0');
-            await fetchJSON(`/files/api/tokens/${btn.dataset.token}`, { method: 'PATCH', body: formData });
-            loadTokens();
+            try {
+              await fetchJSON(`/files/api/tokens/${btn.dataset.token}`, { method: 'PATCH', body: formData });
+              loadTokens();
+            } catch (error) {
+              alert(error.message);
+            }
           });
         });
       } catch (error) {
         console.error(error);
       }
-    }
+    };
 
     document.getElementById('refresh-files').addEventListener('click', loadMyFiles);
     document.getElementById('file-scope').addEventListener('change', loadMyFiles);
@@ -208,15 +344,30 @@
     const tokenForm = document.getElementById('token-create');
     tokenForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const payload = Object.fromEntries(new FormData(tokenForm).entries());
+      const formEntries = new FormData(tokenForm);
+      const payload = Object.fromEntries(formEntries.entries());
+      const normalize = (value) => (typeof value === 'string' ? value.trim() : '');
+      const customToken = normalize(payload.token);
+      if (customToken) {
+        payload.token = customToken;
+      } else {
+        delete payload.token;
+      }
+      const name = normalize(payload.name);
+      payload.name = name || undefined;
+      const ips = normalize(payload.allowed_ips);
+      payload.allowed_ips = ips || undefined;
+      const cidrs = normalize(payload.allowed_cidrs);
+      payload.allowed_cidrs = cidrs || undefined;
       const hint = document.getElementById('token-hint');
       try {
-        const res = await fetchJSON('/files/api/tokens', {
+        const result = await fetchJSON('/files/api/tokens', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        hint.textContent = `令牌创建成功：${res.token}`;
+        const tokenValue = result && result.token ? result.token : '';
+        hint.textContent = tokenValue ? `令牌创建成功：${tokenValue}` : '令牌创建成功';
         hint.style.color = 'var(--color-primary)';
         tokenForm.reset();
         loadTokens();

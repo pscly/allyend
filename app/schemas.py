@@ -198,6 +198,7 @@ class QuickLinkOut(BaseModel):
 
 
 class FileTokenCreate(BaseModel):
+    token: Optional[str] = Field(default=None, description='可选，自定义令牌，默认补齐 up- 前缀')
     name: Optional[str] = None
     description: Optional[str] = None
     allowed_ips: Optional[str] = Field(default=None, description="以逗号分隔的 IP 列表")

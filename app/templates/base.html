@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{ title or site_name }}</title>
   <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/boxicons@2.1.4/css/boxicons.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css" />
 </head>
 {% set preset_key = user.theme_name if user else 'classic' %}
 {% set active_preset_key = preset_key if preset_key in theme_presets else 'classic' %}
@@ -87,8 +89,12 @@
       applyTheme(window.ACTIVE_THEME || {});
     })();
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js"></script>
   <script>
     window.addEventListener('DOMContentLoaded', function () {
+      if (window.AOS) {
+        window.AOS.init({ once: true, duration: 600, easing: 'ease-out-cubic', offset: 80 });
+      }
       const dropdown = document.querySelector('[data-dropdown]');
       if (!dropdown) return;
       const button = dropdown.querySelector('.nav__user-btn');

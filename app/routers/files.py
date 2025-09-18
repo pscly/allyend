@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import ipaddress
+import re
 import secrets
 from datetime import datetime
 from pathlib import Path
@@ -35,7 +36,9 @@ templates.env.globals.update(site_icp=settings.SITE_ICP, theme_presets=THEME_PRE
 
 STORAGE_ROOT = Path(settings.FILE_STORAGE_DIR or FILE_STORAGE_DIR)
 ALLOWED_VISIBILITY = {"private", "group", "public"}
-
+TOKEN_PREFIX = "up-"
+TOKEN_SUFFIX_PATTERN = re.compile(r'^[A-Za-z0-9_-]+$')
+TOKEN_GENERATION_ATTEMPTS = 5
 
 @router.get("/files", response_class=HTMLResponse)
 def files_list(request: Request, current_user: Optional[User] = Depends(get_optional_user), db: Session = Depends(get_db)):
@@ -124,6 +127,32 @@ def _save_upload_file(upload: UploadFile) -> tuple[str, int, str]:
             buffer.write(chunk)
     upload.file.close()
     return storage_name, size, sha256.hexdigest()
+
+
+def _generate_token_value(db: Session, requested: Optional[str]) -> str:
+    """
+    生成带 up- 前缀的 API 令牌，若用户指定则校验格式与唯一性。
+    """
+    candidate = (requested or '').strip()
+    if candidate:
+        normalized = candidate if candidate.startswith(TOKEN_PREFIX) else f"{TOKEN_PREFIX}{candidate}"
+        suffix = normalized[len(TOKEN_PREFIX):]
+        if not suffix:
+            raise HTTPException(status_code=400, detail='自定义令牌需包含有效内容')
+        if len(normalized) > 128:
+            raise HTTPException(status_code=400, detail='令牌长度超出限制')
+        if not TOKEN_SUFFIX_PATTERN.fullmatch(suffix):
+            raise HTTPException(status_code=400, detail='令牌仅支持字母、数字、下划线与短横线')
+        existing = db.query(FileAPIToken).filter(FileAPIToken.token == normalized).first()
+        if existing:
+            raise HTTPException(status_code=409, detail='令牌已被占用，请更换其他值')
+        return normalized
+    for _ in range(TOKEN_GENERATION_ATTEMPTS):
+        generated = f"{TOKEN_PREFIX}{secrets.token_urlsafe(18)}"
+        existing = db.query(FileAPIToken).filter(FileAPIToken.token == generated).first()
+        if not existing:
+            return generated
+    raise HTTPException(status_code=500, detail='无法生成唯一令牌，请稍后再试')
 
 
 def _log_action(
@@ -337,7 +366,7 @@ def create_file_token(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    token_value = secrets.token_urlsafe(24)
+    token_value = _generate_token_value(db, payload.token)
     token = FileAPIToken(
         token=token_value,
         name=payload.name,
@@ -462,6 +491,9 @@ def token_upload(
     description: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
 ):
+    token_value = token_value.strip()
+    if not token_value.startswith(TOKEN_PREFIX):
+        raise HTTPException(status_code=400, detail='令牌格式不正确，需以 up- 开头')
     token = (
         db.query(FileAPIToken)
         .filter(FileAPIToken.token == token_value, FileAPIToken.is_active == True)
@@ -507,6 +539,9 @@ def token_list(
     request: Request,
     db: Session = Depends(get_db),
 ):
+    token_value = token_value.strip()
+    if not token_value.startswith(TOKEN_PREFIX):
+        raise HTTPException(status_code=400, detail='令牌格式不正确，需以 up- 开头')
     token = (
         db.query(FileAPIToken)
         .filter(FileAPIToken.token == token_value, FileAPIToken.is_active == True)
