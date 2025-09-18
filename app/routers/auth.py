@@ -11,10 +11,12 @@ import secrets
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from ..auth import create_access_token, get_password_hash, verify_password
 from ..config import settings
+from ..constants import THEME_PRESETS, LOG_LEVEL_OPTIONS
 from ..dependencies import get_db, get_current_user
 from ..models import User, APIKey
 from ..schemas import Token, UserCreate, APIKeyOut, APIKeyUpdate, PublicAPIKeyOut
@@ -22,6 +24,9 @@ from ..schemas import Token, UserCreate, APIKeyOut, APIKeyUpdate, PublicAPIKeyOu
 
 router = APIRouter()
 
+
+templates = Jinja2Templates(directory="app/templates")
+templates.env.globals.update(site_icp=settings.SITE_ICP, theme_presets=THEME_PRESETS, log_levels=LOG_LEVEL_OPTIONS)
 
 @router.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
@@ -139,3 +144,4 @@ def list_public_keys(db: Session = Depends(get_db)):
         .all()
     )
     return keys
+
