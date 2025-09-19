@@ -1,43 +1,90 @@
 {% extends "base.html" %}
 {% block content %}
-  <section class="page-header">
-    <h2>{{ '注册新账号' if mode == 'register' else '登录控制台' }}</h2>
-    {% if mode == 'register' %}
-      {% if registration_mode == 'invite' %}
-      <p>当前注册需提供有效邀请码。</p>
-      {% elif registration_mode == 'closed' %}
-      <p class="hint">注册已暂停，请联系管理员。</p>
-      {% else %}
-      <p>认证后即可接入 SDK、查看运行数据并自定义主题。</p>
-      {% endif %}
-    {% else %}
-      <p>使用已有账号登录 AllYend 控制台。</p>
-    {% endif %}
-  </section>
-  <div class="card" style="max-width: 420px; margin: 0 auto;">
-    <h3 style="margin-top: 0;">{{ '注册' if mode == 'register' else '登录' }}</h3>
-    {% if error %}
-    <div class="notice" style="margin-bottom:12px; color:#b91c1c; background: rgba(248,113,113,0.1);">{{ error }}</div>
-    {% endif %}
-    <form method="post" action="/{{ 'register' if mode == 'register' else 'login' }}" class="form-grid">
-      <label for="username">用户名</label>
-      <input id="username" type="text" name="username" value="{{ username or '' }}" required />
-      <label for="password">密码</label>
-      <input id="password" type="password" name="password" required />
+<section class="auth">
+  <div class="auth__layout">
+    <div class="auth__intro" data-aos="fade-right">
+      <span class="auth__tag">AllYend 控制台</span>
+      <h2>{{ '注册新账号' if mode == 'register' else '登录控制台' }}</h2>
       {% if mode == 'register' %}
-      <label for="display_name">显示名称</label>
-      <input id="display_name" type="text" name="display_name" value="{{ display_name or '' }}" placeholder="可选，默认与用户名一致" />
-      <label for="email">邮箱</label>
-      <input id="email" type="email" name="email" value="{{ email or '' }}" placeholder="可选，用于通知" />
-      <label for="invite_code">邀请码（可选）</label>
-      <input id="invite_code" type="text" name="invite_code" value="{{ invite_code or '' }}" {% if registration_mode == 'invite' %}required{% endif %} />
+        {% if registration_mode == 'invite' %}
+        <p class="auth__subtitle">当前开放邀请制注册，认证完成后即可接入 SDK、查看运行数据并自定义主题。</p>
+        {% elif registration_mode == 'closed' %}
+        <p class="auth__subtitle">注册功能暂时关闭，如需开通请联系管理员。</p>
+        {% else %}
+        <p class="auth__subtitle">认证完成后即可接入 SDK、查看运行数据并自定义主题。</p>
+        {% endif %}
+      {% else %}
+      <p class="auth__subtitle">使用已有账号登录 AllYend 控制台，继续管理任务、监控数据并配置主题。</p>
       {% endif %}
-      <button type="submit">{{ '注册并进入' if mode == 'register' else '登录系统' }}</button>
-    </form>
-    {% if mode == 'register' %}
-    <p class="hint">已有账号？<a href="/login">返回登录</a></p>
-    {% else %}
-    <p class="hint">还没有账号？<a href="/register">立即注册</a></p>
-    {% endif %}
+      <ul class="auth__highlights">
+        <li><i class="bx bx-check-shield"></i><span>企业级权限隔离与多重校验，保障数据安全</span></li>
+        <li><i class="bx bx-line-chart"></i><span>实时展示采集任务健康度与趋势分析</span></li>
+        <li><i class="bx bx-customize"></i><span>一键切换主题与组件预设，打造个性化体验</span></li>
+      </ul>
+      {% if mode == 'register' %}
+        {% if registration_mode == 'invite' %}
+        <div class="auth__alert"><i class="bx bx-key"></i>当前注册需提供有效邀请码。</div>
+        {% elif registration_mode == 'closed' %}
+        <div class="auth__alert auth__alert--warning"><i class="bx bx-error-circle"></i>注册已暂停，请联系管理员。</div>
+        {% endif %}
+      {% endif %}
+    </div>
+    <div class="card auth__card" data-aos="fade-left">
+      <div class="auth__card-header">
+        <h3><i class="bx {{ 'bx-user-plus' if mode == 'register' else 'bx-log-in' }}"></i>{{ '创建账号' if mode == 'register' else '登录系统' }}</h3>
+        <p>{{ '完善信息后即可开通控制台权限。' if mode == 'register' else '输入账号密码后即可进入控制台。' }}</p>
+      </div>
+      {% if error %}
+      <div class="notice notice--error">{{ error }}</div>
+      {% endif %}
+      <form method="post" action="/{{ 'register' if mode == 'register' else 'login' }}" class="auth-form">
+        <div class="auth-field">
+          <label for="username">用户名</label>
+          <div class="auth-input">
+            <i class="bx bx-user"></i>
+            <input id="username" type="text" name="username" value="{{ username or '' }}" placeholder="请输入用户名" autocomplete="username" required />
+          </div>
+        </div>
+        <div class="auth-field">
+          <label for="password">密码</label>
+          <div class="auth-input">
+            <i class="bx bx-lock-alt"></i>
+            <input id="password" type="password" name="password" placeholder="请输入密码" autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}" required />
+          </div>
+        </div>
+        {% if mode == 'register' %}
+        <div class="auth-field">
+          <label for="display_name">显示名称 <span class="auth-field-note">可选</span></label>
+          <div class="auth-input">
+            <i class="bx bx-id-card"></i>
+            <input id="display_name" type="text" name="display_name" value="{{ display_name or '' }}" placeholder="用于展示的昵称" />
+          </div>
+        </div>
+        <div class="auth-field">
+          <label for="email">邮箱 <span class="auth-field-note">可选</span></label>
+          <div class="auth-input">
+            <i class="bx bx-envelope"></i>
+            <input id="email" type="email" name="email" value="{{ email or '' }}" placeholder="用于通知与安全提醒" autocomplete="email" />
+          </div>
+        </div>
+        <div class="auth-field">
+          <label for="invite_code">邀请码 {% if registration_mode == 'invite' %}<span class="auth-field-note auth-field-note--required">必填</span>{% else %}<span class="auth-field-note">可选</span>{% endif %}</label>
+          <div class="auth-input">
+            <i class="bx bx-gift"></i>
+            <input id="invite_code" type="text" name="invite_code" value="{{ invite_code or '' }}" placeholder="请输入邀请码" {% if registration_mode == 'invite' %}required{% endif %} />
+          </div>
+        </div>
+        {% endif %}
+        <button type="submit" class="auth__submit">{{ '注册并进入' if mode == 'register' else '登录系统' }}</button>
+      </form>
+      <p class="hint auth__switch">
+        {% if mode == 'register' %}
+        已有账号？<a href="/login">返回登录</a>
+        {% else %}
+        还没有账号？<a href="/register">立即注册</a>
+        {% endif %}
+      </p>
+    </div>
   </div>
+</section>
 {% endblock %}
