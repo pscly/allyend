@@ -9,7 +9,7 @@ import re
 import secrets
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Sequence
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status, Form
 from fastapi.responses import FileResponse, HTMLResponse
@@ -39,6 +39,7 @@ ALLOWED_VISIBILITY = {"private", "group", "public"}
 TOKEN_PREFIX = "up-"
 TOKEN_SUFFIX_PATTERN = re.compile(r'^[A-Za-z0-9_-]+$')
 TOKEN_GENERATION_ATTEMPTS = 5
+DUPLICATE_SUFFIX_RE = re.compile(r'^(?P<stem>.+?)-(?P<index>\d+)$')
 
 @router.get("/files", response_class=HTMLResponse)
 def files_list(request: Request, current_user: Optional[User] = Depends(get_optional_user), db: Session = Depends(get_db)):
@@ -47,9 +48,10 @@ def files_list(request: Request, current_user: Optional[User] = Depends(get_opti
         .order_by(FileEntry.created_at.desc())
         .all()
     )
+    aliases = _build_download_aliases(db, files)
     table = []
     for entry in files:
-        storage_name = Path(entry.storage_path).name
+        download_name = aliases.get(entry.id, entry.original_name)
         owner_name = None
         if entry.owner:
             owner_name = entry.owner.display_name or entry.owner.username
@@ -62,7 +64,7 @@ def files_list(request: Request, current_user: Optional[User] = Depends(get_opti
             "size": entry.size_bytes,
             "created": entry.created_at,
             "owner": owner_name,
-            "download": f"/files/{storage_name}",
+            "download": f"/files/{download_name}",
         })
     return templates.TemplateResponse(
         "files_list.html",
@@ -127,6 +129,76 @@ def _save_upload_file(upload: UploadFile) -> tuple[str, int, str]:
             buffer.write(chunk)
     upload.file.close()
     return storage_name, size, sha256.hexdigest()
+
+
+def _split_filename_parts(name: str) -> tuple[str, str]:
+    """
+    拆分文件名与扩展名，返回 (主干, 扩展名)。
+    """
+    if not name:
+        return "", ""
+    if "." not in name:
+        return name, ""
+    idx = name.rfind(".")
+    return name[:idx], name[idx:]
+
+
+def _apply_duplicate_suffix(name: str, index: int) -> str:
+    """
+    根据序号为重名文件生成后缀，index 为 0 表示原名。
+    """
+    if index <= 0:
+        return name
+    stem, ext = _split_filename_parts(name)
+    stem = stem or name
+    ext = ext or ""
+    return f"{stem}-{index}{ext}"
+
+
+def _build_download_aliases(db: Session, entries: Sequence[FileEntry]) -> Dict[int, str]:
+    """
+    为给定文件列表生成下载别名，保证与数据库中相同原始名称的顺序一致。
+    """
+    alias_map: Dict[int, str] = {}
+    if not entries:
+        return alias_map
+    names = {entry.original_name for entry in entries}
+    for name in names:
+        ids = (
+            db.query(FileEntry.id)
+            .filter(FileEntry.original_name == name)
+            .order_by(FileEntry.created_at.asc(), FileEntry.id.asc())
+            .all()
+        )
+        for offset, entry_id in enumerate(ids):
+            alias_map[entry_id] = _apply_duplicate_suffix(name, offset)
+    return alias_map
+
+
+def _resolve_alias_target(db: Session, alias: str) -> tuple[str, int]:
+    """
+    将下载别名还原为原始文件名和序号。
+    """
+    base_name = alias
+    suffix_index = 0
+    stem, ext = _split_filename_parts(alias)
+    match = DUPLICATE_SUFFIX_RE.match(stem) if stem else None
+    if match:
+        candidate_stem = match.group("stem")
+        index_value = int(match.group("index"))
+        candidate_base = f"{candidate_stem}{ext}"
+        exists = (
+            db.query(FileEntry.id)
+            .filter(FileEntry.original_name == candidate_base)
+            .order_by(FileEntry.id)
+            .first()
+        )
+        if exists is not None:
+            base_name = candidate_base
+            suffix_index = index_value
+    return base_name, suffix_index
+
+
 
 
 def _generate_token_value(db: Session, requested: Optional[str]) -> str:
@@ -195,9 +267,13 @@ def _ensure_file_permission(file: FileEntry, current_user: Optional[User], token
     raise HTTPException(status_code=403, detail="无权访问该文件")
 
 
-def _serialize_files(files: List[FileEntry]) -> List[FileEntryOut]:
+def _serialize_files(db: Session, files: List[FileEntry]) -> List[FileEntryOut]:
     payload: List[FileEntryOut] = []
+    if not files:
+        return payload
+    aliases = _build_download_aliases(db, files)
     for f in files:
+        download_name = aliases.get(f.id, f.original_name)
         payload.append(
             FileEntryOut(
                 id=f.id,
@@ -211,32 +287,12 @@ def _serialize_files(files: List[FileEntry]) -> List[FileEntryOut]:
                 created_at=f.created_at,
                 owner_id=f.owner_id,
                 owner_group_id=f.owner_group_id,
+                download_name=download_name,
+                download_url=f"/files/{download_name}",
             )
         )
     return payload
 
-
-
-@router.get("/files/{filename}")
-def download_by_filename(filename: str, request: Request, db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_optional_user)):
-    if "/" in filename or ".." in filename:
-        raise HTTPException(status_code=404, detail="文件不存在")
-    entry = (
-        db.query(FileEntry)
-        .filter(FileEntry.storage_path.like(f"%/{filename}"))
-        .first()
-    )
-    if not entry:
-        raise HTTPException(status_code=404, detail="文件不存在")
-    _ensure_file_permission(entry, current_user, None)
-    storage_path = STORAGE_ROOT / entry.storage_path
-    if not storage_path.exists():
-        _log_action(db, "download", entry, request, user=current_user, token=None, status_text="missing")
-        raise HTTPException(status_code=410, detail="文件已失效")
-    entry.download_count += 1
-    db.commit()
-    _log_action(db, "download", entry, request, user=current_user, token=None)
-    return FileResponse(storage_path, media_type=entry.content_type or "application/octet-stream", filename=entry.original_name)
 
 
 @router.get("/files/public", response_model=list[FileEntryOut])
@@ -251,7 +307,7 @@ def list_public_files(
         .limit(limit)
         .all()
     )
-    return _serialize_files(files)
+    return _serialize_files(db, files)
 
 
 @router.get("/files/{file_id}/download")
@@ -335,7 +391,7 @@ def list_my_files(
     if scope in ALLOWED_VISIBILITY:
         query = query.filter(FileEntry.visibility == scope)
     files = query.order_by(FileEntry.created_at.desc()).all()
-    return _serialize_files(files)
+    return _serialize_files(db, files)
 
 
 @router.delete("/files/me/{file_id}")
@@ -560,5 +616,44 @@ def token_list(
     )
     db.commit()
     _log_action(db, "list", None, request, user=None, token=token)
-    return _serialize_files(files)
+    return _serialize_files(db, files)
 
+
+
+
+
+@router.get("/files/{filename}")
+def download_by_filename(
+    filename: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    if not filename or "/" in filename or '\' in filename or ".." in filename:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    base_name, suffix_index = _resolve_alias_target(db, filename)
+    entries = (
+        db.query(FileEntry)
+        .filter(FileEntry.original_name == base_name)
+        .order_by(FileEntry.created_at.asc(), FileEntry.id.asc())
+        .all()
+    )
+    if not entries or suffix_index >= len(entries):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    entry = entries[suffix_index]
+    expected_alias = _apply_duplicate_suffix(base_name, suffix_index)
+    if expected_alias != filename:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    _ensure_file_permission(entry, current_user, None)
+    storage_path = STORAGE_ROOT / entry.storage_path
+    if not storage_path.exists():
+        _log_action(db, "download", entry, request, user=current_user, token=None, status_text="missing")
+        raise HTTPException(status_code=410, detail="文件已失效")
+    entry.download_count += 1
+    db.commit()
+    _log_action(db, "download", entry, request, user=current_user, token=None)
+    return FileResponse(
+        storage_path,
+        media_type=entry.content_type or "application/octet-stream",
+        filename=entry.original_name,
+    )

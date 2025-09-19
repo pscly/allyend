@@ -233,6 +233,8 @@ class FileEntryOut(BaseModel):
     created_at: datetime
     owner_id: Optional[int]
     owner_group_id: Optional[int]
+    download_name: Optional[str] = None
+    download_url: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -291,3 +293,4 @@ class RegistrationSettingUpdate(BaseModel):
 
 class SystemSettingsResponse(BaseModel):
     registration_mode: str
+

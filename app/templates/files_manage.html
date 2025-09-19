@@ -216,7 +216,7 @@
         return;
       }
       tbody.innerHTML = records.map(file => {
-        const link = `/files/${file.id}/download`;
+        const link = file.download_url || `/files/${file.id}/download`;
         return `<tr>
           <td>${escapeHTML(file.original_name)}</td>
           <td>${formatSize(file.size_bytes)}</td>
@@ -268,7 +268,7 @@
           return;
         }
         tbody.innerHTML = records.map(file => {
-          const link = `/files/${file.id}/download`;
+          const link = file.download_url || `/files/${file.id}/download`;
           const badgeClass = `badge badge--${file.visibility}`;
           const visibilityLabel = visibilityText[file.visibility] || file.visibility;
           return `<tr>
