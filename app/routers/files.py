@@ -22,6 +22,7 @@ from ..models import FileAPIToken, FileAccessLog, FileEntry, User
 from ..schemas import (
     FileAccessLogOut,
     FileEntryOut,
+    FileEntryUpdate,
     FileTokenCreate,
     FileTokenOut,
     FileUploadResponse,
@@ -35,7 +36,7 @@ templates.env.globals.update(site_icp=settings.SITE_ICP, theme_presets=THEME_PRE
 
 
 STORAGE_ROOT = Path(settings.FILE_STORAGE_DIR or FILE_STORAGE_DIR)
-ALLOWED_VISIBILITY = {"private", "group", "public"}
+ALLOWED_VISIBILITY = {"private", "group", "public", "disabled"}
 TOKEN_PREFIX = "up-"
 TOKEN_SUFFIX_PATTERN = re.compile(r'^[A-Za-z0-9_-]+$')
 TOKEN_GENERATION_ATTEMPTS = 5
@@ -59,12 +60,15 @@ def files_list(request: Request, current_user: Optional[User] = Depends(get_opti
             owner_name = entry.uploaded_by_user.display_name or entry.uploaded_by_user.username
         elif entry.uploaded_by_token:
             owner_name = entry.uploaded_by_token.name or f"令牌 {entry.uploaded_by_token.id}"
+        download_path = f"/files/{download_name}"
+        if download_name.startswith(TOKEN_PREFIX):
+            download_path = f"{download_path}?download=1"
         table.append({
             "name": entry.original_name,
             "size": entry.size_bytes,
             "created": entry.created_at,
             "owner": owner_name,
-            "download": f"/files/{download_name}",
+            "download": download_path,
         })
     return templates.TemplateResponse(
         "files_list.html",
@@ -250,6 +254,15 @@ def _log_action(
 
 
 def _ensure_file_permission(file: FileEntry, current_user: Optional[User], token: Optional[FileAPIToken]) -> None:
+    if file.visibility == "disabled":
+        if token:
+            raise HTTPException(status_code=403, detail="文件已被禁用")
+        if current_user:
+            if current_user.role in {ROLE_ADMIN, ROLE_SUPERADMIN}:
+                return
+            if file.owner_id == current_user.id:
+                return
+        raise HTTPException(status_code=403, detail="文件已被禁用")
     if file.visibility == "public":
         return
     if token:
@@ -265,6 +278,7 @@ def _ensure_file_permission(file: FileEntry, current_user: Optional[User], token
     if file.owner_id == current_user.id:
         return
     raise HTTPException(status_code=403, detail="无权访问该文件")
+
 
 
 def _serialize_files(db: Session, files: List[FileEntry]) -> List[FileEntryOut]:
@@ -346,7 +360,7 @@ def download_file(
 @router.post("/files/me/up", response_model=FileUploadResponse)
 def user_upload(
     request: Request,
-    upload: UploadFile = File(...),
+    upload: UploadFile = File(..., alias='file'),
     file_name: Optional[str] = Form(default=None),
     visibility: str = Form(default="private"),
     description: Optional[str] = Form(default=None),
@@ -383,7 +397,7 @@ def user_upload(
 
 @router.get("/files/me", response_model=list[FileEntryOut])
 def list_my_files(
-    scope: Optional[str] = Query(default=None, description="可选：public/private/group/anonymous"),
+    scope: Optional[str] = Query(default=None, description="可选：public/private/group/disabled"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -415,7 +429,54 @@ def delete_my_file(
     return {"ok": True}
 
 
-@router.post("/files/api/tokens", response_model=FileTokenOut)
+@router.patch("/files/me/{file_id}", response_model=FileEntryOut)
+def update_my_file(
+    file_id: int,
+    payload: FileEntryUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    file = db.query(FileEntry).filter(FileEntry.id == file_id).first()
+    if not file:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if file.owner_id != current_user.id and current_user.role not in {ROLE_ADMIN, ROLE_SUPERADMIN}:
+        raise HTTPException(status_code=403, detail="无权修改该文件")
+
+    changes = False
+
+    if payload.visibility is not None:
+        desired_visibility = payload.visibility.strip().lower()
+        if desired_visibility not in ALLOWED_VISIBILITY:
+            raise HTTPException(status_code=400, detail="可见性参数非法")
+        if file.visibility != desired_visibility:
+            if desired_visibility == "group":
+                target_group = file.owner.group if file.owner and file.owner.group else current_user.group
+                if not target_group:
+                    raise HTTPException(status_code=400, detail="文件所属用户未加入任何分组，无法设置分组可见")
+                file.owner_group = target_group
+            else:
+                file.owner_group = None
+            file.visibility = desired_visibility
+            changes = True
+
+    if payload.description is not None:
+        new_desc = payload.description.strip()
+        normalized_desc = new_desc if new_desc else None
+        if file.description != normalized_desc:
+            file.description = normalized_desc
+            changes = True
+
+    if not changes:
+        return _serialize_files(db, [file])[0]
+
+    db.commit()
+    db.refresh(file)
+    _log_action(db, "update", file, request, user=current_user, token=None, status_text="update")
+    return _serialize_files(db, [file])[0]
+
+
+@router.post("/files/tokens", response_model=FileTokenOut)
 def create_file_token(
     payload: FileTokenCreate,
     request: Request,
@@ -438,7 +499,7 @@ def create_file_token(
     return token
 
 
-@router.get("/files/api/tokens", response_model=list[FileTokenOut])
+@router.get("/files/tokens", response_model=list[FileTokenOut])
 def list_file_tokens(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -452,7 +513,7 @@ def list_file_tokens(
     return tokens
 
 
-@router.patch("/files/api/tokens/{token_id}", response_model=FileTokenOut)
+@router.patch("/files/tokens/{token_id}", response_model=FileTokenOut)
 def update_file_token(
     token_id: int,
     is_active: Optional[bool] = Form(default=None),
@@ -537,11 +598,11 @@ def list_access_logs(
         ]
 
 
-@router.post("/files/api/tokens/{token_value}/up", response_model=FileUploadResponse)
+@router.post("/files/{token_value}/up", response_model=FileUploadResponse)
 def token_upload(
     token_value: str,
     request: Request,
-    upload: UploadFile = File(...),
+    upload: UploadFile = File(..., alias="file"),
     file_name: Optional[str] = Form(default=None),
     visibility: str = Form(default="private"),
     description: Optional[str] = Form(default=None),
@@ -589,45 +650,14 @@ def token_upload(
     )
 
 
-@router.get("/files/api/tokens/{token_value}", response_model=list[FileEntryOut])
-def token_list(
-    token_value: str,
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    token_value = token_value.strip()
-    if not token_value.startswith(TOKEN_PREFIX):
-        raise HTTPException(status_code=400, detail='令牌格式不正确，需以 up- 开头')
-    token = (
-        db.query(FileAPIToken)
-        .filter(FileAPIToken.token == token_value, FileAPIToken.is_active == True)
-        .first()
-    )
-    if not token:
-        raise HTTPException(status_code=403, detail="令牌无效或已禁用")
-    _check_token_ip(token, request)
-    token.usage_count += 1
-    token.last_used_at = now()
-    files = (
-        db.query(FileEntry)
-        .filter(FileEntry.owner_id == token.user_id)
-        .order_by(FileEntry.created_at.desc())
-        .all()
-    )
-    db.commit()
-    _log_action(db, "list", None, request, user=None, token=token)
-    return _serialize_files(db, files)
 
 
 
-
-
-@router.get("/files/{filename}")
-def download_by_filename(
+def _download_file_by_alias(
     filename: str,
     request: Request,
-    db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session,
+    current_user: Optional[User],
 ):
     if not filename or "/" in filename or "\\" in filename or ".." in filename:
         raise HTTPException(status_code=404, detail="文件不存在")
@@ -657,3 +687,36 @@ def download_by_filename(
         media_type=entry.content_type or "application/octet-stream",
         filename=entry.original_name,
     )
+
+
+@router.get("/files/{identifier}")
+def files_entry(
+    identifier: str,
+    request: Request,
+    download: bool = Query(default=False, description="为 true 时强制按文件下载"),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    identifier = identifier.strip()
+    if not download and identifier.startswith(TOKEN_PREFIX):
+        token = (
+            db.query(FileAPIToken)
+            .filter(FileAPIToken.token == identifier, FileAPIToken.is_active == True)
+            .first()
+        )
+        if token:
+            _check_token_ip(token, request)
+            token.usage_count += 1
+            token.last_used_at = now()
+            files = (
+                db.query(FileEntry)
+                .filter(FileEntry.owner_id == token.user_id)
+                .order_by(FileEntry.created_at.desc())
+                .all()
+            )
+            db.commit()
+            _log_action(db, "list", None, request, user=None, token=token)
+            return _serialize_files(db, files)
+        raise HTTPException(status_code=403, detail="令牌无效或已禁用")
+
+    return _download_file_by_alias(identifier, request, db, current_user)

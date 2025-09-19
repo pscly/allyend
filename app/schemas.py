@@ -247,6 +247,11 @@ class FileEntryOut(BaseModel):
         from_attributes = True
 
 
+class FileEntryUpdate(BaseModel):
+    visibility: Optional[str] = None
+    description: Optional[str] = None
+
+
 class FileUploadResponse(BaseModel):
     file_id: int
     original_name: str
