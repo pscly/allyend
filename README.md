@@ -216,6 +216,19 @@ client.finish_run(crawler_id=crawler["id"], run_id=run["id"], status="success")
 - `LOG_DIR`：应用日志目录（默认 `logs`）。
 - `SITE_ICP`：页脚备案信息（如不需要可留空）。
 
+## 测试与质量保证
+
+- 新增 `test/test_files_router_utils.py`，针对文件路由中的关键辅助方法（文件名拆分、重复别名推导、令牌生成）构建了 7 条高价值单元测试用例。
+- 测试使用内存版 SQLite 与独立 Session，避免对本地开发数据库和文件目录造成副作用，并模拟真实的权限校验与令牌冲突场景。
+- 通过 `monkeypatch` 控制随机令牌生成，确保碰撞重试逻辑可重复验证，覆盖到异常分支与正常分支。
+- 执行测试仅需运行：
+
+```bash
+pytest
+```
+
+  首次执行前请确认已经安装 `pytest` 以及 `pyproject.toml` 中声明的依赖。
+- 当前会看到来自 Pydantic 的配置格式弃用提示，不影响测试结果；如需消除，可在后续迁移到 `ConfigDict` 配置方式。
 ## 后续规划
 
 - 指标看板与告警：整合 Prometheus / Webhook，增强异常检测。
