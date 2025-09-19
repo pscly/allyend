@@ -12,6 +12,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -544,7 +545,7 @@ def _build_link_summary(link: CrawlerAccessLink, slug: str) -> dict[str, object]
         owner_name = None
         if owner:
             owner_name = owner.display_name or owner.username
-        return {
+        summary = {
             "type": "crawler",
             "slug": slug,
             "crawler_id": crawler.id,
@@ -559,13 +560,13 @@ def _build_link_summary(link: CrawlerAccessLink, slug: str) -> dict[str, object]
             "link_created_at": link.created_at,
             "allow_logs": link.allow_logs,
         }
-    if link.target_type == "api_key" and link.api_key:
+    elif link.target_type == "api_key" and link.api_key:
         api_key = link.api_key
         owner = getattr(api_key, "user", None)
         owner_name = None
         if owner:
             owner_name = owner.display_name or owner.username
-        return {
+        summary = {
             "type": "api_key",
             "slug": slug,
             "api_key_id": api_key.id,
@@ -579,7 +580,10 @@ def _build_link_summary(link: CrawlerAccessLink, slug: str) -> dict[str, object]
             "link_created_at": link.created_at,
             "allow_logs": link.allow_logs,
         }
-    raise HTTPException(status_code=400, detail="链接目标不存在")
+    else:
+        raise HTTPException(status_code=400, detail="链接目标不存在")
+
+    return jsonable_encoder(summary)
 
 
 @public_router.get("/{slug}", response_class=HTMLResponse)
