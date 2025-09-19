@@ -22,7 +22,7 @@
 <body>
   <header class="topbar">
     <div class="container topbar__inner">
-      <div class="brand">{{ site_name }}</div>
+      <a class="brand" href="/">{{ site_name }}</a>
       <nav class="nav">
         <a href="/public" class="nav__link">公开专区</a>
         {% if user %}
@@ -52,7 +52,7 @@
   </main>
   <footer class="footer">
     <div class="container footer__inner">
-      <span>© 2025 Crawler Hub</span>
+      <span>© 2025 <a href="https://github.com/pscly/allyend" target="_blank" rel="noopener">Crawler Hub</a> · <a href="https://github.com/pscly/" target="_blank" rel="noopener">@pscly</a></span>
       {% if site_icp %}
       <span class="footer__icp"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">{{ site_icp }}</a></span>
       {% endif %}

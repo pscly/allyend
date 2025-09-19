@@ -66,6 +66,8 @@ a:hover {
   font-weight: 700;
   font-size: 20px;
   letter-spacing: 0.04em;
+  color: inherit;
+  text-decoration: none;
 }
 
 .nav {
@@ -112,6 +114,10 @@ a:hover {
   gap: 14px;
   justify-content: space-between;
   align-items: center;
+}
+
+.footer__inner a {
+  color: inherit;
 }
 
 .footer__icp a {
