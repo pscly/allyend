@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -14,6 +14,7 @@ from ..config import settings
 from ..constants import ROLE_ADMIN, ROLE_SUPERADMIN, THEME_PRESETS, LOG_LEVEL_OPTIONS
 from ..dependencies import get_current_user, get_db
 from ..models import InviteCode, SystemSetting, User, UserGroup
+from ..utils.time_utils import now
 from ..schemas import (
     AdminUserOut,
     AdminUserUpdate,
@@ -177,7 +178,7 @@ def admin_create_invite(
         creator=current_user,
     )
     if payload.expires_in_minutes:
-        invite.expires_at = datetime.utcnow() + timedelta(minutes=payload.expires_in_minutes)
+        invite.expires_at = now() + timedelta(minutes=payload.expires_in_minutes)
     db.add(invite)
     db.commit()
     db.refresh(invite)

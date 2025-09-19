@@ -7,7 +7,6 @@ import hashlib
 import ipaddress
 import re
 import secrets
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
@@ -27,6 +26,7 @@ from ..schemas import (
     FileTokenOut,
     FileUploadResponse,
 )
+from ..utils.time_utils import now
 
 router = APIRouter(tags=["files"])
 
@@ -577,7 +577,7 @@ def token_upload(
     )
     db.add(entry)
     token.usage_count += 1
-    token.last_used_at = datetime.utcnow()
+    token.last_used_at = now()
     db.commit()
     db.refresh(entry)
     _log_action(db, "upload", entry, request, user=None, token=token)
@@ -607,7 +607,7 @@ def token_list(
         raise HTTPException(status_code=403, detail="令牌无效或已禁用")
     _check_token_ip(token, request)
     token.usage_count += 1
-    token.last_used_at = datetime.utcnow()
+    token.last_used_at = now()
     files = (
         db.query(FileEntry)
         .filter(FileEntry.owner_id == token.user_id)
@@ -629,7 +629,7 @@ def download_by_filename(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user),
 ):
-    if not filename or "/" in filename or '\' in filename or ".." in filename:
+    if not filename or "/" in filename or "\\" in filename or ".." in filename:
         raise HTTPException(status_code=404, detail="文件不存在")
     base_name, suffix_index = _resolve_alias_target(db, filename)
     entries = (

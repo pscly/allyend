@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
 
 from fastapi import HTTPException, status, Request
@@ -15,6 +15,7 @@ from passlib.context import CryptContext
 from .config import settings
 from .database import SessionLocal
 from .models import User
+from .utils.time_utils import aware_now
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -32,7 +33,7 @@ def get_password_hash(password: str) -> str:
 
 def create_access_token(subject: str, expires_minutes: int) -> str:
     """创建 JWT Token，subject 通常为用户ID"""
-    expire = datetime.utcnow() + timedelta(minutes=expires_minutes)
+    expire = aware_now() + timedelta(minutes=expires_minutes)
     payload = {"sub": subject, "exp": expire}
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 

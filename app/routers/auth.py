@@ -6,7 +6,6 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
 import secrets
 from typing import Optional
 
@@ -21,6 +20,7 @@ from ..constants import ROLE_ADMIN, ROLE_SUPERADMIN, ROLE_USER, THEME_PRESETS, L
 from ..dependencies import get_current_user, get_db
 from ..models import APIKey, InviteCode, InviteUsage, SystemSetting, User, UserGroup
 from ..schemas import Token, UserCreate, APIKeyOut, APIKeyUpdate, PublicAPIKeyOut
+from ..utils.time_utils import now
 
 
 router = APIRouter()
@@ -51,7 +51,7 @@ def _validate_invite(db: Session, code: str) -> InviteCode:
     invite = db.query(InviteCode).filter(InviteCode.code == code).first()
     if not invite:
         raise HTTPException(status_code=400, detail="邀请码无效")
-    if invite.expires_at and datetime.utcnow() > invite.expires_at:
+    if invite.expires_at and now() > invite.expires_at:
         raise HTTPException(status_code=400, detail="邀请码已过期")
     if invite.max_uses and invite.used_count >= invite.max_uses:
         raise HTTPException(status_code=400, detail="邀请码已用尽")

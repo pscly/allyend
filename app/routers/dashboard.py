@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -17,6 +16,7 @@ from ..constants import THEME_PRESETS, LOG_LEVEL_OPTIONS
 from ..dependencies import get_current_user, get_optional_user, get_db
 from ..models import Crawler, APIKey, User
 from ..schemas import ThemeSettingOut, ThemeSettingUpdate
+from ..utils.time_utils import aware_now
 
 
 router = APIRouter()
@@ -36,7 +36,7 @@ DAILY_QUOTES = [
 def _daily_quote() -> str:
     if not DAILY_QUOTES:
         return "这是一个美好的一天。"
-    idx = datetime.utcnow().timetuple().tm_yday % len(DAILY_QUOTES)
+    idx = aware_now().timetuple().tm_yday % len(DAILY_QUOTES)
     return DAILY_QUOTES[idx]
 
 

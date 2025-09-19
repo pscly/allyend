@@ -39,6 +39,7 @@ from ..schemas import (
     RunOut,
     RunStartResponse,
 )
+from ..utils.time_utils import now
 
 
 api_router = APIRouter(prefix="/pa/api", tags=["pa-crawlers"])
@@ -128,7 +129,7 @@ def _require_api_key(
     key = db.query(APIKey).filter(APIKey.key == x_api_key, APIKey.active == True).first()
     if not key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API Key 无效")
-    key.last_used_at = datetime.utcnow()
+    key.last_used_at = now()
     key.last_used_ip = _get_client_ip(request)
     db.commit()
     db.refresh(key)
@@ -174,9 +175,9 @@ def heartbeat(
     )
     if not crawler:
         raise HTTPException(status_code=404, detail="爬虫不存在")
-    now = datetime.utcnow()
+    current_time = now()
     ip = _get_client_ip(request)
-    crawler.last_heartbeat = now
+    crawler.last_heartbeat = current_time
     crawler.last_source_ip = ip or crawler.last_source_ip
     run = (
         db.query(CrawlerRun)
@@ -185,10 +186,10 @@ def heartbeat(
         .first()
     )
     if run:
-        run.last_heartbeat = now
+        run.last_heartbeat = current_time
         run.source_ip = ip or run.source_ip
     db.commit()
-    return {"ok": True, "ts": now.isoformat()}
+    return {"ok": True, "ts": current_time.isoformat()}
 
 
 @api_router.post("/{crawler_id}/runs/start", response_model=RunStartResponse)
@@ -208,7 +209,7 @@ def start_run(
     run = CrawlerRun(
         crawler_id=crawler_id,
         status="running",
-        started_at=datetime.utcnow(),
+        started_at=now(),
         source_ip=_get_client_ip(request),
     )
     db.add(run)
@@ -236,7 +237,7 @@ def finish_run(
     if not run:
         raise HTTPException(status_code=404, detail="运行不存在")
     run.status = status_
-    run.ended_at = datetime.utcnow()
+    run.ended_at = now()
     db.commit()
     return {"ok": True}
 

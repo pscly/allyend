@@ -20,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
+from .utils.time_utils import now
 
 
 class UserGroup(Base):
@@ -32,8 +33,8 @@ class UserGroup(Base):
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     enable_crawlers: Mapped[bool] = mapped_column(Boolean, default=True)
     enable_files: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
 
     users: Mapped[List["User"]] = relationship("User", back_populates="group")
 
@@ -48,7 +49,7 @@ class InviteCode(Base):
     max_uses: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     used_count: Mapped[int] = mapped_column(Integer, default=0)
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
     creator_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     creator: Mapped[Optional["User"]] = relationship("User", back_populates="invite_codes_created", foreign_keys=[creator_id])
@@ -64,7 +65,7 @@ class InviteUsage(Base):
     __tablename__ = "invite_usages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    used_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    used_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
     invite_id: Mapped[int] = mapped_column(ForeignKey("invite_codes.id"))
@@ -80,7 +81,7 @@ class SystemSetting(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     key: Mapped[str] = mapped_column(String(128), unique=True)
     value: Mapped[str] = mapped_column(Text)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
 
 
 class User(Base):
@@ -94,8 +95,8 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     role: Mapped[str] = mapped_column(String(32), default="user")  # user/admin/superadmin
     is_root_admin: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
 
     theme_name: Mapped[str] = mapped_column(String(32), default="classic")
     theme_primary: Mapped[str] = mapped_column(String(16), default="#10b981")
@@ -130,7 +131,7 @@ class APIKey(Base):
     name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_used_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
@@ -147,7 +148,7 @@ class Crawler(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(128), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     last_heartbeat: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_source_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
@@ -166,7 +167,7 @@ class CrawlerRun(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     status: Mapped[str] = mapped_column(String(32), default="running")  # running/success/failed
-    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_heartbeat: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     source_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
@@ -184,7 +185,7 @@ class LogEntry(Base):
     level: Mapped[str] = mapped_column(String(16), default="INFO")
     level_code: Mapped[int] = mapped_column(Integer, default=20, index=True)
     message: Mapped[str] = mapped_column(Text)
-    ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     source_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
     crawler_id: Mapped[int] = mapped_column(ForeignKey("crawlers.id"))
@@ -207,7 +208,7 @@ class CrawlerAccessLink(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     allow_logs: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
     crawler_id: Mapped[Optional[int]] = mapped_column(ForeignKey("crawlers.id"), nullable=True)
     crawler: Mapped[Optional[Crawler]] = relationship("Crawler", back_populates="quick_links")
@@ -231,7 +232,7 @@ class FileAPIToken(Base):
     allowed_cidrs: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     usage_count: Mapped[int] = mapped_column(Integer, default=0)
     last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     user: Mapped[User] = relationship("User", back_populates="file_tokens")
@@ -252,8 +253,8 @@ class FileEntry(Base):
     checksum_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     visibility: Mapped[str] = mapped_column(String(16), default="private")  # private/group/public
     is_anonymous: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
     download_count: Mapped[int] = mapped_column(Integer, default=0)
 
     owner_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -279,7 +280,7 @@ class FileAccessLog(Base):
     ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="success")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
     file_id: Mapped[Optional[int]] = mapped_column(ForeignKey("file_entries.id"), nullable=True)
     file: Mapped[Optional[FileEntry]] = relationship("FileEntry", back_populates="access_logs")

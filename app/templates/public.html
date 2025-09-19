@@ -161,7 +161,10 @@ async function loadPublicLogs() {
     </div>`;
   }).join('');
 }
+window.resetPublicFilters = resetPublicFilters;
+window.loadPublicLogs = loadPublicLogs;
 
 loadPublicLogs();
 </script>
 {% endblock %}
+

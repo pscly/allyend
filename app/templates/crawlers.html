@@ -150,7 +150,7 @@
     return res.json();
   }
 
-  async function createKey() {
+  window.createKey = async () => {
     try {
       await fetchJSON('/api/keys', { method: 'POST' });
       loadKeys();
@@ -183,7 +183,8 @@
   }
 
   window.toggleKey = async (id, next) => {
-    const payload = { active: next === 'true' };
+    const normalized = typeof next === 'boolean' ? next : String(next).toLowerCase() === 'true';
+    const payload = { active: normalized };
     try {
       await fetchJSON(`/api/keys/${id}`, {
         method: 'PATCH',
@@ -280,18 +281,14 @@
     }).join('');
   }
 
+  window.refreshLinks = refreshLinks;
+
   window.deleteLink = async (id) => {
     if (!confirm('确认删除该链接？')) return;
     await fetchJSON(`/pa/api/links/${id}`, { method: 'DELETE' });
     refreshLinks();
   };
 
-  async function deleteKey(id) {
-    await fetchJSON(`/api/keys/${id}`, { method: 'DELETE' });
-    loadKeys();
-  }
-
-  window.deleteKey = deleteKey;
 
   function resetFilters() {
     Array.from(crawlersSelect.options).forEach(opt => (opt.selected = true));

@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     """全局配置（.env）"""
 
     SITE_NAME: str = "AllYend"
+    TIMEZONE: str | None = "Asia/Shanghai"
 
     SECRET_KEY: str = "please_change_me"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 120
