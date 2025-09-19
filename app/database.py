@@ -94,8 +94,59 @@ def apply_schema_upgrades() -> None:
     ensure("api_keys", "last_used_at", "DATETIME")
     ensure("api_keys", "last_used_ip", "VARCHAR(64)")
     ensure("api_keys", "is_public", "BOOLEAN DEFAULT 0")
+    api_key_local_added = ensure("api_keys", "local_id", "INTEGER")
 
     # 爬虫与运行扩展
+    ensure("crawlers", "is_public", "BOOLEAN DEFAULT 0")
+    ensure("crawlers", "public_slug", "VARCHAR(64)")
+    ensure("crawlers", "last_source_ip", "VARCHAR(64)")
+    crawler_local_added = ensure("crawlers", "local_id", "INTEGER")
+    ensure("crawler_runs", "source_ip", "VARCHAR(64)")
+
+    with engine.begin() as conn:
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_api_keys_user_local ON api_keys(user_id, local_id)"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_crawlers_user_local ON crawlers(user_id, local_id)"))
+
+    needs_backfill = api_key_local_added or crawler_local_added
+    if not needs_backfill:
+        with engine.begin() as conn:
+            result = conn.execute(text("SELECT COUNT(1) FROM api_keys WHERE local_id IS NULL"))
+            needs_backfill = needs_backfill or result.scalar_one() > 0
+            result = conn.execute(text("SELECT COUNT(1) FROM crawlers WHERE local_id IS NULL"))
+            needs_backfill = needs_backfill or result.scalar_one() > 0
+
+    if needs_backfill:
+        from .models import APIKey, Crawler
+
+        with SessionLocal() as session:
+            def _assign_local_ids(model):
+                changed = False
+                counters = {}
+                rows = (
+                    session.query(model)
+                    .order_by(model.user_id, model.created_at, model.id)
+                    .all()
+                )
+                for row in rows:
+                    current = counters.get(row.user_id, 0)
+                    if row.local_id and row.local_id > 0:
+                        counters[row.user_id] = max(current, row.local_id)
+                        continue
+                    next_value = current + 1
+                    row.local_id = next_value
+                    counters[row.user_id] = next_value
+                    changed = True
+                return changed
+
+            changed = False
+            changed = _assign_local_ids(APIKey) or changed
+            changed = _assign_local_ids(Crawler) or changed
+            if changed:
+                session.commit()
+            else:
+                session.rollback()
+
+    # 日志来源
     ensure("crawlers", "is_public", "BOOLEAN DEFAULT 0")
     ensure("crawlers", "public_slug", "VARCHAR(64)")
     ensure("crawlers", "last_source_ip", "VARCHAR(64)")

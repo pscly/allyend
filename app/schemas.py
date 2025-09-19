@@ -62,6 +62,7 @@ class InviteCodeOut(BaseModel):
 
 class APIKeyOut(BaseModel):
     id: int
+    local_id: int
     key: str
     name: Optional[str]
     description: Optional[str]
@@ -84,6 +85,7 @@ class APIKeyUpdate(BaseModel):
 
 class PublicAPIKeyOut(BaseModel):
     id: int
+    local_id: int
     key: str
     name: Optional[str]
     created_at: datetime
@@ -147,9 +149,11 @@ class LogOut(BaseModel):
     ts: datetime
     run_id: Optional[int] = None
     crawler_id: int
+    crawler_local_id: Optional[int] = None
     crawler_name: Optional[str] = None
     source_ip: Optional[str] = None
     api_key_id: Optional[int] = None
+    api_key_local_id: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -191,7 +195,9 @@ class QuickLinkOut(BaseModel):
     allow_logs: bool
     created_at: datetime
     crawler_id: Optional[int] = None
+    crawler_local_id: Optional[int] = None
     api_key_id: Optional[int] = None
+    api_key_local_id: Optional[int] = None
 
     class Config:
         from_attributes = True

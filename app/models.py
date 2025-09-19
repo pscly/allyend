@@ -125,8 +125,10 @@ class User(Base):
 
 class APIKey(Base):
     __tablename__ = "api_keys"
+    __table_args__ = (UniqueConstraint("user_id", "local_id", name="uq_api_keys_user_local_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    local_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     key: Mapped[str] = mapped_column(String(128), unique=True, index=True)  # 简化起见明文存储（生产建议哈希）
     name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -145,8 +147,10 @@ class APIKey(Base):
 
 class Crawler(Base):
     __tablename__ = "crawlers"
+    __table_args__ = (UniqueConstraint("user_id", "local_id", name="uq_crawlers_user_local_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    local_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(128), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     last_heartbeat: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -218,6 +222,14 @@ class CrawlerAccessLink(Base):
 
     created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_by: Mapped[Optional[User]] = relationship("User")
+
+    @property
+    def crawler_local_id(self) -> Optional[int]:
+        return self.crawler.local_id if self.crawler else None
+
+    @property
+    def api_key_local_id(self) -> Optional[int]:
+        return self.api_key.local_id if self.api_key else None
 
 
 class FileAPIToken(Base):

@@ -14,7 +14,7 @@
     </div>
     <div class="table-scroll">
       <table class="data-table" id="keys-table">
-        <thead><tr><th>ID</th><th>Key</th><th>名称</th><th>状态</th><th>最近使用</th><th>公开</th><th>操作</th></tr></thead>
+        <thead><tr><th>ID（本账号）</th><th>Key</th><th>名称</th><th>状态</th><th>最近使用</th><th>公开</th><th>操作</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -27,7 +27,7 @@
     </div>
     <div class="table-scroll">
       <table class="data-table" id="crawlers-table">
-        <thead><tr><th>ID</th><th>名称</th><th>最近心跳</th><th>来源 IP</th><th>公开</th><th>快捷链接</th><th>操作</th></tr></thead>
+        <thead><tr><th>ID（本账号）</th><th>名称</th><th>最近心跳</th><th>来源 IP</th><th>公开</th><th>快捷链接</th><th>操作</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -46,7 +46,7 @@
         <option value="crawler">爬虫</option>
         <option value="api_key">API Key</option>
       </select>
-      <label for="link-target-id">目标 ID</label>
+      <label for="link-target-id">目标 ID（本账号序号）</label>
       <input id="link-target-id" name="target_id" type="number" required />
       <label for="link-slug">自定义路径（可选）</label>
       <input id="link-slug" name="slug" type="text" placeholder="至少 6 位，例如 mybot01" />
@@ -168,7 +168,7 @@
       const publicFlag = key.is_public ? '是' : '否';
       const name = key.name || '-';
       return `<tr>
-        <td>${key.id}</td>
+        <td title="全局 ID: ${key.id}">${key.local_id}</td>
         <td><code>${key.key}</code></td>
         <td>${name}</td>
         <td>${status}</td>
@@ -209,14 +209,14 @@
 
   async function loadCrawlers() {
     const data = await fetchJSON('/pa/api/me');
-    crawlersSelect.innerHTML = data.map(crawler => `<option value="${crawler.id}" selected>${crawler.name}</option>`).join('');
+    crawlersSelect.innerHTML = data.map(crawler => `<option value="${crawler.id}" selected>[#${crawler.local_id}] ${crawler.name}</option>`).join('');
     const tbody = document.querySelector('#crawlers-table tbody');
     tbody.innerHTML = data.map(crawler => {
       const hb = crawler.last_heartbeat ? new Date(crawler.last_heartbeat).toLocaleString() : '-';
       const slug = crawler.public_slug ? `<code>${crawler.public_slug}</code>` : '-';
       const ip = crawler.last_source_ip || '-';
       return `<tr>
-        <td>${crawler.id}</td>
+        <td title="全局 ID: ${crawler.id}">${crawler.local_id}</td>
         <td>${crawler.name}</td>
         <td>${hb}</td>
         <td>${ip}</td>
@@ -276,7 +276,7 @@
     tbody.innerHTML = data.map(link => {
       const linkUrl = `/pa/${link.slug}`;
       const allowLogs = link.allow_logs ? '是' : '否';
-      const target = link.target_type === 'crawler' ? `Crawler #${link.crawler_id || '-'}` : `API Key #${link.api_key_id || '-'}`;
+      const target = link.target_type === 'crawler' ? `Crawler #${link.crawler_local_id ?? link.crawler_id ?? '-'}` : `API Key #${link.api_key_local_id ?? link.api_key_id ?? '-'}`;
       return `<tr><td><a href="${linkUrl}" target="_blank">${link.slug}</a></td><td>${link.target_type}</td><td>${target}</td><td>${allowLogs}</td><td>${new Date(link.created_at).toLocaleString()}</td><td><button class="text" onclick="deleteLink(${link.id})">删除</button></td></tr>`;
     }).join('');
   }
@@ -326,7 +326,7 @@
         const code = Number(item.level_code || 20);
         const badgeClass = `badge level-${code}`;
         const levelText = levelMap[code] || item.level;
-        const crawler = item.crawler_name || `#${item.crawler_id}`;
+        const crawler = item.crawler_name || `#${item.crawler_local_id ?? item.crawler_id}`;
         const ip = item.source_ip || '-';
         return `<div class="log-item"><div class="log-head"><span>${new Date(item.ts).toLocaleString()}</span><div class="table-actions" style="gap:8px;"><span class="badge ${badgeClass}">${levelText}</span><span class="hint">${crawler}</span><span class="hint">IP: ${ip}</span></div></div><div>${item.message}</div></div>`;
       }).join('');

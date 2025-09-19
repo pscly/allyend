@@ -10,6 +10,7 @@ from datetime import date, datetime, time
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from ..constants import (
@@ -150,7 +151,8 @@ def register_crawler(
         .first()
     )
     if not crawler:
-        crawler = Crawler(name=payload.name, user_id=api_key.user_id)
+        max_local = db.query(func.max(Crawler.local_id)).filter(Crawler.user_id == api_key.user_id).scalar() or 0
+        crawler = Crawler(name=payload.name, user_id=api_key.user_id, local_id=max_local + 1)
         crawler.last_source_ip = ip
         db.add(crawler)
         db.commit()
@@ -158,7 +160,7 @@ def register_crawler(
     else:
         crawler.last_source_ip = ip or crawler.last_source_ip
         db.commit()
-    return {"id": crawler.id, "name": crawler.name}
+    return {"id": crawler.id, "local_id": crawler.local_id, "name": crawler.name}
 
 
 @api_router.post("/{crawler_id}/heartbeat")
@@ -285,7 +287,7 @@ def my_crawlers(
     crawlers = (
         db.query(Crawler)
         .filter(Crawler.user_id == current_user.id)
-        .order_by(Crawler.created_at.desc())
+        .order_by(Crawler.local_id.asc())
         .all()
     )
     return crawlers
@@ -363,7 +365,7 @@ def my_logs(
         db.query(LogEntry)
         .join(Crawler)
         .filter(Crawler.user_id == current_user.id)
-        .options(joinedload(LogEntry.crawler))
+        .options(joinedload(LogEntry.crawler), joinedload(LogEntry.api_key))
     )
     if ids:
         query = query.filter(LogEntry.crawler_id.in_(ids))
@@ -394,7 +396,7 @@ def my_crawler_logs(
         db.query(LogEntry)
         .filter(LogEntry.crawler_id == crawler_id)
         .order_by(LogEntry.ts.desc())
-        .options(joinedload(LogEntry.crawler))
+        .options(joinedload(LogEntry.crawler), joinedload(LogEntry.api_key))
     )
     if limit:
         q = q.limit(max(1, min(limit, 1000)))
@@ -413,6 +415,7 @@ def list_quick_links(
     _ensure_crawler_feature(current_user)
     links = (
         db.query(CrawlerAccessLink)
+        .options(joinedload(CrawlerAccessLink.crawler), joinedload(CrawlerAccessLink.api_key))
         .outerjoin(Crawler)
         .outerjoin(APIKey)
         .filter(
@@ -442,7 +445,10 @@ def create_quick_link(
     if payload.target_type == "crawler":
         crawler = (
             db.query(Crawler)
-            .filter(Crawler.id == payload.target_id, Crawler.user_id == current_user.id)
+            .filter(
+                Crawler.user_id == current_user.id,
+                or_(Crawler.local_id == payload.target_id, Crawler.id == payload.target_id),
+            )
             .first()
         )
         if not crawler:
@@ -450,7 +456,10 @@ def create_quick_link(
     else:
         api_key = (
             db.query(APIKey)
-            .filter(APIKey.id == payload.target_id, APIKey.user_id == current_user.id)
+            .filter(
+                APIKey.user_id == current_user.id,
+                or_(APIKey.local_id == payload.target_id, APIKey.id == payload.target_id),
+            )
             .first()
         )
         if not api_key:
@@ -500,6 +509,10 @@ def _serialise_logs(logs: List[LogEntry]) -> List[LogEntry]:
     for log in logs:
         if not getattr(log, "crawler_name", None) and log.crawler:
             log.crawler_name = log.crawler.name
+        if log.crawler:
+            log.crawler_local_id = log.crawler.local_id
+        if log.api_key:
+            log.api_key_local_id = log.api_key.local_id
     return logs
 
 
@@ -561,7 +574,7 @@ def public_logs(
     if min_level > max_level:
         min_level, max_level = max_level, min_level
 
-    query = db.query(LogEntry).options(joinedload(LogEntry.crawler))
+    query = db.query(LogEntry).options(joinedload(LogEntry.crawler), joinedload(LogEntry.api_key))
     if link.target_type == "crawler" and link.crawler:
         query = query.filter(LogEntry.crawler_id == link.crawler.id)
     elif link.target_type == "api_key" and link.api_key:

@@ -12,6 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..auth import create_access_token, get_password_hash, verify_password
@@ -255,14 +256,20 @@ def api_login(payload: UserCreate, db: Session = Depends(get_db)):
 
 @router.get("/api/keys", response_model=list[APIKeyOut])
 def list_keys(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    keys = db.query(APIKey).filter(APIKey.user_id == current_user.id).order_by(APIKey.created_at.desc()).all()
+    keys = (
+        db.query(APIKey)
+        .filter(APIKey.user_id == current_user.id)
+        .order_by(APIKey.local_id.asc())
+        .all()
+    )
     return keys
 
 
 @router.post("/api/keys", response_model=APIKeyOut)
 def create_key(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     new_key = secrets.token_urlsafe(32)
-    rec = APIKey(key=new_key, active=True, user_id=current_user.id)
+    max_local = db.query(func.max(APIKey.local_id)).filter(APIKey.user_id == current_user.id).scalar() or 0
+    rec = APIKey(key=new_key, active=True, user_id=current_user.id, local_id=max_local + 1)
     db.add(rec)
     db.commit()
     db.refresh(rec)
