@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block content %}
+  {% set summary = link_summary %}
+  <section class="page-header">
+    <h2>
+      {{ summary.name or "未命名链接" }}
+      <span class="hint">{{ '（爬虫）' if summary.type == 'crawler' else '（API Key）' }}</span>
+    </h2>
+    <p>
+      通过公开链接 <code>{{ slug }}</code> 分享运行状态。
+      {% if summary.owner_name %}所属用户：{{ summary.owner_name }}。{% endif %}
+      {% if summary.link_description %}备注：{{ summary.link_description }}{% endif %}
+    </p>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h3>基础信息</h3>
+      <div class="table-actions">
+        <span class="hint">访问路径：<code>/pa/{{ slug }}</code></span>
+      </div>
+    </div>
+    <div class="filters" style="margin-bottom:0;">
+      <div>
+        <label>类型</label>
+        <div class="hint">{{ '爬虫' if summary.type == 'crawler' else 'API Key' }}</div>
+      </div>
+      <div>
+        <label>内部 ID</label>
+        <div class="hint">{{ summary.local_id or '-' }}</div>
+      </div>
+      <div>
+        <label>最后活跃时间</label>
+        <div class="hint">
+          {% if summary.type == 'crawler' %}
+            {{ summary.last_heartbeat or '未上报' }}
+          {% else %}
+            {{ summary.last_used_at or '未使用' }}
+          {% endif %}
+        </div>
+      </div>
+      <div>
+        <label>来源 IP</label>
+        <div class="hint">
+          {% if summary.type == 'crawler' %}
+            {{ summary.last_source_ip or '-' }}
+          {% else %}
+            {{ summary.last_used_ip or '-' }}
+          {% endif %}
+        </div>
+      </div>
+      <div>
+        <label>创建时间</label>
+        <div class="hint">{{ summary.link_created_at or '-' }}</div>
+      </div>
+      <div>
+        <label>日志权限</label>
+        <div class="hint">{{ '开放访问' if summary.allow_logs else '已关闭' }}</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h3>实时日志</h3>
+      {% if summary.allow_logs %}
+      <div class="table-actions">
+        <button class="text" type="button" onclick="resetLinkFilters()">重置</button>
+        <button type="button" onclick="loadLinkLogs()">刷新</button>
+      </div>
+      {% endif %}
+    </div>
+    {% if summary.allow_logs %}
+    <div class="filters">
+      <div>
+        <label for="link-start">开始日期</label>
+        <input type="date" id="link-start" />
+      </div>
+      <div>
+        <label for="link-end">结束日期</label>
+        <input type="date" id="link-end" />
+      </div>
+      <div>
+        <label for="link-min-level">最小等级</label>
+        <select id="link-min-level"></select>
+      </div>
+      <div>
+        <label for="link-max-level">最大等级</label>
+        <select id="link-max-level"></select>
+      </div>
+      <div>
+        <label for="link-limit">最多条数</label>
+        <input type="number" id="link-limit" min="1" max="1000" value="200" />
+      </div>
+    </div>
+    <div class="log-list" id="link-log-list"></div>
+    <div class="empty-hint" id="link-log-empty" style="display:none;">暂无日志，可调整筛选后再次查询。</div>
+    {% else %}
+    <div class="empty-hint">该链接未开放日志访问。</div>
+    {% endif %}
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  {% if link_summary.allow_logs %}
+  <script>
+    const linkSummary = {{ link_summary | tojson }};
+    const logsEndpoint = "{{ logs_endpoint }}";
+    const levelOptions = (window.LOG_LEVEL_OPTIONS || []).slice().sort((a, b) => a.code - b.code);
+    const minSelect = document.getElementById('link-min-level');
+    const maxSelect = document.getElementById('link-max-level');
+
+    function fillLevel(select, defaultValue) {
+      select.innerHTML = levelOptions.map(item => {
+        const selected = Number(defaultValue) === Number(item.code) ? 'selected' : '';
+        return `<option value="${item.code}" ${selected}>${item.code} - ${item.name}</option>`;
+      }).join('');
+    }
+
+    if (minSelect && maxSelect) {
+      fillLevel(minSelect, 0);
+      fillLevel(maxSelect, 50);
+    }
+
+    function resetLinkFilters() {
+      const start = document.getElementById('link-start');
+      const end = document.getElementById('link-end');
+      if (start) start.value = '';
+      if (end) end.value = '';
+      if (minSelect) minSelect.value = 0;
+      if (maxSelect) maxSelect.value = 50;
+      const limit = document.getElementById('link-limit');
+      if (limit) limit.value = 200;
+      loadLinkLogs();
+    }
+
+    async function loadLinkLogs() {
+      const container = document.getElementById('link-log-list');
+      const empty = document.getElementById('link-log-empty');
+      if (!container || !empty) return;
+      const params = new URLSearchParams();
+      const start = document.getElementById('link-start');
+      const end = document.getElementById('link-end');
+      if (start && start.value) params.append('start', start.value);
+      if (end && end.value) params.append('end', end.value);
+      if (minSelect) params.append('min_level', minSelect.value);
+      if (maxSelect) params.append('max_level', maxSelect.value);
+      const limit = document.getElementById('link-limit');
+      if (limit && limit.value) params.append('limit', limit.value);
+      const response = await fetch(`${logsEndpoint}?${params.toString()}`);
+      if (!response.ok) {
+        container.innerHTML = '';
+        empty.style.display = '';
+        empty.textContent = '日志加载失败，请稍后重试。';
+        return;
+      }
+      const data = await response.json();
+      if (!data.length) {
+        container.innerHTML = '';
+        empty.style.display = '';
+        empty.textContent = '暂无日志，可调整筛选后再次查询。';
+        return;
+      }
+      empty.style.display = 'none';
+      const levelMap = Object.fromEntries(levelOptions.map(item => [item.code, item.name]));
+      container.innerHTML = data.map(item => {
+        const code = Number(item.level_code || 20);
+        const badgeClass = `badge level-${code}`;
+        const levelText = levelMap[code] || item.level || 'INFO';
+        let owner = '';
+        if (linkSummary.type === 'crawler') {
+          const localId = item.crawler_local_id ?? item.crawler_id;
+          owner = item.crawler_name || `爬虫 #${localId}`;
+        } else {
+          const localId = item.api_key_local_id ?? item.api_key_id ?? '';
+          const suffix = localId ? ` #${localId}` : '';
+          owner = `${linkSummary.name || 'API Key'}${suffix}`;
+        }
+        const ip = item.source_ip ? `<span class="hint">IP: ${item.source_ip}</span>` : '';
+        return `<div class="log-item">
+          <div class="log-head">
+            <span>${new Date(item.ts).toLocaleString()}</span>
+            <div class="table-actions" style="gap:8px;">
+              <span class="badge ${badgeClass}">${levelText}</span>
+              <span class="hint">${owner}</span>
+              ${ip}
+            </div>
+          </div>
+          <div>${item.message}</div>
+        </div>`;
+      }).join('');
+    }
+
+    window.resetLinkFilters = resetLinkFilters;
+    window.loadLinkLogs = loadLinkLogs;
+    loadLinkLogs();
+  </script>
+  {% endif %}
+{% endblock %}

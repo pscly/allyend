@@ -113,6 +113,7 @@ class LogCreate(BaseModel):
 
 class CrawlerOut(BaseModel):
     id: int
+    local_id: Optional[int] = None
     name: str
     created_at: datetime
     last_heartbeat: Optional[datetime] = None

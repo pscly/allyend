@@ -209,20 +209,27 @@
 
   async function loadCrawlers() {
     const data = await fetchJSON('/pa/api/me');
-    crawlersSelect.innerHTML = data.map(crawler => `<option value="${crawler.id}" selected>[#${crawler.local_id}] ${crawler.name}</option>`).join('');
+    crawlersSelect.innerHTML = data.map(crawler => {
+      const localId = crawler.local_id ?? crawler.id;
+      const displayName = crawler.name || '未命名爬虫';
+      return `<option value="${crawler.id}" selected>[#${localId}] ${displayName}</option>`;
+    }).join('');
     const tbody = document.querySelector('#crawlers-table tbody');
     tbody.innerHTML = data.map(crawler => {
       const hb = crawler.last_heartbeat ? new Date(crawler.last_heartbeat).toLocaleString() : '-';
       const slug = crawler.public_slug ? `<code>${crawler.public_slug}</code>` : '-';
       const ip = crawler.last_source_ip || '-';
+      const localId = crawler.local_id ?? crawler.id;
+      const displayName = crawler.name || '未命名爬虫';
+      const safeName = displayName.replace(/'/g, "");
       return `<tr>
-        <td title="全局 ID: ${crawler.id}">${crawler.local_id}</td>
-        <td>${crawler.name}</td>
+        <td title="全局 ID: ${crawler.id}">${localId}</td>
+        <td>${displayName}</td>
         <td>${hb}</td>
         <td>${ip}</td>
         <td>${crawler.is_public ? '是' : '否'}</td>
         <td>${slug}</td>
-        <td><button class="text" onclick="showDetail(${crawler.id}, '${crawler.name.replace(/'/g, "")}')">详情</button></td>
+        <td><button class="text" onclick="showDetail(${crawler.id}, '${safeName}')">详情</button></td>
       </tr>`;
     }).join('');
   }

@@ -10,16 +10,21 @@ from datetime import date, datetime, time
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from ..constants import (
     LOG_LEVEL_CODE_TO_NAME,
     LOG_LEVEL_NAME_TO_CODE,
+    LOG_LEVEL_OPTIONS,
     MIN_QUICK_LINK_LENGTH,
     ROLE_ADMIN,
     ROLE_SUPERADMIN,
+    THEME_PRESETS,
 )
+from ..config import settings
 from ..dependencies import get_current_user, get_db
 from ..models import (
     APIKey,
@@ -45,6 +50,9 @@ from ..utils.time_utils import now
 
 api_router = APIRouter(prefix="/pa/api", tags=["pa-crawlers"])
 public_router = APIRouter(prefix="/pa", tags=["pa-public"])
+
+templates = Jinja2Templates(directory="app/templates")
+templates.env.globals.update(site_icp=settings.SITE_ICP, theme_presets=THEME_PRESETS, log_levels=LOG_LEVEL_OPTIONS, site_name=settings.SITE_NAME)
 
 LEVEL_CODES = sorted(LOG_LEVEL_CODE_TO_NAME.keys())
 LEVEL_ALIASES = {"WARN": "WARNING", "ERR": "ERROR", "FATAL": "CRITICAL"}
@@ -519,8 +527,8 @@ def _serialise_logs(logs: List[LogEntry]) -> List[LogEntry]:
 def _resolve_link(db: Session, slug: str) -> CrawlerAccessLink:
     link = (
         db.query(CrawlerAccessLink)
-        .options(joinedload(CrawlerAccessLink.crawler))
-        .options(joinedload(CrawlerAccessLink.api_key))
+        .options(joinedload(CrawlerAccessLink.crawler).joinedload(Crawler.user))
+        .options(joinedload(CrawlerAccessLink.api_key).joinedload(APIKey.user))
         .filter(CrawlerAccessLink.slug == slug, CrawlerAccessLink.is_active == True)
         .first()
     )
@@ -529,34 +537,71 @@ def _resolve_link(db: Session, slug: str) -> CrawlerAccessLink:
     return link
 
 
-@public_router.get("/{slug}")
-def public_crawler_summary(slug: str, db: Session = Depends(get_db)):
-    link = _resolve_link(db, slug)
+def _build_link_summary(link: CrawlerAccessLink, slug: str) -> dict[str, object]:
     if link.target_type == "crawler" and link.crawler:
         crawler = link.crawler
+        owner = getattr(crawler, "user", None)
+        owner_name = None
+        if owner:
+            owner_name = owner.display_name or owner.username
         return {
             "type": "crawler",
             "slug": slug,
             "crawler_id": crawler.id,
+            "local_id": crawler.local_id,
             "name": crawler.name,
             "last_heartbeat": crawler.last_heartbeat,
             "last_source_ip": crawler.last_source_ip,
             "is_public": crawler.is_public,
+            "owner_id": crawler.user_id,
+            "owner_name": owner_name,
+            "link_description": link.description,
+            "link_created_at": link.created_at,
+            "allow_logs": link.allow_logs,
         }
     if link.target_type == "api_key" and link.api_key:
         api_key = link.api_key
+        owner = getattr(api_key, "user", None)
+        owner_name = None
+        if owner:
+            owner_name = owner.display_name or owner.username
         return {
             "type": "api_key",
             "slug": slug,
             "api_key_id": api_key.id,
+            "local_id": api_key.local_id,
             "name": api_key.name,
             "last_used_at": api_key.last_used_at,
             "last_used_ip": api_key.last_used_ip,
+            "owner_id": api_key.user_id,
+            "owner_name": owner_name,
+            "link_description": link.description,
+            "link_created_at": link.created_at,
+            "allow_logs": link.allow_logs,
         }
     raise HTTPException(status_code=400, detail="链接目标不存在")
 
 
-@public_router.get("/{slug}/logs", response_model=list[LogOut])
+@public_router.get("/{slug}", response_class=HTMLResponse)
+def public_crawler_page(request: Request, slug: str, db: Session = Depends(get_db)):
+    link = _resolve_link(db, slug)
+    summary = _build_link_summary(link, slug)
+    context = {
+        "request": request,
+        "slug": slug,
+        "link_summary": summary,
+        "logs_endpoint": f"/pa/{slug}/api/logs",
+    }
+    return templates.TemplateResponse("public_link.html", context)
+
+
+@public_router.get("/{slug}/api")
+def public_crawler_summary_api(slug: str, db: Session = Depends(get_db)):
+    link = _resolve_link(db, slug)
+    return _build_link_summary(link, slug)
+
+
+@public_router.get("/{slug}/api/logs", response_model=list[LogOut])
 def public_logs(
     slug: str,
     start: Optional[date] = None,
