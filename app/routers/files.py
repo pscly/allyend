@@ -60,12 +60,15 @@ def files_list(request: Request, current_user: Optional[User] = Depends(get_opti
             owner_name = entry.uploaded_by_user.display_name or entry.uploaded_by_user.username
         elif entry.uploaded_by_token:
             owner_name = entry.uploaded_by_token.name or f"令牌 {entry.uploaded_by_token.id}"
+        download_path = f"/files/{download_name}"
+        if download_name.startswith(TOKEN_PREFIX):
+            download_path = f"{download_path}?download=1"
         table.append({
             "name": entry.original_name,
             "size": entry.size_bytes,
             "created": entry.created_at,
             "owner": owner_name,
-            "download": f"/files/{download_name}",
+            "download": download_path,
         })
     return templates.TemplateResponse(
         "files_list.html",
@@ -473,7 +476,7 @@ def update_my_file(
     return _serialize_files(db, [file])[0]
 
 
-@router.post("/files/api/tokens", response_model=FileTokenOut)
+@router.post("/files/tokens", response_model=FileTokenOut)
 def create_file_token(
     payload: FileTokenCreate,
     request: Request,
@@ -496,7 +499,7 @@ def create_file_token(
     return token
 
 
-@router.get("/files/api/tokens", response_model=list[FileTokenOut])
+@router.get("/files/tokens", response_model=list[FileTokenOut])
 def list_file_tokens(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -510,7 +513,7 @@ def list_file_tokens(
     return tokens
 
 
-@router.patch("/files/api/tokens/{token_id}", response_model=FileTokenOut)
+@router.patch("/files/tokens/{token_id}", response_model=FileTokenOut)
 def update_file_token(
     token_id: int,
     is_active: Optional[bool] = Form(default=None),
@@ -595,11 +598,11 @@ def list_access_logs(
         ]
 
 
-@router.post("/files/api/tokens/{token_value}/up", response_model=FileUploadResponse)
+@router.post("/files/{token_value}/up", response_model=FileUploadResponse)
 def token_upload(
     token_value: str,
     request: Request,
-    upload: UploadFile = File(...),
+    upload: UploadFile = File(..., alias="file"),
     file_name: Optional[str] = Form(default=None),
     visibility: str = Form(default="private"),
     description: Optional[str] = Form(default=None),
@@ -647,45 +650,14 @@ def token_upload(
     )
 
 
-@router.get("/files/api/tokens/{token_value}", response_model=list[FileEntryOut])
-def token_list(
-    token_value: str,
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    token_value = token_value.strip()
-    if not token_value.startswith(TOKEN_PREFIX):
-        raise HTTPException(status_code=400, detail='令牌格式不正确，需以 up- 开头')
-    token = (
-        db.query(FileAPIToken)
-        .filter(FileAPIToken.token == token_value, FileAPIToken.is_active == True)
-        .first()
-    )
-    if not token:
-        raise HTTPException(status_code=403, detail="令牌无效或已禁用")
-    _check_token_ip(token, request)
-    token.usage_count += 1
-    token.last_used_at = now()
-    files = (
-        db.query(FileEntry)
-        .filter(FileEntry.owner_id == token.user_id)
-        .order_by(FileEntry.created_at.desc())
-        .all()
-    )
-    db.commit()
-    _log_action(db, "list", None, request, user=None, token=token)
-    return _serialize_files(db, files)
 
 
 
-
-
-@router.get("/files/{filename}")
-def download_by_filename(
+def _download_file_by_alias(
     filename: str,
     request: Request,
-    db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session,
+    current_user: Optional[User],
 ):
     if not filename or "/" in filename or "\\" in filename or ".." in filename:
         raise HTTPException(status_code=404, detail="文件不存在")
@@ -715,3 +687,36 @@ def download_by_filename(
         media_type=entry.content_type or "application/octet-stream",
         filename=entry.original_name,
     )
+
+
+@router.get("/files/{identifier}")
+def files_entry(
+    identifier: str,
+    request: Request,
+    download: bool = Query(default=False, description="为 true 时强制按文件下载"),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    identifier = identifier.strip()
+    if not download and identifier.startswith(TOKEN_PREFIX):
+        token = (
+            db.query(FileAPIToken)
+            .filter(FileAPIToken.token == identifier, FileAPIToken.is_active == True)
+            .first()
+        )
+        if token:
+            _check_token_ip(token, request)
+            token.usage_count += 1
+            token.last_used_at = now()
+            files = (
+                db.query(FileEntry)
+                .filter(FileEntry.owner_id == token.user_id)
+                .order_by(FileEntry.created_at.desc())
+                .all()
+            )
+            db.commit()
+            _log_action(db, "list", None, request, user=None, token=token)
+            return _serialize_files(db, files)
+        raise HTTPException(status_code=403, detail="令牌无效或已禁用")
+
+    return _download_file_by_alias(identifier, request, db, current_user)

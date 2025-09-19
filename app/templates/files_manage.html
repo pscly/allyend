@@ -104,7 +104,7 @@
           <tbody></tbody>
         </table>
       </div>
-      <p class="hint">上传：<code>POST /files/api/tokens/&lt;token&gt;/up</code>，列出：<code>GET /files/api/tokens/&lt;token&gt;</code></p>
+      <p class="hint">上传：<code>POST /files/&lt;token&gt;/up</code>（FormData 至少包含 <code>file</code> 字段），列出：<code>GET /files/&lt;token&gt;</code></p>
     </section>
   </div>
 
@@ -409,7 +409,7 @@
 
     const loadTokens = async () => {
       try {
-        const data = await fetchJSON('/files/api/tokens');
+        const data = await fetchJSON('/files/tokens');
         const records = Array.isArray(data) ? data : [];
         const tbody = document.querySelector('#token-table tbody');
         if (!tbody) return;
@@ -436,7 +436,7 @@
             const formData = new FormData();
             formData.append('is_active', btn.dataset.active === '0');
             try {
-              await fetchJSON(`/files/api/tokens/${btn.dataset.token}`, { method: 'PATCH', body: formData });
+              await fetchJSON(`/files/tokens/${btn.dataset.token}`, { method: 'PATCH', body: formData });
               loadTokens();
             } catch (error) {
               showToast(`操作失败：${error.message}`, 'error');
@@ -471,7 +471,7 @@
       payload.allowed_cidrs = cidrs || undefined;
       const hint = document.getElementById('token-hint');
       try {
-        const result = await fetchJSON('/files/api/tokens', {
+        const result = await fetchJSON('/files/tokens', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -498,3 +498,6 @@
 })();
 </script>
 {% endblock %}
+
+
+
