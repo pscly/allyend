@@ -113,23 +113,25 @@
       <div class="card-header">
         <div>
           <h3><i class="bx bx-folder"></i> 我的文件</h3>
-          <p class="card-subtitle">按可见性筛选个人文件，支持直接下载或删除。</p>
+          <p class="card-subtitle">按可见性筛选个人文件，支持快速切换公开范围或禁用下载。</p>
         </div>
         <div class="table-actions">
           <select id="file-scope">
             <option value="private">仅自己</option>
             <option value="group">分组内</option>
             <option value="public">公开</option>
+            <option value="disabled">已禁用</option>
           </select>
           <button type="button" id="refresh-files" class="text"><i class="bx bx-refresh"></i><span>刷新</span></button>
         </div>
       </div>
       <div class="table-scroll">
         <table class="data-table" id="my-files-table">
-          <thead><tr><th>名称</th><th>可见性</th><th>大小</th><th>上传时间</th><th>操作</th></tr></thead>
+          <thead><tr><th>名称</th><th>可见性 / 状态</th><th>大小</th><th>上传时间</th><th>操作</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
+      <p class="hint">下拉框可即时调整可见性，选择“禁用下载”可阻止他人访问但本人仍可下载。</p>
     </section>
 
     {{ public_files_card() }}
@@ -152,7 +154,8 @@
 <script>
 (() => {
   const userPresent = {{ 'true' if user else 'false' }};
-  const visibilityText = { private: '仅自己', group: '分组内', public: '公开' };
+  const visibilityText = { private: '仅自己', group: '分组内', public: '公开', disabled: '禁用下载' };
+  const visibilityOptions = ['private', 'group', 'public', 'disabled'];
 
   const escapeHTML = (value) => {
     if (value === null || value === undefined) return '';
@@ -165,6 +168,56 @@
     })[match]);
   };
 
+  const toastIcons = {
+    success: 'bx-check-circle',
+    error: 'bx-x-circle',
+    info: 'bx-info-circle',
+  };
+
+  const ensureToastContainer = () => {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'toast-container';
+      container.className = 'toast-container';
+      document.body.appendChild(container);
+    }
+    return container;
+  };
+
+  const showToast = (message, type = 'info', options = {}) => {
+    if (!message) return;
+    const { duration = 3200 } = options;
+    const variant = ['success', 'error', 'info'].includes(type) ? type : 'info';
+    const container = ensureToastContainer();
+    const toast = document.createElement('div');
+    toast.className = `toast toast--${variant}`;
+    toast.innerHTML = `
+      <i class="bx ${toastIcons[variant] || toastIcons.info}"></i>
+      <span class="toast__message">${escapeHTML(message)}</span>
+    `;
+    container.appendChild(toast);
+
+    requestAnimationFrame(() => {
+      toast.classList.add('is-visible');
+    });
+
+    const removeToast = () => {
+      toast.classList.add('is-leaving');
+      toast.addEventListener('transitionend', () => {
+        toast.remove();
+        if (!container.childElementCount) {
+          container.remove();
+        }
+      }, { once: true });
+    };
+
+    const timer = setTimeout(removeToast, Math.max(1800, duration));
+    toast.addEventListener('click', () => {
+      clearTimeout(timer);
+      removeToast();
+    }, { once: true });
+  };
   const formatSize = (bytes) => {
     if (bytes === null || bytes === undefined) return '-';
     if (bytes < 1024) return `${bytes} B`;
@@ -247,14 +300,17 @@
         await fetchJSON('/files/me/up', { method: 'POST', body: formData });
         uploadHint.textContent = '上传成功';
         uploadHint.style.color = 'var(--color-primary)';
+        showToast('上传成功，列表已刷新。', 'success');
         uploadForm.reset();
         loadMyFiles();
         loadPublicFiles();
       } catch (error) {
         uploadHint.textContent = error.message;
         uploadHint.style.color = '#b91c1c';
+        showToast(`上传失败：${error.message}`, 'error');
       }
     });
+
 
     const loadMyFiles = async () => {
       const scope = document.getElementById('file-scope').value;
@@ -269,25 +325,79 @@
         }
         tbody.innerHTML = records.map(file => {
           const link = file.download_url || `/files/${file.id}/download`;
-          const badgeClass = `badge badge--${file.visibility}`;
           const visibilityLabel = visibilityText[file.visibility] || file.visibility;
+          const badgeClass = `badge badge--${file.visibility}`;
+          const options = visibilityOptions.map(option => {
+            const selected = option === file.visibility ? ' selected' : '';
+            return `<option value="${option}"${selected}>${visibilityText[option]}</option>`;
+          }).join('');
+          const downloadLabel = file.visibility === 'disabled' ? '仅本人可下载' : '下载';
+          const downloadTitle = file.visibility === 'disabled' ? '文件已禁用对外下载' : '打开新标签下载';
           return `<tr>
             <td>${escapeHTML(file.original_name)}</td>
-            <td><span class="${badgeClass}">${visibilityLabel}</span></td>
+            <td>
+              <div class="visibility-control">
+                <span class="${badgeClass}">${visibilityLabel}</span>
+                <select class="visibility-select" data-file-visibility="${file.id}" data-current-visibility="${file.visibility}">
+                  ${options}
+                </select>
+              </div>
+            </td>
             <td>${formatSize(file.size_bytes)}</td>
             <td>${formatDateTime(file.created_at)}</td>
-            <td><a href="${link}" target="_blank">下载</a> <button class="text" data-file="${file.id}"><i class="bx bx-trash"></i>删除</button></td>
+            <td class="file-actions">
+              <a href="${link}" target="_blank" title="${downloadTitle}">${downloadLabel}</a>
+              <button class="text" data-file="${file.id}"><i class="bx bx-trash"></i>删除</button>
+            </td>
           </tr>`;
         }).join('');
+        tbody.querySelectorAll('select[data-file-visibility]').forEach(select => {
+          select.addEventListener('change', async () => {
+            const fileId = select.dataset.fileVisibility;
+            const previous = select.dataset.currentVisibility;
+            const next = select.value;
+            if (previous === next) return;
+            select.disabled = true;
+            try {
+              await fetchJSON(`/files/me/${fileId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ visibility: next }),
+              });
+              select.dataset.currentVisibility = next;
+              const row = select.closest('tr');
+              const badge = row ? row.querySelector('.visibility-control .badge') : null;
+              if (badge) {
+                badge.className = `badge badge--${next}`;
+                badge.textContent = visibilityText[next] || next;
+              }
+              const downloadLink = row ? row.querySelector('.file-actions a') : null;
+              if (downloadLink) {
+                downloadLink.textContent = next === 'disabled' ? '仅本人可下载' : '下载';
+                downloadLink.title = next === 'disabled' ? '文件已禁用对外下载' : '打开新标签下载';
+              }
+              showToast('文件可见性已更新', 'success');
+              if (previous === 'public' || next === 'public') {
+                loadPublicFiles();
+              }
+            } catch (error) {
+              select.value = previous;
+              showToast(`更新失败：${error.message}`, 'error');
+            } finally {
+              select.disabled = false;
+            }
+          });
+        });
         tbody.querySelectorAll('button[data-file]').forEach(btn => {
           btn.addEventListener('click', async () => {
             if (!confirm('确认删除该文件？')) return;
             try {
               await fetchJSON(`/files/me/${btn.dataset.file}`, { method: 'DELETE' });
+              showToast('文件已删除', 'success');
               loadMyFiles();
               loadPublicFiles();
             } catch (error) {
-              alert(error.message);
+              showToast(`删除失败：${error.message}`, 'error');
             }
           });
         });
@@ -295,6 +405,7 @@
         console.error(error);
       }
     };
+
 
     const loadTokens = async () => {
       try {
@@ -328,7 +439,7 @@
               await fetchJSON(`/files/api/tokens/${btn.dataset.token}`, { method: 'PATCH', body: formData });
               loadTokens();
             } catch (error) {
-              alert(error.message);
+              showToast(`操作失败：${error.message}`, 'error');
             }
           });
         });
@@ -368,11 +479,13 @@
         const tokenValue = result && result.token ? result.token : '';
         hint.textContent = tokenValue ? `令牌创建成功：${tokenValue}` : '令牌创建成功';
         hint.style.color = 'var(--color-primary)';
+        showToast(tokenValue ? `令牌创建成功：${tokenValue}` : '令牌创建成功', 'success');
         tokenForm.reset();
         loadTokens();
       } catch (error) {
         hint.textContent = error.message;
         hint.style.color = '#b91c1c';
+        showToast(`令牌创建失败：${error.message}`, 'error');
       }
     });
 

@@ -295,6 +295,47 @@ body.theme-dark .card--surface {
   background: rgba(16, 185, 129, 0.18);
   color: #047857;
 }
+
+.badge--disabled {
+  background: rgba(107, 114, 128, 0.18);
+  color: #374151;
+}
+
+.visibility-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.visibility-select {
+  min-width: 120px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.visibility-select:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.file-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.file-actions a {
+  color: var(--color-primary);
+}
+
+.file-actions .text {
+  padding: 0;
+}
+
 .card {
   background: var(--color-surface);
   border-radius: var(--radius-md);
@@ -940,5 +981,81 @@ body.theme-dark .auth-input {
   .auth__intro,
   .auth__card {
     padding: 24px;
+  }
+}
+
+/* 浮动提示组件 */
+.toast-container {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 1090;
+  pointer-events: none;
+}
+
+.toast {
+  min-width: 240px;
+  max-width: min(320px, calc(100vw - 32px));
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 12px 16px;
+  border-radius: 12px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+  border-left: 4px solid var(--color-primary);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  transform: translateY(-10px);
+  opacity: 0;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  pointer-events: auto;
+}
+
+.toast.is-visible {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.toast.is-leaving {
+  transform: translateY(-10px);
+  opacity: 0;
+}
+
+.toast--success {
+  border-left-color: var(--color-primary);
+}
+
+.toast--error {
+  border-left-color: #dc2626;
+}
+
+.toast--info {
+  border-left-color: var(--color-secondary);
+}
+
+.toast i {
+  font-size: 20px;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.toast__message {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .toast-container {
+    top: 16px;
+    right: 16px;
+    left: 16px;
+  }
+  .toast {
+    width: 100%;
+    max-width: none;
   }
 }

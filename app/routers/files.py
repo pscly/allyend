@@ -22,6 +22,7 @@ from ..models import FileAPIToken, FileAccessLog, FileEntry, User
 from ..schemas import (
     FileAccessLogOut,
     FileEntryOut,
+    FileEntryUpdate,
     FileTokenCreate,
     FileTokenOut,
     FileUploadResponse,
@@ -35,7 +36,7 @@ templates.env.globals.update(site_icp=settings.SITE_ICP, theme_presets=THEME_PRE
 
 
 STORAGE_ROOT = Path(settings.FILE_STORAGE_DIR or FILE_STORAGE_DIR)
-ALLOWED_VISIBILITY = {"private", "group", "public"}
+ALLOWED_VISIBILITY = {"private", "group", "public", "disabled"}
 TOKEN_PREFIX = "up-"
 TOKEN_SUFFIX_PATTERN = re.compile(r'^[A-Za-z0-9_-]+$')
 TOKEN_GENERATION_ATTEMPTS = 5
@@ -250,6 +251,15 @@ def _log_action(
 
 
 def _ensure_file_permission(file: FileEntry, current_user: Optional[User], token: Optional[FileAPIToken]) -> None:
+    if file.visibility == "disabled":
+        if token:
+            raise HTTPException(status_code=403, detail="文件已被禁用")
+        if current_user:
+            if current_user.role in {ROLE_ADMIN, ROLE_SUPERADMIN}:
+                return
+            if file.owner_id == current_user.id:
+                return
+        raise HTTPException(status_code=403, detail="文件已被禁用")
     if file.visibility == "public":
         return
     if token:
@@ -265,6 +275,7 @@ def _ensure_file_permission(file: FileEntry, current_user: Optional[User], token
     if file.owner_id == current_user.id:
         return
     raise HTTPException(status_code=403, detail="无权访问该文件")
+
 
 
 def _serialize_files(db: Session, files: List[FileEntry]) -> List[FileEntryOut]:
@@ -346,7 +357,7 @@ def download_file(
 @router.post("/files/me/up", response_model=FileUploadResponse)
 def user_upload(
     request: Request,
-    upload: UploadFile = File(...),
+    upload: UploadFile = File(..., alias='file'),
     file_name: Optional[str] = Form(default=None),
     visibility: str = Form(default="private"),
     description: Optional[str] = Form(default=None),
@@ -383,7 +394,7 @@ def user_upload(
 
 @router.get("/files/me", response_model=list[FileEntryOut])
 def list_my_files(
-    scope: Optional[str] = Query(default=None, description="可选：public/private/group/anonymous"),
+    scope: Optional[str] = Query(default=None, description="可选：public/private/group/disabled"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -413,6 +424,53 @@ def delete_my_file(
     db.commit()
     _log_action(db, "delete", file, request, user=current_user, token=None)
     return {"ok": True}
+
+
+@router.patch("/files/me/{file_id}", response_model=FileEntryOut)
+def update_my_file(
+    file_id: int,
+    payload: FileEntryUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    file = db.query(FileEntry).filter(FileEntry.id == file_id).first()
+    if not file:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if file.owner_id != current_user.id and current_user.role not in {ROLE_ADMIN, ROLE_SUPERADMIN}:
+        raise HTTPException(status_code=403, detail="无权修改该文件")
+
+    changes = False
+
+    if payload.visibility is not None:
+        desired_visibility = payload.visibility.strip().lower()
+        if desired_visibility not in ALLOWED_VISIBILITY:
+            raise HTTPException(status_code=400, detail="可见性参数非法")
+        if file.visibility != desired_visibility:
+            if desired_visibility == "group":
+                target_group = file.owner.group if file.owner and file.owner.group else current_user.group
+                if not target_group:
+                    raise HTTPException(status_code=400, detail="文件所属用户未加入任何分组，无法设置分组可见")
+                file.owner_group = target_group
+            else:
+                file.owner_group = None
+            file.visibility = desired_visibility
+            changes = True
+
+    if payload.description is not None:
+        new_desc = payload.description.strip()
+        normalized_desc = new_desc if new_desc else None
+        if file.description != normalized_desc:
+            file.description = normalized_desc
+            changes = True
+
+    if not changes:
+        return _serialize_files(db, [file])[0]
+
+    db.commit()
+    db.refresh(file)
+    _log_action(db, "update", file, request, user=current_user, token=None, status_text="update")
+    return _serialize_files(db, [file])[0]
 
 
 @router.post("/files/api/tokens", response_model=FileTokenOut)
