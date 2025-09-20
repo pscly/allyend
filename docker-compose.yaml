@@ -1,0 +1,39 @@
+services:
+  backend:
+    container_name: allyend-backend
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    image: allyend/backend:latest
+    env_file:
+      - ./.env
+    environment:
+      - PORT=${PORT:-9093}
+    volumes:
+      - ${DOCKER_DATA_DIR:-./data}:/app/data # 数据库与上传文件目录
+      - ${DOCKER_LOG_DIR:-./logs}:/app/logs  # 应用日志目录
+    ports:
+      - "${DOCKER_BACKEND_PORT:-9093}:${PORT:-9093}" # 左侧为宿主机端口
+    restart: unless-stopped
+
+  frontend:
+    container_name: allyend-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:9093}
+        NEXT_PUBLIC_APP_BASE_URL: ${NEXT_PUBLIC_APP_BASE_URL:-http://localhost:3000}
+    image: allyend/frontend:latest
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:9093}
+      NEXT_PUBLIC_APP_BASE_URL: ${NEXT_PUBLIC_APP_BASE_URL:-http://localhost:3000}
+    ports:
+      - "${DOCKER_FRONTEND_PORT:-3000}:3000" # 左侧为宿主机端口
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+networks:
+  default:
+    name: allyend-network
