@@ -1,35 +1,14 @@
 import Link from "next/link";
 import { ArrowRight, ShieldCheck, Cloud, Network } from "lucide-react";
+
+import { LandingHeader, LandingAuthButton } from "@/components/layout/landing-header";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export default function HomePage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <header className="border-b border-border bg-card/70 backdrop-blur">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4">
-          <Link href="/" className="font-semibold tracking-wide text-primary">
-            AllYend
-          </Link>
-          <nav className="flex items-center gap-4 text-sm text-muted-foreground">
-            <Link href="/dashboard" className="hover:text-foreground">
-              控制台
-            </Link>
-            <Link href="/public" className="hover:text-foreground">
-              公开空间
-            </Link>
-            <Link href="/docs" className="hover:text-foreground">
-              文档
-            </Link>
-            <Link
-              href="/login"
-              className={cn(buttonVariants({ variant: "default" }), "h-9 px-4 text-sm")}
-            >
-              立即登录
-            </Link>
-          </nav>
-        </div>
-      </header>
+      <LandingHeader />
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-16">
         <section className="grid gap-12 lg:grid-cols-[3fr_2fr] lg:items-center">
@@ -44,13 +23,7 @@ export default function HomePage() {
               AllYend 提供爬虫调度、文件中转、令牌审核、访问审计等核心能力，帮助数据团队快速落地前后端分离方案，同时兼顾安全、合规与可观测性。
             </p>
             <div className="flex flex-wrap gap-4">
-              <Link
-                href="/login"
-                className={cn(buttonVariants({ size: "lg" }), "gap-2")}
-              >
-                进入控制台
-                <ArrowRight className="h-4 w-4" />
-              </Link>
+              <LandingAuthButton size="lg" className="gap-2" suffix={<ArrowRight className="h-4 w-4" />} />
               <Link
                 href="/docs"
                 className={cn(buttonVariants({ variant: "outline", size: "lg" }))}
