@@ -242,7 +242,7 @@ docker compose logs -f frontend
 | `SECRET_KEY` | JWT 签名密钥 | `please_change_me_to_a_random_string` | 生产环境务必替换。 |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Token 过期时间 | `120` | 单位分钟。 |
 | `DATABASE_URL` | SQLAlchemy 数据源 | `sqlite:///./data/app.db` | 可切换 MySQL/PostgreSQL。 |
-| `FRONTEND_ORIGINS` | 允许的 CORS 来源 | `http://localhost:3000` | 支持逗号分隔或 JSON 数组。 |
+| `FRONTEND_ORIGINS` | 允许的 CORS 来源 | `["http://localhost:3000"]` | 支持逗号分隔或 JSON 数组。 |
 | `ROOT_ADMIN_USERNAME` / `ROOT_ADMIN_PASSWORD` | 首个超级管理员凭据 | `allroot` / `please_set_a_strong_password` | 启动时自动创建。 |
 | `ALLOW_DIRECT_SIGNUP` | 是否允许自由注册 | `true` | 设为 `false` 时需邀请码。 |
 | `FILE_STORAGE_DIR` | 文件物理存储路径 | `data/files` | 需具备读写权限。 |
@@ -300,6 +300,32 @@ docker compose logs -f frontend
 - `/files/*`：文件上传、下载、令牌操作与日志。
 - `/admin/api/*`：用户与分组管理、站点级配置。
 - `/dashboard/*`：仪表盘数据源。
+
+### 数据库迁移流程（Alembic）
+- `alembic.ini` 位于项目根目录，迁移脚本存放在 `migrations/versions/`，可通过 Git 跟踪。
+- 后端启动会调用 `app.database.ensure_database_schema()`：若旧库缺失版本表会自动 `stamp head`，全新环境会执行 `upgrade head`。
+- 所有命令默认读取 `.env` 中的 `DATABASE_URL`，也可以通过临时设置环境变量覆盖，便于切换到测试库。
+
+#### 初始化 / 兼容旧版本
+1. **新环境**：直接运行 `uv run alembic upgrade head` 或启动后端即可创建全部表结构。
+2. **旧环境迁移**：升级前请备份数据库，首次启动会自动 `stamp head`；如需手动处理，可执行 `uv run alembic stamp head` 后再运行后续迁移。
+
+#### 常用命令（uv 执行）
+```powershell
+uv run alembic revision --autogenerate -m "描述本次变更"
+uv run alembic upgrade head
+uv run alembic downgrade -1
+uv run alembic history --verbose
+uv run alembic current
+```
+
+#### 开发建议
+- 自动生成的脚本会放在 `migrations/versions/*.py`，提交前务必 review 并补充必要的数据迁移或默认值。
+- SQLite 环境默认启用 `render_as_batch`，支持列新增/修改；切换到 MySQL/PostgreSQL 无需额外配置。
+- 推荐使用临时库验证迁移：`$env:DATABASE_URL='sqlite:///./data/tmp.db'; uv run alembic upgrade head`，验证后删除临时 DB。
+- Docker 镜像的启动命令会先执行 `alembic upgrade head`，确保容器自动同步结构。
+- 需要在代码中主动触发迁移时，可调用 `ensure_database_schema()`，例如 `uv run python -c "from app.database import ensure_database_schema; ensure_database_schema()"`。
+
 
 ## 8. 前端应用说明
 

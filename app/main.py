@@ -1,7 +1,7 @@
 """
 应用入口：
 - FastAPI 初始化、模板/静态资源、路由挂载
-- 启动时创建数据库表
+- 启动时执行 Alembic 迁移与数据自检
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .database import Base, engine, apply_schema_upgrades, bootstrap_defaults
+from .database import ensure_database_schema, apply_schema_upgrades, bootstrap_defaults
 from .routers import auth as auth_router
 from .routers import crawlers as crawlers_router
 from .routers import dashboard as dashboard_router
@@ -64,8 +64,8 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 @app.on_event("startup")
 def on_startup():
-    # 创建表（开发环境方便使用；生产建议迁移工具）
-    Base.metadata.create_all(bind=engine)
+    # 启动时应用迁移并校验数据结构
+    ensure_database_schema()
     apply_schema_upgrades()
     bootstrap_defaults()
 
@@ -82,6 +82,3 @@ app.include_router(dashboard_router.router)
 # 便于 uv run 直接引用
 def get_app():
     return app
-
-
-

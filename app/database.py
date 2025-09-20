@@ -11,6 +11,8 @@ from typing import Optional
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
+from alembic import command
+from alembic.config import Config
 
 from .config import settings
 from .constants import (
@@ -45,6 +47,29 @@ engine = create_engine(
     connect_args={"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {},
 )
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+
+def _build_alembic_config() -> Config:
+    """构建 Alembic 配置指向当前项目。"""
+    project_root = Path(__file__).resolve().parent.parent
+    config = Config(str(project_root / "alembic.ini"))
+    config.set_main_option("script_location", str(project_root / "migrations"))
+    config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+    return config
+
+
+def ensure_database_schema(target: str = "head") -> None:
+    """确保数据库迁移已经应用，兼容旧版本无版本表的场景。"""
+    inspector = inspect(engine)
+    has_version_table = inspector.has_table("alembic_version")
+    alembic_config = _build_alembic_config()
+
+    if not has_version_table:
+        existing_tables = [name for name in inspector.get_table_names() if name != "alembic_version"]
+        if existing_tables:
+            command.stamp(alembic_config, target)
+            return
+    command.upgrade(alembic_config, target)
 
 
 def apply_schema_upgrades() -> None:
@@ -257,6 +282,8 @@ __all__ = [
     "Base",
     "engine",
     "SessionLocal",
+    "ensure_database_schema",
     "apply_schema_upgrades",
     "bootstrap_defaults",
 ]
+
