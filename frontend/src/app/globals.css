@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 210 40% 98%;
+  --foreground: 225 35% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 225 35% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 225 35% 12%;
+  --primary: 160 84% 39%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 217 33% 20%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 220 10% 55%;
+  --muted-foreground: 220 8% 35%;
+  --accent: 200 94% 55%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 156 72% 41%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 52%;
+  --warning-foreground: 30 100% 14%;
+  --info: 199 89% 48%;
+  --info-foreground: 210 40% 98%;
+  --border: 215 16% 90%;
+  --input: 215 16% 90%;
+  --ring: 217 33% 20%;
+  --radius-lg: 1rem;
+  --radius-md: 0.75rem;
+  --radius-sm: 0.5rem;
+  --shadow-sm: 0 6px 16px rgb(17 24 39 / 8%);
+  --shadow-md: 0 14px 30px rgb(15 23 42 / 12%);
+}
+
+.dark {
+  --background: 220 40% 7%;
+  --foreground: 0 0% 100%;
+  --card: 222 47% 11%;
+  --card-foreground: 0 0% 100%;
+  --popover: 222 47% 11%;
+  --popover-foreground: 0 0% 100%;
+  --primary: 156 72% 41%;
+  --primary-foreground: 222 47% 11%;
+  --secondary: 220 30% 15%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 220 20% 24%;
+  --muted-foreground: 220 12% 70%;
+  --accent: 199 89% 48%;
+  --accent-foreground: 226 40% 12%;
+  --destructive: 0 62% 45%;
+  --destructive-foreground: 0 0% 98%;
+  --success: 156 72% 41%;
+  --success-foreground: 222 47% 11%;
+  --warning: 38 92% 52%;
+  --warning-foreground: 30 100% 14%;
+  --info: 199 89% 60%;
+  --info-foreground: 210 40% 98%;
+  --border: 220 20% 24%;
+  --input: 220 20% 24%;
+  --ring: 156 72% 41%;
+  --shadow-sm: 0 6px 20px rgb(15 23 42 / 45%);
+  --shadow-md: 0 16px 40px rgb(15 23 42 / 55%);
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* 全局滚动条样式，贴合后台现有视觉 */
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgb(148 163 184 / 45%);
+    border-radius: 9999px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}

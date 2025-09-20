@@ -20,7 +20,7 @@ from ..config import settings
 from ..constants import ROLE_ADMIN, ROLE_SUPERADMIN, ROLE_USER, THEME_PRESETS, LOG_LEVEL_OPTIONS
 from ..dependencies import get_current_user, get_db
 from ..models import APIKey, InviteCode, InviteUsage, SystemSetting, User, UserGroup
-from ..schemas import Token, UserCreate, APIKeyOut, APIKeyUpdate, PublicAPIKeyOut
+from ..schemas import Token, UserCreate, APIKeyOut, APIKeyUpdate, PublicAPIKeyOut, UserProfileOut
 from ..utils.time_utils import now
 
 
@@ -252,6 +252,12 @@ def api_login(payload: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="用户名或密码错误")
     token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return Token(access_token=token)
+
+
+@router.get("/api/users/me", response_model=UserProfileOut)
+def api_current_user(current_user: User = Depends(get_current_user)):
+    """返回当前登录用户的基础资料，供前端初始化"""
+    return current_user
 
 
 @router.get("/api/keys", response_model=list[APIKeyOut])

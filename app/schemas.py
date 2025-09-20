@@ -14,6 +14,26 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class UserProfileOut(BaseModel):
+    id: int
+    username: str
+    display_name: Optional[str] = None
+    email: Optional[str] = None
+    role: str
+    is_active: bool
+    is_root_admin: bool
+    group: Optional[UserGroupOut] = None
+    theme_name: str
+    theme_primary: str
+    theme_secondary: str
+    theme_background: str
+    is_dark_mode: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class UserCreate(BaseModel):
     username: str
     password: str

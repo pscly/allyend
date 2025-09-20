@@ -44,9 +44,15 @@ _configure_logging()
 app = FastAPI(title=settings.SITE_NAME, version="0.2.0")
 
 # CORS（按需开放）
+cors_origins = settings.FRONTEND_ORIGINS or ["http://localhost:3000"]
+if "*" in cors_origins:
+    configured_origins = ["*"]
+else:
+    configured_origins = cors_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=configured_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

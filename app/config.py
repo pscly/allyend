@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,6 +34,21 @@ class Settings(BaseSettings):
 
     FILE_STORAGE_DIR: str = "data/files"
     LOG_DIR: str = "logs"
+
+    FRONTEND_ORIGINS: list[str] = ["http://localhost:3000"]
+
+    @field_validator("FRONTEND_ORIGINS", mode="before")
+    @classmethod
+    def _normalize_frontend_origins(cls, value):
+        """支持逗号分隔或 JSON 数组形式的域名配置"""
+        if value in (None, "", []):
+            return ["http://localhost:3000"]
+        if isinstance(value, str):
+            items = [item.strip() for item in value.split(',') if item.strip()]
+            return items or ["http://localhost:3000"]
+        if isinstance(value, (tuple, set)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return list(value)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

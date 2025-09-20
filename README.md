@@ -1,221 +1,261 @@
-# AllYend
+# AllYend 平台（v0.2.x）
 
-AllYend 是一个集爬虫调度监控、文件中转与访问审计于一体的协作平台，目标是让数据团队用一套后端即可完成“采集→同步→分发”的全流程，并兼顾权限、安全与观测性。
+AllYend 是一套集 **爬虫资产接入、运行监控、文件中转与访问审计** 于一体的团队协作平台。0.2 版本起仓库升级为前后端分离架构：后端沿用 FastAPI 单体服务，前端迁移至 Next.js 14，配套 Python SDK、令牌安全与日志闭环能力。
 
-## 为什么选择 AllYend
+## 核心亮点
+- **前后端分离的全栈方案**：FastAPI + SQLAlchemy 承载业务与数据，Next.js 14 + React 18 负责交互界面，天然适配前后端独立部署。
+- **端到端安全防护**：JWT 登录、邀请码、多角色分组、API Key、公私域文件令牌、IP/CIDR 白名单与访问审计统一入口可管可控。
+- **可观测性内建**：爬虫心跳、运行批次、日志级别、文件访问流水全部入库并写入轮转日志，方便告警追踪与问题复盘。
+- **开发者体验优先**：`uv` 管理 Python 依赖、`pnpm` 管理前端；TanStack Query、Zod、zustand 等现代工具让状态管理与表单校验简单可靠。
 
-- **统一入口**：FastAPI 单体应用承载账户、爬虫、文件三个域，省去拆分多套服务的运维成本。
-- **安全托底**：支持登录态、邀请码、API Key、文件令牌、IP/CIDR 白名单与访问日志，方便界定责任边界。
-- **开发友好**：SQLAlchemy + Pydantic 的数据层易于扩展；Jinja2 模板与原生 JS 静态资源便于二次开发。
-- **自动审计**：系统内置 `file_access_logs`、`crawler_runs` 等流水记录，可快速定位“谁在何时做了什么”。
+## 仓库结构
+| 路径 | 说明 |
+| --- | --- |
+| `app/` | FastAPI 应用（配置、路由、模型、模板、静态资源） |
+| `app/routers/` | 业务分域路由：认证 `auth.py`、爬虫 `crawlers.py`、文件 `files.py`、管理 `admin.py`、仪表盘 `dashboard.py` |
+| `sdk/crawler_client.py` | Python SDK，封装爬虫注册、心跳、日志、运行批次等 API |
+| `frontend/` | Next.js 14 前端工程（pnpm、Tailwind、shadcn/ui、TanStack Query 等） |
+| `test/` | Pytest 用例（认证与文件模块示例） |
+| `.env.example` / `.env` | 后端环境配置模板与实际环境变量 |
+| `frontend/.env.example` | 前端环境变量模板 |
+| `logs/` | 默认日志输出目录（`RotatingFileHandler` 自动轮转） |
+| `data/` | 默认 SQLite 与文件存储目录（被 `.gitignore` 忽略，部署时请挂载持久化卷） |
+| `环境安装.md` | 记录本地环境初始化步骤（Node、pnpm、uv 等） |
 
-## 系统架构
-
+## 系统架构概览
 ```mermaid
-flowchart TB
-    subgraph Client[使用者]
-        browser[浏览器用户]
-        crawler[爬虫/SDK]
-        ci[CI/脚本上传]
-        guest[匿名访问者]
+flowchart LR
+    subgraph Frontend[Next.js 14 控制台]
+        UI[Dashboard / 文件 / 爬虫 / 管理]
+        Store[zustand + TanStack Query]
     end
-
-    subgraph API[FastAPI 应用]
-        authR[/auth · 认证/]
-        crawlerR[/pa/api · 爬虫/]
-        filesR[/files · 文件/]
-        adminR[/admin · 管理/]
-        dashboardR[/dashboard · 仪表盘/]
+    subgraph Backend[FastAPI 服务]
+        AuthR[/api/auth · 认证/]
+        UserR[/api/users · 用户配置/]
+        FileR[/files · 文件令牌/]
+        CrawlerR[/pa/api · 爬虫/]
+        AdminR[/admin/api · 管理/]
+        ThemeR[/api/users/me/theme · 主题/]
     end
-
-    subgraph Service[业务服务层]
-        authSvc[认证服务\nJWT / Session / 邀请]
-        crawlerSvc[爬虫服务\n注册 / 心跳 / 日志]
-        fileSvc[文件服务\n网盘 / 令牌上传]
-        auditSvc[审计服务\n访问日志 / 统计]
-    end
-
     subgraph Storage[持久化]
-        db[(SQLAlchemy ORM\nSQLite / PostgreSQL)]
-        fs[(文件存储\n`data/files`)]
-        logs[(应用日志\n`logs/allyend.log`)]
+        DB[(SQLAlchemy ORM\nSQLite / MySQL / PostgreSQL)]
+        FS[(文件存储\n`data/files`)]
+        Log[(应用日志\n`logs/allyend.log`)]
     end
-
-    browser -->|登录、仪表盘| authR
-    browser -->|页面管理| dashboardR
-    browser -->|后台配置| adminR
-    crawler -->|API Key| crawlerR
-    ci -->|文件令牌| filesR
-    guest -->|公开资源| filesR
-
-    authR --> authSvc --> db
-    crawlerR --> crawlerSvc --> db
-    filesR --> fileSvc --> db
-    adminR --> auditSvc
-    dashboardR --> authSvc
-
-    fileSvc --> fs
-    crawlerSvc --> logs
-    auditSvc --> logs
+    subgraph Clients[调用端]
+        Browser[浏览器用户]
+        Crawler[爬虫/脚本]
+        CI[CI/自动化上传]
+        Guest[公开访客]
+    end
+    Browser --> UI
+    UI -->|fetch + JWT| Backend
+    Crawler -->|API Key| CrawlerR
+    CI -->|文件令牌| FileR
+    Guest -->|公开链接| FileR
+    Backend --> DB
+    FileR --> FS
+    CrawlerR --> Log
+    FileR --> Log
 ```
 
-### 架构解读
+## 运行环境要求
+- Python ≥ 3.10（推荐 3.12），配套 [uv](https://github.com/astral-sh/uv) 管理依赖与虚拟环境。
+- Node.js 22.x（Active LTS）与 pnpm 9.x；Windows 建议 `scoop install nodejs-lts pnpm`，macOS/Linux 可用 `nvm use 22 && corepack enable`。
+- SQLite 默认即可，生产可切换 MySQL/PostgreSQL；文件存储目录需具备读写权限。
 
-- **分层明确**：路由层只负责请求编排；核心逻辑集中在业务服务函数，便于单测与重用；数据落地在 ORM 模型中。
-- **无锁扩展**：文件落地在对象目录 `data/files/objects`，配合令牌可实现无账号上传；未来可替换为 S3/OSS。
-- **观测闭环**：所有令牌上传、下载与爬虫事件都会写入数据库日志表，并同步到本地日志文件，方便交叉排查。
-
-## 快速启动
-
-1. **准备配置**
+## 快速上手
+1. **克隆仓库并准备配置**
    ```bash
-   copy .env.example .env   # Linux/macOS 使用 cp
+   git clone <repo-url>
+   cd codetets
+   copy .env.example .env      # macOS/Linux 改用 cp
+   copy frontend/.env.example frontend/.env
    ```
-   - 调整 `SECRET_KEY`、`ROOT_ADMIN_PASSWORD`、`DATABASE_URL` 与 `FILE_STORAGE_DIR`。
-   - 首次启动会依据 `ROOT_ADMIN_INVITE_CODE` 生成超级管理员账号。
+   按需修改 `.env`（密钥、数据库、端口、邀请策略等）与 `frontend/.env`（后端 API 地址）。
 
-2. **安装依赖**（推荐使用 [uv](https://github.com/astral-sh/uv)）
+2. **安装后端依赖**
    ```bash
    python -m pip install -U uv
    uv venv
    uv sync
    ```
 
-3. **运行开发服务**
+3. **运行后端服务**
    ```bash
-   uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 9093
+   uv run uvicorn app.main:get_app --reload --host 0.0.0.0 --port 9093
    ```
+   首次启动会自动建表、创建默认用户组与超级管理员。日志写入 `logs/allyend.log`。
 
-4. **体验入口**
-   - 浏览器访问 `http://localhost:9093`
-   - 使用 `.env` 中的超级管理员登录，进入 `/admin` 生成邀请码或调整注册策略
-   - `/files` 页面可管理个人文件、生成令牌并查看上传历史
+4. **安装并启动前端**
+   ```bash
+   cd frontend
+   pnpm install
+   pnpm dev --port 3000
+   ```
+   浏览器访问 `http://localhost:3000`，登录入口 `/login`，控制台 `/dashboard`。
 
-> 生产部署建议加上反向代理（Nginx/Caddy）、开启 HTTPS、启用系统服务或容器守护，并定期备份数据库与文件目录。
+5. **首次体验建议**
+   - 使用 `.env` 中的超级管理员账号登录，访问 `/admin` 配置注册模式与邀请码。
+   - 在“令牌管理”页面生成文件令牌，验证上传/下载与审计日志。
+   - 通过 Python SDK 或 REST 客户端调用 `/pa/api/register` 登记爬虫，观察心跳与运行日志。
 
-## 核心目录一览
+## 配置项速览
+### 后端 `.env`
+| 变量 | 说明 | 默认值 |
+| --- | --- | --- |
+| `SITE_NAME` | 站点名称（模板与邮件中展示） | `AllYend` |
+| `SECRET_KEY` | JWT 加密密钥，生产务必改为随机值 | `please_change_me` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | 登录令牌有效期（分钟） | `120` |
+| `DATABASE_URL` | SQLAlchemy 连接串，支持 SQLite/MySQL/PostgreSQL | `sqlite:///./data/app.db` |
+| `ROOT_ADMIN_USERNAME` / `ROOT_ADMIN_PASSWORD` | 首次启动自动创建的超级管理员账号 | `allroot` / `please_set_a_strong_password` |
+| `ROOT_ADMIN_INVITE_CODE` / `DEFAULT_ADMIN_INVITE_CODE` / `DEFAULT_USER_INVITE_CODE` | 预置邀请码，控制注册流转 | `ALLYEND-ROOT` 等 |
+| `ALLOW_DIRECT_SIGNUP` | 是否允许免邀请码注册 | `true` |
+| `FILE_STORAGE_DIR` | 文件存储根目录 | `data/files` |
+| `LOG_DIR` | 日志目录 | `logs` |
+| `FRONTEND_ORIGINS` | 允许跨域访问的前端地址（逗号分隔） | `http://localhost:3000` |
+| `SITE_ICP` | 备案号展示（可留空） | 空 |
 
-| 目录/文件 | 说明 |
-| -------- | ---- |
-| `app/main.py` | FastAPI 应用入口，注册路由、异常处理与日志配置 |
-| `app/config.py` | Pydantic 设置对象，统一加载 `.env` 与默认值 |
-| `app/models.py` | SQLAlchemy ORM 模型定义（用户、令牌、文件、爬虫等） |
-| `app/routers/` | 路由模块（认证 `auth.py`、文件 `files.py`、爬虫 `crawlers.py` 等） |
-| `app/templates/` | Jinja2 模板，包含后台 UI、文件页、公共视图 |
-| `app/utils/` | 通用工具（时间、加密、分页、校验） |
-| `sdk/crawler_client.py` | Python SDK，封装爬虫注册、心跳、日志上报 |
-| `logs/` | 默认日志输出目录（可在 `.env` 中调整） |
+### 前端 `frontend/.env`
+| 变量 | 说明 | 默认值 |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_BASE_URL` | FastAPI 服务对外地址 | `http://localhost:9093` |
+| `NEXT_PUBLIC_APP_BASE_URL` | 前端自身地址，用于拼接跳转链接 | `http://localhost:3000` |
 
-## 文件服务工作流
+## 核心功能模块
+### 认证与权限
+- 表单登录、注册与登出同时提供 SSR 页面与 REST API，支持邀请制开关与邀请码用途统计。
+- 用户归属在 `UserGroup`，可按组开启/关闭爬虫与文件功能；角色涵盖普通用户、管理员、超级管理员。
+- API Key 管理支持命名、描述、启停、公开共享与本地编号，本地编号便于业务系统引用。
+- 主题设定（颜色、暗色模式）通过 `/api/users/me/theme` 接口持久化，前后端共享预设。
 
-1. **生成令牌**（登录用户）
-   - `POST /files/tokens`：可自定义后缀（未加 `up-` 时自动补齐）、名称与 IP/CIDR 白名单。
-   - `GET /files/tokens`：查看当前用户的全部令牌。
-   - `PATCH /files/tokens/{token_id}`：启用/禁用或修改描述、白名单。
+### 爬虫监控与快捷分享
+- `/pa/api/register` 登记爬虫，平台自动分配本地编号与 API Key 关联；`/pa/api/{id}/heartbeat` 上报心跳。
+- 运行批次：`/pa/api/{id}/runs/start`/`finish` 记录状态与来源 IP，配套日志级别（INFO/WARN/ERROR 等）过滤。
+- `/pa/api/links` 创建快捷访问链接，可指向爬虫或 API Key；公开站点 `/pa/{slug}` 与 `/pa/{slug}/api/logs` 支持外部查看。
+- `/pa/api/me` 返回当前用户的爬虫资产，提供 PATCH 更新（名称、公开状态、描述等）。
 
-2. **通过令牌上传**
-   - `POST /files/{token}/up`
-   - 请求体必须是 `multipart/form-data`，至少包含 `file` 字段，支持可选的 `file_name`、`visibility`（`private`/`group`/`public`/`disabled`）与 `description`。
-   - 令牌会验证 `up-` 前缀、启用状态、IP/IP 段限制，并在成功后写入访问日志。
+### 文件中转与访问审计
+- 私有“网盘”接口 `/files/me` 系列提供列表、上传、更新、删除；支持文件名去重别名与多版本访问。
+- 令牌上传 `/files/{token}/up` 与下载 `/files/{identifier}` 覆盖 CI/自动化场景，支持 IP/IP 段白名单与失效开关。
+- 审计 `/files/api/logs` 记录每次上传/下载的发起者、来源 IP、耗时、状态，便于追责。
+- 公共空间 `/files`（Jinja 页面）与前端控制台联动，可快速定位文件访问路径。
 
-3. **令牌侧查询**
-   - `GET /files/{token}` 返回该令牌所属用户下的文件列表（JSON），常用于 CI/脚本同步。
-   - `download=true`：若参数 `?download=1` 出现则强制以文件下载方式处理，解决文件名与令牌相同的边界场景。
+### 管理控制台
+- `/admin/api/users` 管理用户启停、角色、所属分组；防护超级管理员只能由同级调整。
+- `/admin/api/invites` 生成/撤销邀请码，可设置过期时间与最大次数。
+- `/admin/api/settings/registration` 切换注册模式：开放、邀请码、关闭。
+- 管理模板页面提供注册策略概览与常用入口，便于快速运维。
 
-4. **公开文件下载**
-   - 访问 `/files/<别名>` 会根据文件名去重规则取最新一版，并校验可见性与登录状态。
-   - 若别名以 `up-` 开头且你想强制下载，可访问 `/files/<别名>?download=1`。
+### 前端控制台（Next.js 14）
+- 使用 App Router + Server Actions，公共入口页介绍平台能力，受保护路由 `(protected)` 聚合仪表盘、爬虫、文件、管理页面。
+- `@/lib/api` 封装 fetch + 错误处理，TanStack Query 负责缓存与状态刷新，zustand 管理令牌与用户资料。
+- 支持暗色/亮色切换、shadcn/ui 组件库快速构建 UI、Tailwind CSS 统一样式策略。
+- Playwright/Vitest 骨架已就绪，后续可覆盖关键流程（登录→上传→主题修改）。
 
-5. **操作审计**
-   - 每一次上传、下载、令牌查询都会写入 `file_access_logs`，可在 `/files/manage` 或 `/admin` 中查看。
+### Python SDK 快速示例
+```python
+from sdk.crawler_client import CrawlerClient
 
-### 令牌踩坑提示
+client = CrawlerClient(base_url="http://localhost:9093", api_key="<平台生成的 key>")
+spider = client.register_crawler("news-spider")
+run = client.start_run(crawler_id=spider["id"])
+client.log(crawler_id=spider["id"], run_id=run["id"], level="INFO", message="启动完成")
+client.heartbeat(crawler_id=spider["id"])
+# 运行结束后上报状态，可选值 success / failed / warning
+client.finish_run(crawler_id=spider["id"], run_id=run["id"], status="success")
+```
 
-- 令牌统一格式为 `up-自定义后缀`，便于在路由层快速区分。
-- IP 白名单字段支持逗号分隔；CIDR 字段支持 `10.0.0.0/24` 等写法，可混合使用。
-- 兼容历史：原 `/files/api/tokens/**` 路径已经废弃，请更新客户端到新的 `/files/**` 路由。
-
-## API 参考
+## API 快速索引
+> 仅列出核心 REST 接口，更多详情请参考 `app/routers/**` 源码或自建 Swagger 文档。
 
 ### 认证与用户
-
 | 方法 | 路径 | 说明 |
-| ---- | ---- | ---- |
-| `POST` | `/auth/login` | 表单登录，返回会话 Cookie |
-| `POST` | `/auth/logout` | 注销当前会话 |
-| `POST` | `/auth/register` | 根据配置决定是否需要邀请码 |
-| `GET` | `/dashboard` | 登录后主页（Jinja 页面） |
+| --- | --- | --- |
+| `POST` | `/api/auth/register` | JSON 注册（支持邀请码），返回 JWT |
+| `POST` | `/api/auth/login` | JSON 登录，返回 JWT |
+| `GET` | `/api/users/me` | 当前登录用户信息 |
+| `GET` | `/api/keys` | 列出当前用户的 API Key |
+| `POST` | `/api/keys` | 生成新的 API Key |
+| `PATCH` | `/api/keys/{key_id}` | 更新名称、描述、启用状态、公开状态 |
+| `DELETE` | `/api/keys/{key_id}` | 删除 API Key |
+| `GET` | `/api/public/keys` | 查询所有公开的 API Key（无需认证） |
+| `GET/PATCH` | `/api/users/me/theme` | 获取/更新个人主题设定 |
 
-### 文件与令牌
+### 爬虫与公共链接
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/pa/api/register` | 登记爬虫实例（需要 API Key） |
+| `POST` | `/pa/api/{crawler_id}/heartbeat` | 上报心跳时间与来源 IP |
+| `POST` | `/pa/api/{crawler_id}/runs/start` | 创建运行批次 |
+| `POST` | `/pa/api/{crawler_id}/runs/{run_id}/finish` | 结束运行批次并标记状态 |
+| `POST` | `/pa/api/{crawler_id}/logs` | 推送运行日志，自动计算级别 |
+| `GET` | `/pa/api/me` | 查询当前用户所有爬虫 |
+| `PATCH` | `/pa/api/me/{crawler_id}` | 更新名称、公开状态等属性 |
+| `GET` | `/pa/api/me/{crawler_id}/runs` | 获取指定爬虫运行历史 |
+| `GET` | `/pa/api/me/{crawler_id}/logs` | 获取指定爬虫日志列表 |
+| `GET` | `/pa/api/me/logs` | 汇总当前用户所有爬虫日志 |
+| `POST` | `/pa/api/links` | 创建快捷访问链接（爬虫或 API Key） |
+| `GET` | `/pa/{slug}` | 公共详情页面（Jinja 模板） |
+| `GET` | `/pa/{slug}/api` | 公共链接摘要（JSON） |
+| `GET` | `/pa/{slug}/api/logs` | 公共日志查询（支持级别、日期过滤） |
 
-| 方法 | 路径 | 请求体/参数 | 返回 |
-| ---- | ---- | ---- | ---- |
-| `POST` | `/files/me/up` | `multipart/form-data`，字段同令牌上传 | `FileUploadResponse` |
-| `POST` | `/files/{token}/up` | `file`（必填） + 可选字段 | `FileUploadResponse` |
-| `GET` | `/files/{token}` | 可选 `download=1` | JSON 文件列表或文件下载 |
-| `GET` | `/files` | 页面，列出可访问文件 |
-| `POST` | `/files/tokens` | JSON，`token`/`name`/`allowed_ips`/`allowed_cidrs` | `FileTokenOut` |
-| `GET` | `/files/tokens` | — | `list[FileTokenOut]` |
-| `PATCH` | `/files/tokens/{token_id}` | `FormData`（支持布尔和文本字段） | `FileTokenOut` |
-| `GET` | `/files/api/logs` | `limit`（默认 200） | `list[FileAccessLogOut]` |
+### 文件服务
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/files/me` | 当前用户文件列表 |
+| `POST` | `/files/me/up` | 上传文件（多部分表单，字段名 `file`） |
+| `PATCH` | `/files/me/{file_id}` | 编辑文件元数据（名称、可见性、描述等） |
+| `DELETE` | `/files/me/{file_id}` | 删除文件（软删除） |
+| `GET` | `/files/{file_id}/download` | 根据 ID 强制下载文件 |
+| `POST` | `/files/tokens` | 创建文件上传令牌（支持 IP 白名单、描述、启停） |
+| `GET` | `/files/tokens` | 列出当前用户所有令牌 |
+| `PATCH` | `/files/tokens/{token_id}` | 修改令牌状态与约束 |
+| `POST` | `/files/{token_value}/up` | 通过上传令牌上传文件 |
+| `GET` | `/files/{identifier}` | 通过令牌或别名获取文件/列表，`?download=1` 可强制下载 |
+| `GET` | `/files/api/logs` | 查询文件访问审计日志 |
 
-### 爬虫接入（节选）
-
-| 方法 | 路径 | 简述 |
-| ---- | ---- | ---- |
-| `POST` | `/pa/api/register` | 注册爬虫并获取 ID 与 API Key |
-| `POST` | `/pa/api/{crawler_id}/heartbeat` | 上报心跳时间戳 |
-| `POST` | `/pa/api/{crawler_id}/logs` | 推送运行日志 |
-| `GET` | `/pa/api/me` | 查看属于自己的爬虫列表 |
-| `POST` | `/pa/api/links` | 创建匿名访问链接 |
-
-更多细节请结合源码 `app/routers/crawlers.py` 与 SDK 文档。
-
-## 变更记录（重点）
-
-- **2025-09**：
-  - 文件令牌路由全面迁移到 `/files` 前缀：
-    - 上传：`POST /files/{token}/up`
-    - 查询：`GET /files/{token}`
-    - 管理：`POST /files/tokens`、`GET /files/tokens`、`PATCH /files/tokens/{token_id}`
-  - 新增 `download=1` 查询参数以兼容与令牌同名的文件下载。
-  - README 与前端管理页同步更新指引。
-
-## 运维与安全建议
-
-- **账号安全**：
-  - 启用强密码策略，定期更新超级管理员密码。
-  - 对外开放时建议关闭“任何人注册”，仅使用邀请码或手动创建。
-- **文件安全**：
-  - 为重要令牌设置 IP/IP 段限制，必要时定期轮换。
-  - 结合对象存储使用时，可将 `FILE_STORAGE_DIR` 指向挂载目录或使用自定义后端。
-- **日志留存**：
-  - `logs/allyend.log` 建议配合 logrotate 或发送到集中式日志平台。
-  - 数据库中的 `file_access_logs`、`crawler_runs` 可定期归档。
-- **监控扩展**：
-  - 可通过 Uvicorn/Starlette 自带指标或使用 Prometheus 客户端采集接口耗时、请求量。
+### 管理能力
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/admin/api/users` | 管理员列出所有用户 |
+| `PATCH` | `/admin/api/users/{user_id}` | 更新角色、启用状态、分组 |
+| `GET` | `/admin/api/groups` | 列出用户组及功能开关 |
+| `GET` | `/admin/api/invites` | 邀请码列表 |
+| `POST` | `/admin/api/invites` | 创建邀请码（可设过期与次数） |
+| `DELETE` | `/admin/api/invites/{invite_id}` | 删除邀请码 |
+| `GET` | `/admin/api/settings` | 查看注册模式等系统设置 |
+| `PATCH` | `/admin/api/settings/registration` | 切换注册模式（open / invite / closed） |
 
 ## 开发与测试
+- **后端**
+  - 运行单元测试：`uv run pytest`
+  - 推荐使用内存 SQLite（pytest 默认配置），如需覆盖文件上传场景请确保临时目录可写。
+  - 可结合 `LOG_LEVEL=DEBUG` 或 VSCode 调试器观察请求流。
+- **前端**
+  - 语法检查：`pnpm lint`（ESLint + Stylelint）
+  - 类型检查：`pnpm typecheck`
+  - 单元测试：`pnpm test`
+  - 端到端测试：`pnpm test:ui`（Playwright，需先执行 `pnpm playwright install`）
+  - 提交前 Husky + lint-staged 会自动运行必要检查。
 
-1. **代码格式**：项目使用 `ruff`、`black` 配置在 `pyproject.toml` 中，可按需启用。
-2. **单元测试**：
-   ```bash
-   uv run pytest
-   ```
-   - 默认使用内存 SQLite，测试过程中会创建临时文件夹。
-   - 若自定义 `FILE_STORAGE_DIR`，请确保测试有写权限。
-3. **前端开发**：模板在 `app/templates`，样式集中在 `app/static/styles.css`，无需构建流程即可热更新。
-4. **调试技巧**：
-   - 设置 `LOG_LEVEL=DEBUG` 以查看更多请求轨迹。
-   - 使用 `uvicorn --reload` 搭配 `watchgod` 实时刷新。
+## 部署建议
+- 使用 `uv pip compile` 或 `uv export` 固化后端依赖，在部署环境运行 `uv run uvicorn app.main:get_app`（建议加上 `--workers`、`--proxy-headers` 等参数）。
+- 前端执行 `pnpm build` 后通过 `pnpm start` 或容器方式运行，也可选择静态导出 + 边缘网络托管。
+- 推荐通过 Nginx/Caddy 反向代理，将 `/` 指向前端，`/api`、`/pa`、`/files` 等路由代理到 FastAPI；开启 HTTPS 与压缩。
+- 定期备份 `data/` 与 `logs/` 目录，结合 logrotate 或集中日志系统处理 `allyend.log`。
 
-## 常见问题速览
+## 更新重点（2025-09）
+- 新增 Next.js 14 控制台，提供登录、仪表盘、爬虫与文件管理的现代化交互体验。
+- 完善 TanStack Query + zustand 状态管理与 API 封装，支持 Token 持久化与统一错误提示。
+- 扩展爬虫接口：新增批次结束状态、公共快捷链接 API、日志级别归一化与来源 IP 记录。
+- 文件服务补充别名去重、强制下载、令牌启停/IP 限制、访问审计分页等能力。
+- 管理后台开放注册模式切换与分组功能开关，默认引导超级管理员初始化站点。
 
-- **上传 422 错误**：检查是否使用了 `file` 字段。若旧脚本仍传 `upload`，请更新字段名。
-- **令牌 403**：确认令牌启用状态、IP/IP 段限制；同时校验是否仍保留 `up-` 前缀。
-- **下载返回 JSON**：说明路径被识别为令牌列表，可在 URL 追加 `?download=1` 强制走文件分支。
-- **文件名重复**：系统会按上传顺序追加 `-1/-2` 等后缀，可通过 `/files` 页面查看实际访问别名。
+## 相关文档与拓展
+- 前端开发细节参考 `frontend/README.md`。
+- 环境初始化步骤记录在 `环境安装.md`，如需新增依赖请同步更新。
+- SDK 更多用法可查阅 `sdk/crawler_client.py` 内联注释与 docstring。
+- 若计划扩展 API，可结合 FastAPI 的 `openapi.json` 接口生成文档或引入 Swagger UI。
 
----
-
-欢迎通过 Issue、PR 或讨论区贡献想法，让 AllYend 在数据协作场景下更稳定、更好用。
+请按需提交 Issue 或 PR，一起打磨 AllYend，使其在数据采集团队中发挥更大价值。
