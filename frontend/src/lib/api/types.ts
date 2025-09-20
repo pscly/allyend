@@ -162,3 +162,17 @@ export interface AdminUserSummary {
   created_at: string;
   group: UserGroup | null;
 }
+
+export type AdminUserRole = UserProfile["role"];
+
+export interface AdminUserUpdatePayload {
+  role?: AdminUserRole | null;
+  group_id?: number | null;
+  is_active?: boolean;
+}
+
+export type RegistrationMode = "open" | "invite" | "closed";
+
+export interface RegistrationSettings {
+  registration_mode: RegistrationMode;
+}

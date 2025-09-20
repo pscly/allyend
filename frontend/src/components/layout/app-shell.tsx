@@ -50,6 +50,27 @@ function hasAdminCapability(user?: UserProfile | null) {
   return user?.role === "admin" || user?.role === "superadmin";
 }
 
+function normalizePath(path?: string | null) {
+  if (!path || path === "/") {
+    return "/";
+  }
+  return path.replace(/\/+$/, "");
+}
+
+function getMatchScore(currentPath: string, targetHref: string): number {
+  const target = normalizePath(targetHref);
+  if (target === "/") {
+    return currentPath === "/" ? 1 : 0;
+  }
+  if (currentPath === target) {
+    return target.length + 1;
+  }
+  if (currentPath.startsWith(`${target}/`)) {
+    return target.length;
+  }
+  return 0;
+}
+
 /**
  * 应用整体布局，包含顶部导航、主题切换与用户菜单
  */
@@ -67,15 +88,30 @@ export function AppShell({ children, className, user }: AppShellProps) {
     router.replace("/login");
   };
 
+  const currentPath = normalizePath(pathname);
+  const activeHref =
+    items.reduce<{ href: string; score: number } | null>((best, item) => {
+      const score = getMatchScore(currentPath, item.href);
+      if (score === 0) {
+        return best;
+      }
+      if (!best || score > best.score) {
+        return { href: item.href, score };
+      }
+      return best;
+    }, null)?.href;
+
   const desktopNav = items.map((item) => {
-    const active = pathname?.startsWith(item.href);
+    const active = activeHref === item.href;
     return (
       <Link
         key={item.href}
         href={item.href}
         className={cn(
-          "rounded-full px-3 py-1.5 text-sm transition-colors",
-          active ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground",
+          "group relative overflow-hidden rounded-full px-3.5 py-1.5 text-sm font-medium transition-all duration-200",
+          active
+            ? "bg-gradient-to-r from-primary/90 via-primary/80 to-secondary/80 text-primary-foreground shadow-surface"
+            : "text-muted-foreground hover:bg-primary/10 hover:text-foreground",
         )}
       >
         {item.label}
@@ -105,10 +141,10 @@ export function AppShell({ children, className, user }: AppShellProps) {
                       <Link
                         href={item.href}
                         className={cn(
-                          "rounded-lg px-3 py-2 text-base font-medium transition-colors",
-                          pathname?.startsWith(item.href)
-                            ? "bg-primary/15 text-primary"
-                            : "text-muted-foreground hover:text-foreground",
+                          "group relative overflow-hidden rounded-xl px-3.5 py-2.5 text-base font-semibold transition-all duration-200",
+                          activeHref === item.href
+                            ? "bg-gradient-to-r from-primary/90 via-primary/80 to-secondary/80 text-primary-foreground shadow-surface"
+                            : "text-muted-foreground hover:bg-primary/10 hover:text-foreground",
                         )}
                       >
                         {item.label}
@@ -170,3 +206,4 @@ export function AppShell({ children, className, user }: AppShellProps) {
     </div>
   );
 }
+

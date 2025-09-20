@@ -3,66 +3,66 @@
 @tailwind utilities;
 
 :root {
-  --background: 210 40% 98%;
-  --foreground: 225 35% 12%;
+  --background: 223 49% 97%;
+  --foreground: 232 36% 14%;
   --card: 0 0% 100%;
-  --card-foreground: 225 35% 12%;
+  --card-foreground: 232 36% 14%;
   --popover: 0 0% 100%;
-  --popover-foreground: 225 35% 12%;
-  --primary: 160 84% 39%;
+  --popover-foreground: 232 36% 14%;
+  --primary: 267 83% 58%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 217 33% 20%;
+  --secondary: 199 85% 55%;
   --secondary-foreground: 0 0% 100%;
-  --muted: 220 10% 55%;
-  --muted-foreground: 220 8% 35%;
-  --accent: 200 94% 55%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 84% 60%;
+  --muted: 228 18% 74%;
+  --muted-foreground: 231 22% 38%;
+  --accent: 188 86% 64%;
+  --accent-foreground: 192 88% 16%;
+  --destructive: 355 78% 62%;
   --destructive-foreground: 0 0% 100%;
-  --success: 156 72% 41%;
-  --success-foreground: 0 0% 100%;
-  --warning: 38 92% 52%;
-  --warning-foreground: 30 100% 14%;
-  --info: 199 89% 48%;
-  --info-foreground: 210 40% 98%;
-  --border: 215 16% 90%;
-  --input: 215 16% 90%;
-  --ring: 217 33% 20%;
-  --radius-lg: 1rem;
-  --radius-md: 0.75rem;
-  --radius-sm: 0.5rem;
-  --shadow-sm: 0 6px 16px rgb(17 24 39 / 8%);
-  --shadow-md: 0 14px 30px rgb(15 23 42 / 12%);
+  --success: 151 70% 44%;
+  --success-foreground: 0 0% 98%;
+  --warning: 42 96% 56%;
+  --warning-foreground: 32 100% 16%;
+  --info: 215 92% 55%;
+  --info-foreground: 0 0% 100%;
+  --border: 223 32% 86%;
+  --input: 223 32% 86%;
+  --ring: 267 83% 58%;
+  --radius-lg: 1.25rem;
+  --radius-md: 1rem;
+  --radius-sm: 0.75rem;
+  --shadow-sm: 0 18px 40px rgb(79 70 229 / 12%);
+  --shadow-md: 0 32px 64px rgb(30 64 175 / 14%);
 }
 
 .dark {
-  --background: 220 40% 7%;
-  --foreground: 0 0% 100%;
-  --card: 222 47% 11%;
-  --card-foreground: 0 0% 100%;
-  --popover: 222 47% 11%;
-  --popover-foreground: 0 0% 100%;
-  --primary: 156 72% 41%;
-  --primary-foreground: 222 47% 11%;
-  --secondary: 220 30% 15%;
-  --secondary-foreground: 0 0% 100%;
-  --muted: 220 20% 24%;
-  --muted-foreground: 220 12% 70%;
-  --accent: 199 89% 48%;
-  --accent-foreground: 226 40% 12%;
-  --destructive: 0 62% 45%;
+  --background: 233 50% 7%;
+  --foreground: 210 40% 96%;
+  --card: 235 32% 14%;
+  --card-foreground: 210 40% 96%;
+  --popover: 235 32% 14%;
+  --popover-foreground: 210 40% 96%;
+  --primary: 267 92% 70%;
+  --primary-foreground: 233 45% 14%;
+  --secondary: 198 100% 72%;
+  --secondary-foreground: 233 45% 12%;
+  --muted: 235 24% 26%;
+  --muted-foreground: 229 18% 72%;
+  --accent: 191 94% 69%;
+  --accent-foreground: 233 45% 14%;
+  --destructive: 356 74% 62%;
   --destructive-foreground: 0 0% 98%;
-  --success: 156 72% 41%;
-  --success-foreground: 222 47% 11%;
-  --warning: 38 92% 52%;
+  --success: 151 73% 58%;
+  --success-foreground: 233 45% 10%;
+  --warning: 44 96% 64%;
   --warning-foreground: 30 100% 14%;
-  --info: 199 89% 60%;
-  --info-foreground: 210 40% 98%;
-  --border: 220 20% 24%;
-  --input: 220 20% 24%;
-  --ring: 156 72% 41%;
-  --shadow-sm: 0 6px 20px rgb(15 23 42 / 45%);
-  --shadow-md: 0 16px 40px rgb(15 23 42 / 55%);
+  --info: 214 95% 68%;
+  --info-foreground: 233 45% 14%;
+  --border: 235 24% 24%;
+  --input: 235 24% 24%;
+  --ring: 267 92% 70%;
+  --shadow-sm: 0 22px 70px rgb(8 11 29 / 55%);
+  --shadow-md: 0 38px 90px rgb(8 11 29 / 65%);
 }
 
 @layer base {
@@ -74,6 +74,19 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+
+    min-height: 100vh;
+    background-image:
+      radial-gradient(120% 120% at 20% -10%, hsl(var(--primary) / 20%), transparent),
+      radial-gradient(120% 160% at 80% -15%, hsl(var(--accent) / 18%), transparent),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+  }
+
+  ::selection {
+    background-color: hsl(var(--primary) / 35%);
+    color: hsl(var(--primary-foreground));
   }
 }
 
@@ -85,7 +98,7 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: rgb(148 163 184 / 45%);
+    background-color: hsl(var(--muted) / 45%);
     border-radius: 9999px;
   }
 
@@ -93,3 +106,4 @@
     background: transparent;
   }
 }
+
