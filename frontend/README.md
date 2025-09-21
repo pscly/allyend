@@ -49,8 +49,8 @@ pnpm test:ui      # Playwright（后续补充）
 
 | 变量名 | 说明 | 默认值 |
 | ------ | ---- | ------ |
-| `NEXT_PUBLIC_API_BASE_URL` | 后端 FastAPI 访问地址 | `http://localhost:9093` |
-| `NEXT_PUBLIC_APP_BASE_URL` | 当前前端地址（用于拼接站点链接） | `http://localhost:3000` |
+| `NEXT_PUBLIC_API_BASE_URL` | 后端 FastAPI 访问地址 | `/api` |
+| `NEXT_PUBLIC_APP_BASE_URL` | 当前前端地址（用于拼接站点链接） | `http://localhost:8080` |
 
 复制 `.env.example` 即可开始本地调试。
 
@@ -66,3 +66,4 @@ pnpm test:ui      # Playwright（后续补充）
 - Step 2 当前为骨架页面，尚未接入真实 API
 - Step 3 将补充登录、文件、爬虫、管理等页面的数据逻辑
 - Step 4 会落地 Vitest/Playwright 测试与 CI 脚本
+

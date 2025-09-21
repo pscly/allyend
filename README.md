@@ -226,6 +226,7 @@ docker compose logs -f backend
 docker compose logs -f frontend
 ```
 容器会自动挂载当前目录的 `data/` 与 `logs/`，停用后数据仍然保留。
+默认通过 `reverse-proxy` 服务统一暴露 `http://localhost:8080`，浏览器侧的接口请求全部走 `/api` 前缀。
 
 ### 5.3 常用脚本
 - `uv run pytest`：运行后端测试。
@@ -242,7 +243,7 @@ docker compose logs -f frontend
 | `SECRET_KEY` | JWT 签名密钥 | `please_change_me_to_a_random_string` | 生产环境务必替换。 |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Token 过期时间 | `120` | 单位分钟。 |
 | `DATABASE_URL` | SQLAlchemy 数据源 | `sqlite:///./data/app.db` | 可切换 MySQL/PostgreSQL。 |
-| `FRONTEND_ORIGINS` | 允许的 CORS 来源 | `["http://localhost:3000"]` | 支持逗号分隔或 JSON 数组。 |
+| `FRONTEND_ORIGINS` | 允许的 CORS 来源 | `["http://localhost:3000","http://localhost:8080"]` | 支持逗号分隔或 JSON 数组。 |
 | `ROOT_ADMIN_USERNAME` / `ROOT_ADMIN_PASSWORD` | 首个超级管理员凭据 | `allroot` / `please_set_a_strong_password` | 启动时自动创建。 |
 | `ALLOW_DIRECT_SIGNUP` | 是否允许自由注册 | `true` | 设为 `false` 时需邀请码。 |
 | `FILE_STORAGE_DIR` | 文件物理存储路径 | `data/files` | 需具备读写权限。 |
@@ -251,15 +252,16 @@ docker compose logs -f frontend
 ### 前端 `frontend/.env`
 | 变量 | 说明 | 默认值 |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_BASE_URL` | 后端 API 地址 | `http://localhost:9093` |
-| `NEXT_PUBLIC_APP_BASE_URL` | 前端站点地址 | `http://localhost:3000` |
+| `NEXT_PUBLIC_API_BASE_URL` | 后端 API 地址 | `/api` |
+| `NEXT_PUBLIC_APP_BASE_URL` | 前端站点地址 | `http://localhost:8080` |
 
 ### Docker Compose 参数
 | 变量 | 说明 | 默认值 |
 | --- | --- | --- |
-| `DOCKER_BACKEND_PORT` / `DOCKER_FRONTEND_PORT` | 宿主机暴露端口 | `9093` / `3000` |
+| `DOCKER_PROXY_PORT` | 宿主机暴露的 HTTP 入口 | `8080` |
 | `DOCKER_DATA_DIR` / `DOCKER_LOG_DIR` | 数据/日志挂载路径 | `./data` / `./logs` |
-| `NEXT_PUBLIC_API_BASE_URL` | 构建时注入的后端地址 | `http://localhost:9093` |
+| `NEXT_PUBLIC_API_BASE_URL` | 构建时注入的后端地址 | `/api` |
+| `NEXT_PUBLIC_APP_BASE_URL` | 构建时注入的前端基准地址（用于生成绝对链接） | `http://localhost:8080` |
 
 ## 7. 后端服务说明
 
@@ -430,3 +432,4 @@ client.finish_run(crawler_id=crawler["id"], run_id=run["id"], status="success")
 ---
 
 如在使用过程中遇到问题，欢迎提交 Issue 或直接交流，共建更稳定易用的数据采集协作平台。
+

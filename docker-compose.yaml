@@ -12,8 +12,8 @@ services:
     volumes:
       - ${DOCKER_DATA_DIR:-./data}:/app/data # 数据库与上传文件目录
       - ${DOCKER_LOG_DIR:-./logs}:/app/logs  # 应用日志目录
-    ports:
-      - "${DOCKER_BACKEND_PORT:-9093}:${PORT:-9093}" # 左侧为宿主机端口
+    expose:
+      - "${PORT:-9093}"
     restart: unless-stopped
 
   frontend:
@@ -22,14 +22,26 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:9093}
-        NEXT_PUBLIC_APP_BASE_URL: ${NEXT_PUBLIC_APP_BASE_URL:-http://localhost:3000}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
+        NEXT_PUBLIC_APP_BASE_URL: ${NEXT_PUBLIC_APP_BASE_URL:-http://localhost:8080}
     image: allyend/frontend:latest
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:9093}
-      NEXT_PUBLIC_APP_BASE_URL: ${NEXT_PUBLIC_APP_BASE_URL:-http://localhost:3000}
-    ports:
-      - "${DOCKER_FRONTEND_PORT:-3000}:3000" # 左侧为宿主机端口
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
+      NEXT_PUBLIC_APP_BASE_URL: ${NEXT_PUBLIC_APP_BASE_URL:-http://localhost:8080}
+    expose:
+      - "3000"
     depends_on:
       - backend
+    restart: unless-stopped
+
+  reverse-proxy:
+    container_name: allyend-proxy
+    image: nginx:1.27-alpine
+    depends_on:
+      - backend
+      - frontend
+    volumes:
+      - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${DOCKER_PROXY_PORT:-8080}:80"
     restart: unless-stopped

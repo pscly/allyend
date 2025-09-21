@@ -27,8 +27,8 @@ ENV PNPM_HOME="/root/.local/share/pnpm" \
 
 RUN corepack enable && corepack prepare pnpm@9.12.1 --activate
 
-ARG NEXT_PUBLIC_API_BASE_URL="http://localhost:9093"
-ARG NEXT_PUBLIC_APP_BASE_URL="http://localhost:3000"
+ARG NEXT_PUBLIC_API_BASE_URL="/api"
+ARG NEXT_PUBLIC_APP_BASE_URL="http://localhost:8080"
 
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
     NEXT_PUBLIC_APP_BASE_URL=$NEXT_PUBLIC_APP_BASE_URL
