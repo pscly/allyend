@@ -1,10 +1,10 @@
 "use client";
 
+import { Suspense, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { useLoginMutation } from "@/features/auth/queries";
@@ -23,6 +23,14 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<p className="text-center text-sm text-muted-foreground">正在加载登录页...</p>}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();

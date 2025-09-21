@@ -4,20 +4,26 @@ FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 
 ENV PNPM_HOME="/root/.local/share/pnpm" \
-    PATH="$PNPM_HOME:$PATH"
+    PATH="$PNPM_HOME:$PATH" \
+    HUSKY=0 \
+    HUSKY_SKIP_INSTALL=1 \
+    NEXT_TELEMETRY_DISABLED=1
 
 RUN corepack enable && corepack prepare pnpm@9.12.1 --activate
 
 COPY package.json pnpm-lock.yaml .npmrc ./
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
 ENV PNPM_HOME="/root/.local/share/pnpm" \
-    PATH="$PNPM_HOME:$PATH"
+    PATH="$PNPM_HOME:$PATH" \
+    HUSKY=0 \
+    HUSKY_SKIP_INSTALL=1 \
+    NEXT_TELEMETRY_DISABLED=1
 
 RUN corepack enable && corepack prepare pnpm@9.12.1 --activate
 
@@ -30,7 +36,7 @@ ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-RUN pnpm build && pnpm prune --prod
+RUN pnpm build && pnpm prune --prod --ignore-scripts
 
 FROM node:22-bookworm-slim AS runner
 
@@ -38,7 +44,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
-    PORT=3000
+    PORT=3000 \
+    NEXT_TELEMETRY_DISABLED=1
 
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public

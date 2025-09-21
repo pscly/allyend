@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminUsersQuery, useAdminGroupsQuery } from "@/features/admin/queries";
 import { useUpdateAdminUserMutation } from "@/features/admin/mutations";
 import { useToast } from "@/hooks/use-toast";
-import type { ApiError } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/client";
 import type { AdminUserRole, AdminUserSummary } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";

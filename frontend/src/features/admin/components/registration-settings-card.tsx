@@ -5,7 +5,7 @@ import type { ComponentType, SVGProps } from "react";
 import { useRegistrationSettingQuery } from "@/features/admin/queries";
 import { useUpdateRegistrationModeMutation } from "@/features/admin/mutations";
 import { useToast } from "@/hooks/use-toast";
-import type { ApiError } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/client";
 import type { RegistrationMode } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 

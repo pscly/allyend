@@ -19,7 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminInvitesQuery, useAdminGroupsQuery } from "@/features/admin/queries";
 import { useCreateInviteMutation, useDeleteInviteMutation } from "@/features/admin/mutations";
 import { useToast } from "@/hooks/use-toast";
-import type { ApiError } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/client";
 import type { InviteCode, UserGroup } from "@/lib/api/types";
 
 interface InviteFormState {

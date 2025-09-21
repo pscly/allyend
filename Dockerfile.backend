@@ -24,7 +24,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PORT=9093
 
 # 拷贝依赖环境，并仅复制运行所需代码
-COPY --from=deps /app/.venv /.venv
+COPY --from=deps /app/.venv /app/.venv
 COPY app ./app
 COPY sdk ./sdk
 COPY README.md ./README.md

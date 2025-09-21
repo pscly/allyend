@@ -3,11 +3,34 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { DefaultOptions, HydrateOptions } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import type { PersistQueryClientProviderProps } from "@tanstack/react-query-persist-client";
+import type { Persister } from "@tanstack/query-persist-client-core";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
-import type { SyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+
+const QUERY_RETRY_COUNT = 1;
+const QUERY_STALE_TIME_MS = 30 * 1000;
+const QUERY_GC_TIME_MS = 30 * 60 * 1000;
+const PERSIST_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+type QueryDefaults = NonNullable<DefaultOptions["queries"]>;
+type HydrationQueryOptions = NonNullable<
+  NonNullable<HydrateOptions["defaultOptions"]>["queries"]
+>;
+
+const createQueryDefaults = (): QueryDefaults => ({
+  retry: QUERY_RETRY_COUNT,
+  staleTime: QUERY_STALE_TIME_MS,
+  refetchOnWindowFocus: false,
+  gcTime: QUERY_GC_TIME_MS,
+});
+
+const createHydrationQueryDefaults = (): HydrationQueryOptions => ({
+  retry: QUERY_RETRY_COUNT,
+  gcTime: QUERY_GC_TIME_MS,
+});
 
 interface Props {
   children: ReactNode;
@@ -21,20 +44,18 @@ export function QueryProvider({ children }: Props) {
     () =>
       new QueryClient({
         defaultOptions: {
-          queries: {
-            retry: 1,
-            staleTime: 30 * 1000,
-            refetchOnWindowFocus: false,
-            gcTime: 30 * 60 * 1000,
-          },
+          queries: createQueryDefaults(),
           mutations: {
             retry: 0,
+          },
+          hydrate: {
+            queries: createHydrationQueryDefaults(),
           },
         },
       }),
   );
 
-  const [persister, setPersister] = useState<SyncStoragePersister | null>(null);
+  const [persister, setPersister] = useState<Persister | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -57,7 +78,22 @@ export function QueryProvider({ children }: Props) {
     [],
   );
 
-  if (!persister) {
+  const persistOptions = useMemo<PersistQueryClientProviderProps["persistOptions"] | null>(() => {
+    if (!persister) {
+      return null;
+    }
+    return {
+      persister,
+      maxAge: PERSIST_MAX_AGE_MS,
+      hydrateOptions: {
+        defaultOptions: {
+          queries: createHydrationQueryDefaults(),
+        },
+      },
+    };
+  }, [persister]);
+
+  if (!persistOptions) {
     return (
       <QueryClientProvider client={client}>
         {children}
@@ -65,18 +101,6 @@ export function QueryProvider({ children }: Props) {
       </QueryClientProvider>
     );
   }
-
-  const persistOptions: PersistQueryClientProviderProps["persistOptions"] = {
-    persister,
-    maxAge: 24 * 60 * 60 * 1000,
-    hydrateOptions: {
-      defaultOptions: {
-        queries: {
-          staleTime: 30 * 1000,
-        },
-      },
-    },
-  };
 
   return (
     <PersistQueryClientProvider client={client} persistOptions={persistOptions}>
