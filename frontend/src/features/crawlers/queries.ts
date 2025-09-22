@@ -85,7 +85,8 @@ export function useCrawlerGroupsQuery() {
     enabled,
     staleTime: 60 * 1000,
     refetchInterval: enabled ? 60 * 1000 : false,
-    keepPreviousData: true,
+    // v5 移除 keepPreviousData，使用 placeholderData 保留上一次数据
+    placeholderData: (prev) => prev,
   });
 
 }
@@ -99,7 +100,7 @@ export function useConfigTemplatesQuery() {
     enabled,
     staleTime: 60 * 1000,
     refetchInterval: enabled ? 60 * 1000 : false,
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -112,7 +113,7 @@ export function useConfigAssignmentsQuery() {
     enabled,
     staleTime: 60 * 1000,
     refetchInterval: enabled ? 60 * 1000 : false,
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -156,7 +157,7 @@ export function useCrawlersQuery(filters: CrawlerListFilters = {}) {
     enabled,
     staleTime: 15 * 1000,
     refetchInterval: enabled ? 15 * 1000 : false,
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -184,7 +185,7 @@ export function useCrawlerRunsQuery(crawlerId: number | string, enabled = true) 
     enabled: shouldEnable,
     staleTime: 10 * 1000,
     refetchInterval: shouldEnable ? 15 * 1000 : false,
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -201,7 +202,7 @@ export function useCrawlerLogsQuery(crawlerId: number | string, limit = 50, enab
     enabled: shouldEnable,
     staleTime: 8 * 1000,
     refetchInterval: shouldEnable ? 12 * 1000 : false,
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -234,7 +235,7 @@ export function useCrawlerHeartbeatsQuery(
     enabled: shouldEnable,
     staleTime: 8 * 1000,
     refetchInterval: shouldEnable ? 8 * 1000 : false,
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -260,7 +261,7 @@ export function useCrawlerCommandsQuery(
     enabled: shouldEnable,
     staleTime: 8 * 1000,
     refetchInterval: shouldEnable ? options.refetchInterval ?? 12 * 1000 : false,
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 
 }
@@ -287,7 +288,7 @@ export function useAlertRulesQuery() {
     enabled,
     staleTime: 45 * 1000,
     refetchInterval: enabled ? 45 * 1000 : false,
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -314,7 +315,7 @@ export function useAlertEventsQuery(filters: AlertEventsFilters = {}, enabled = 
     enabled: shouldEnable,
     staleTime: 30 * 1000,
     refetchInterval: shouldEnable ? 30 * 1000 : false,
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -327,7 +328,7 @@ export function useApiKeysQuery(enabled = true) {
     enabled: shouldEnable,
     staleTime: 60 * 1000,
     refetchInterval: shouldEnable ? 60 * 1000 : false,
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -340,6 +341,6 @@ export function useQuickLinksQuery(enabled = true) {
     enabled: shouldEnable,
     staleTime: 30 * 1000,
     refetchInterval: shouldEnable ? 30 * 1000 : false,
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 }

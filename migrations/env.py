@@ -18,7 +18,7 @@ from app import models  # noqa: F401  # 导入模型以确保元数据注册
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

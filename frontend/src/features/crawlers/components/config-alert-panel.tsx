@@ -46,6 +46,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+// 本地时间格式化工具
+function formatDateTime(value?: string | null) {
+  if (!value) return "—";
+  const target = new Date(value);
+  if (Number.isNaN(target.getTime())) return "—";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(target);
+}
 interface ConfigAlertPanelProps {
   groups: CrawlerGroup[];
   apiKeys: ApiKey[];
@@ -105,10 +119,10 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
       name: "",
       description: "",
       targetType: "crawler",
-      targetId: "",
+      targetId: 0,
       format: "json",
       content: "",
-      templateId: "",
+      templateId: null,
       isActive: true,
     },
   });
@@ -119,10 +133,10 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
       name: "",
       description: "",
       targetType: "crawler",
-      targetId: "",
+      targetId: 0,
       format: "json",
       content: "",
-      templateId: "",
+      templateId: null,
       isActive: true,
     },
   });
@@ -225,20 +239,20 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
       name: "",
       description: "",
       targetType: "crawler",
-      targetId: "",
+      targetId: 0,
       format: "json",
       content: "",
-      templateId: "",
+      templateId: null,
       isActive: true,
     });
     editAssignmentForm.reset({
       name: "",
       description: "",
       targetType: "crawler",
-      targetId: "",
+      targetId: 0,
       format: "json",
       content: "",
-      templateId: "",
+      templateId: null,
       isActive: true,
     });
   };
@@ -295,10 +309,10 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
         name: editingAssignment.name,
         description: editingAssignment.description ?? "",
         targetType: editingAssignment.target_type,
-        targetId: String(editingAssignment.target_id),
+        targetId: editingAssignment.target_id,
         format: editingAssignment.format,
         content: editingAssignment.content ?? "",
-        templateId: editingAssignment.template_id ? String(editingAssignment.template_id) : "",
+        templateId: editingAssignment.template_id ?? null,
         isActive: editingAssignment.is_active,
       });
     }
@@ -348,13 +362,14 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
         },
       );
     } else {
+      const name = (values.name ?? "").trim();
       createTemplateMutation.mutate(
         {
-          name: values.name.trim(),
+          name,
           description: values.description?.trim() || undefined,
-          format: values.format,
-          content: values.content,
-          is_active: values.isActive,
+          format: values.format as "json" | "yaml",
+          content: (values as CreateConfigTemplateForm).content,
+          is_active: values.isActive as boolean,
         },
         {
           onSuccess: () => {
@@ -373,14 +388,16 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
       toast({ title: "请选择有效的目标", variant: "destructive" });
       return;
     }
-    const templateId = values.templateId ? Number(values.templateId) : null;
+    const templateId = values.templateId === null || values.templateId === undefined || values.templateId === 0
+      ? null
+      : Number(values.templateId);
     const content = values.content?.trim() ?? "";
     if (!templateId && content.length === 0) {
       toast({ title: "请填写配置内容或选择模板", variant: "destructive" });
       return;
     }
     const payload = {
-      name: values.name.trim(),
+      name: (values.name ?? "").trim(),
       description: values.description?.trim() || undefined,
       target_type: values.targetType,
       target_id: targetId,
@@ -401,7 +418,7 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
         },
       );
     } else {
-      createAssignmentMutation.mutate(payload, {
+      createAssignmentMutation.mutate(payload as import("@/features/crawlers/mutations").CreateConfigAssignmentInput, {
         onSuccess: () => {
           toast({ title: "配置指派已创建" });
           resetAssignmentForms();
@@ -413,20 +430,24 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
 
   const handleSubmitAlertRule = (values: UpdateAlertRuleForm | CreateAlertRuleForm) => {
     const channels = buildChannelArray(values.emailRecipients ?? "", values.webhookUrl ?? "");
+    const normalizedComparator = values.comparator ? values.comparator : undefined;
     const payload = {
-      name: values.name.trim(),
+      name: (values.name ?? "").trim(),
       description: values.description?.trim() || undefined,
       trigger_type: values.triggerType,
       target_type: values.targetType,
       target_ids: values.targetIds ?? [],
       payload_field: values.triggerType === "payload_threshold" ? values.payloadField?.trim() || undefined : undefined,
-      comparator: values.triggerType === "payload_threshold" ? values.comparator ?? undefined : undefined,
-      threshold: values.triggerType === "payload_threshold" ? values.threshold : undefined,
+      comparator:
+        values.triggerType === "payload_threshold"
+          ? (normalizedComparator as import("@/features/crawlers/mutations").CreateAlertRuleInput["comparator"]) 
+          : undefined,
+      threshold: values.triggerType === "payload_threshold" ? values.threshold ?? undefined : undefined,
       consecutive_failures: values.consecutiveFailures,
       cooldown_minutes: values.cooldownMinutes,
       channels,
       is_active: values.isActive,
-    };
+    } as const;
     if (editingAlertRule) {
       updateAlertRuleMutation.mutate(
         { ruleId: editingAlertRule.id, payload },
@@ -439,7 +460,8 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
         },
       );
     } else {
-      createAlertRuleMutation.mutate(payload, {
+      // 创建时字段均为必需类型
+      createAlertRuleMutation.mutate(payload as unknown as import("@/features/crawlers/mutations").CreateAlertRuleInput, {
         onSuccess: () => {
           toast({ title: "告警规则已创建" });
           resetAlertRuleForms();
@@ -502,8 +524,10 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
   const editAssignmentTargetType = editAssignmentForm.watch("targetType");
   const createAlertTriggerType = createAlertRuleForm.watch("triggerType");
   const editAlertTriggerType = editAlertRuleForm.watch("triggerType");
+  const createAlertTargetType = createAlertRuleForm.watch("targetType");
+  const editAlertTargetType = editAlertRuleForm.watch("targetType");
 
-  const renderTargetOptions = (targetType: "crawler" | "api_key" | "group") => {
+  const renderTargetOptions = (targetType: "crawler" | "api_key" | "group" | "all" | undefined) => {
     if (targetType === "crawler") {
       return crawlers.map((crawler) => (
         <option key={crawler.id} value={crawler.id}>
@@ -518,11 +542,14 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
         </option>
       ));
     }
-    return groups.map((group) => (
-      <option key={group.id} value={group.id}>
-        {group.name}
-      </option>
-    ));
+    if (targetType === "group") {
+      return groups.map((group) => (
+        <option key={group.id} value={group.id}>
+          {group.name}
+        </option>
+      ));
+    }
+    return null;
   };
 
   const renderAlertTargetLabel = (rule: CrawlerAlertRule) => {
@@ -757,10 +784,10 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
                             name: assignment.name,
                             description: assignment.description ?? "",
                             targetType: assignment.target_type,
-                            targetId: String(assignment.target_id),
+                            targetId: assignment.target_id,
                             format: assignment.format,
                             content: assignment.content ?? "",
-                            templateId: assignment.template_id ? String(assignment.template_id) : "",
+                            templateId: assignment.template_id ?? null,
                             isActive: assignment.is_active,
                           });
                         }}>
@@ -872,7 +899,7 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
                 className="h-24 w-full rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register("targetIds")}
               >
-                {renderTargetOptions((editingAlertRule ? editAlertRuleForm : createAlertRuleForm).watch("targetType"))}
+                {renderTargetOptions(editingAlertRule ? editAlertTargetType : createAlertTargetType)}
               </select>
             </Label>
             {(editingAlertRule ? editAlertTriggerType : createAlertTriggerType) === "payload_threshold" ? (

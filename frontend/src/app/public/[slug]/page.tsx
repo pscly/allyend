@@ -1,4 +1,5 @@
 import { cache } from "react";
+import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
@@ -85,7 +86,7 @@ export async function generateMetadata({ params }: PublicPageProps): Promise<Met
 }
 
 function buildDetailItems(summary: PublicLinkSummary) {
-  const baseItems = [
+  const baseItems: Array<{ label: string; value: ReactNode }> = [
     { label: "类型", value: summary.type === "crawler" ? "爬虫" : summary.type === "api_key" ? "API Key" : "分组" },
     { label: "公开说明", value: summary.link_description || "未填写" },
     { label: "创建时间", value: formatDateTime(summary.link_created_at) },

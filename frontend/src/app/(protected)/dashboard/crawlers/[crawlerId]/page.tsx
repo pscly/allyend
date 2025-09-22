@@ -27,7 +27,7 @@ import {
   type HeartbeatQueryOptions,
 } from "@/features/crawlers/queries";
 import { useCreateCrawlerCommandMutation, useUpdateCrawlerMutation } from "@/features/crawlers/mutations";
-import type { CrawlerSummary } from "@/lib/api/types";
+import type { CrawlerSummary, CrawlerHeartbeat, CrawlerLog, CrawlerCommand } from "@/lib/api/types";
 
 function formatRelative(value?: string | null) {
   if (!value) return "—";
@@ -144,7 +144,8 @@ export default function CrawlerDetailPage() {
 
   const metricCandidates = useMemo(() => {
     const keys = new Set<string>();
-    (hbQuery.data ?? []).forEach((hb) => {
+    const hbList: CrawlerHeartbeat[] = hbQuery.data ?? [];
+    hbList.forEach((hb) => {
       if (hb.payload && typeof hb.payload === "object") {
         Object.entries(hb.payload).forEach(([key, value]) => {
           if (typeof value === "number" && Number.isFinite(value)) {
@@ -334,15 +335,15 @@ export default function CrawlerDetailPage() {
             </div>
           </header>
           <HeartbeatChart
-            data={hbQuery.data ?? []}
+            data={(hbQuery.data ?? []) as CrawlerHeartbeat[]}
             metricKey={selectedMetric}
             loading={hbQuery.isLoading || hbQuery.isFetching}
           />
-          {hbQuery.data?.length ? (
+          {((hbQuery.data ?? []) as CrawlerHeartbeat[]).length ? (
             <div className="rounded-xl border border-border/60">
               <ScrollArea className="h-[220px]">
                 <div className="min-w-full divide-y divide-border/60">
-                  {(hbQuery.data ?? []).slice().reverse().map((hb) => (
+                  {((hbQuery.data ?? []) as CrawlerHeartbeat[]).slice().reverse().map((hb) => (
                     <div key={hb.id} className="flex items-center justify-between px-3 py-2 text-xs">
                       <div className="flex items-center gap-2">
                         <span className={`h-2 w-2 rounded-full ${hb.status === "online" ? "bg-emerald-500" : hb.status === "warning" ? "bg-amber-500" : "bg-rose-500"}`} />
@@ -367,14 +368,14 @@ export default function CrawlerDetailPage() {
           </header>
           <ScrollArea className="h-[280px] rounded-xl border border-border/60">
             <div className="min-w-full divide-y divide-border/60">
-              {(logQuery.data ?? []).map((log) => (
+              {((logQuery.data ?? []) as CrawlerLog[]).map((log) => (
                 <div key={log.id} className="flex items-center justify-between px-3 py-2 text-xs">
                   <span className="font-medium text-foreground">{log.level}</span>
                   <span className="mx-3 flex-1 truncate text-foreground">{log.message}</span>
                   <span className="text-muted-foreground">{new Date(log.ts).toLocaleString("zh-CN", { hour12: false })}</span>
                 </div>
               ))}
-              {!logQuery.data?.length ? (
+              {!((logQuery.data ?? []) as CrawlerLog[]).length ? (
                 <div className="flex h-[220px] items-center justify-center gap-2 text-sm text-muted-foreground">
                   <AlertTriangle className="h-4 w-4" /> 暂无日志
                 </div>
@@ -428,7 +429,7 @@ export default function CrawlerDetailPage() {
             </div>
             <ScrollArea className="h-[220px]">
               <div className="min-w-full divide-y divide-border/60">
-                {(cmdQuery.data ?? []).map((cmd) => (
+                {((cmdQuery.data ?? []) as CrawlerCommand[]).map((cmd) => (
                   <div key={cmd.id} className="grid grid-cols-12 items-center gap-2 px-3 py-2 text-xs">
                     <div className="col-span-3 truncate text-foreground">{cmd.command}</div>
                     <div className="col-span-2 text-muted-foreground">{cmd.status}</div>
@@ -436,7 +437,7 @@ export default function CrawlerDetailPage() {
                     <div className="col-span-3 text-muted-foreground">{new Date(cmd.created_at).toLocaleString("zh-CN", { hour12: false })}</div>
                   </div>
                 ))}
-                {!cmdQuery.data?.length ? (
+                {!((cmdQuery.data ?? []) as CrawlerCommand[]).length ? (
                   <div className="flex h-[200px] items-center justify-center gap-2 text-sm text-muted-foreground">
                     <AlertTriangle className="h-4 w-4" /> 暂无指令
                   </div>

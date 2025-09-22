@@ -2,6 +2,8 @@
 
 
 import { useEffect, useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -179,6 +181,7 @@ function buildPublicUrl(slug: string): string {
 export default function CrawlersPage() {
   const { toast } = useToast();
 
+  const [tab, setTab] = useState("status");
   const [statusFilters, setStatusFilters] = useState<StatusFilter[]>([]);
   const [groupFilters, setGroupFilters] = useState<GroupFilterValue[]>([]);
   const [apiKeyFilters, setApiKeyFilters] = useState<number[]>([]);
@@ -202,16 +205,17 @@ export default function CrawlersPage() {
   const apiKeysQuery = useApiKeysQuery();
   const quickLinksQuery = useQuickLinksQuery();
 
-  const crawlers = useMemo(() => crawlersQuery.data ?? [], [crawlersQuery.data]);
-  const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data]);
-  const apiKeys = useMemo(() => apiKeysQuery.data ?? [], [apiKeysQuery.data]);
-  const quickLinks = useMemo(() => quickLinksQuery.data ?? [], [quickLinksQuery.data]);
+  // 收敛 React Query 返回的数据类型，避免 never[] 联合类型引发的推断问题
+  const crawlers = useMemo<CrawlerSummary[]>(() => crawlersQuery.data ?? [], [crawlersQuery.data]);
+  const groups = useMemo<CrawlerGroup[]>(() => groupsQuery.data ?? [], [groupsQuery.data]);
+  const apiKeys = useMemo<ApiKey[]>(() => apiKeysQuery.data ?? [], [apiKeysQuery.data]);
+  const quickLinks = useMemo<QuickLink[]>(() => quickLinksQuery.data ?? [], [quickLinksQuery.data]);
 
   const statusSummary = useMemo(() => {
     const base: Record<StatusFilter, number> = { online: 0, warning: 0, offline: 0 };
     crawlers.forEach((crawler) => {
       if (crawler.status === "online" || crawler.status === "warning" || crawler.status === "offline") {
-        base[crawler.status] += 1;
+        base[crawler.status as StatusFilter] += 1;
       }
     });
     return base;
@@ -267,7 +271,8 @@ export default function CrawlersPage() {
   const [editingQuickLink, setEditingQuickLink] = useState<QuickLink | null>(null);
   const createQuickLinkForm = useForm<CreateQuickLinkForm>({
     resolver: zodResolver(createQuickLinkSchema),
-    defaultValues: { targetType: "crawler", targetId: "", slug: "", description: "", allowLogs: true },
+    // targetId 在表单类型中为 number（zod 已 transform），默认用 0 占位，提交时校验 > 0
+    defaultValues: { targetType: "crawler", targetId: 0, slug: "", description: "", allowLogs: true },
   });
   const editQuickLinkForm = useForm<UpdateQuickLinkForm>({
     resolver: zodResolver(updateQuickLinkSchema),
@@ -490,7 +495,7 @@ export default function CrawlersPage() {
     setQuickLinkDialogOpen(true);
     createQuickLinkForm.reset({
       targetType: options?.targetType ?? "crawler",
-      targetId: options ? String(options.targetId) : "",
+      targetId: options ? options.targetId : 0,
       slug: "",
       description: options?.description ?? "",
       allowLogs: options?.targetType === "crawler" ? false : true,
@@ -596,7 +601,7 @@ export default function CrawlersPage() {
         </p>
       </header>
 
-      <Tabs defaultValue="status" className="space-y-6">
+      <Tabs value={tab} onValueChange={setTab} className="space-y-6">
         <TabsList className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="status">状态面板</TabsTrigger>
           <TabsTrigger value="keys">Key 管理</TabsTrigger>
@@ -754,6 +759,20 @@ export default function CrawlersPage() {
               <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-3xl border border-border/70 bg-card/70 p-8 text-center">
                 <AlertTriangle className="h-8 w-8 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">没有符合条件的爬虫。试试调整筛选条件或创建新的 Key。</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setTab("keys");
+                      handleOpenCreateKey(true);
+                    }}
+                  >
+                    <Plus className="mr-2 h-4 w-4" /> 去创建 Key
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={clearFilters}>
+                    清空筛选
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="grid gap-4 lg:grid-cols-2">

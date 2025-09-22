@@ -66,15 +66,22 @@ export function HeartbeatChart({ data, metricKey = "__status", loading = false }
     data.map((item) => [new Date(item.created_at).getTime(), STATUS_SCORE[item.status] ?? STATUS_SCORE.offline]),
   [data]);
 
-  const metricSeries = useMemo(() =>
-    data.map((item) => [new Date(item.created_at).getTime(), resolveMetricValue(item.payload ?? null, metricKey)] as [number, number | null]),
-  [data, metricKey]);
+  const metricSeries = useMemo(
+    () =>
+      data.map(
+        (item) => [new Date(item.created_at).getTime(), resolveMetricValue(item.payload ?? null, metricKey)] as [
+          number,
+          number | null,
+        ],
+      ),
+    [data, metricKey],
+  );
 
   const hasMetric = metricKey !== "__status" && metricSeries.some((entry) => entry[1] !== null);
   const metricLabel = metricKey === "__status" ? "" : metricKey;
 
   const option = useMemo(() => {
-    const series = [
+    const series: any[] = [
       {
         name: "状态",
         type: "line",
@@ -94,12 +101,12 @@ export function HeartbeatChart({ data, metricKey = "__status", loading = false }
       series.push({
         name: metricLabel,
         type: "line",
-        data: metricSeries,
+        // ECharts 运行时允许 null 作为缺失值，类型定义较严格，这里做兼容性断言
+        data: metricSeries as unknown as number[][],
         yAxisIndex: 1,
         smooth: true,
         symbol: "circle",
         symbolSize: 4,
-        connectNulls: true,
         lineStyle: { color: accentColor, width: 2 },
         itemStyle: { color: accentColor },
       });

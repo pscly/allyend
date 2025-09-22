@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+import sys
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -29,16 +30,37 @@ def _configure_logging() -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "allyend.log"
     root = logging.getLogger()
-    for handler in root.handlers:
-        if isinstance(handler, RotatingFileHandler) and getattr(handler, "baseFilename", None) == str(log_file):
-            return
-    handler = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
+
+    # 统一格式
     formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    handler.setFormatter(formatter)
-    root.addHandler(handler)
+
+    # 确保文件日志处理器存在（幂等）
+    file_handler = None
+    for h in root.handlers:
+        if isinstance(h, RotatingFileHandler) and getattr(h, "baseFilename", None) == str(log_file):
+            file_handler = h
+            break
+    if file_handler is None:
+        file_handler = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        root.addHandler(file_handler)
+
+    # 将相同的文件处理器挂到 uvicorn.access（避免重复挂载）
+    ua_logger = logging.getLogger("uvicorn.access")
+    has_ua_file = any(isinstance(h, RotatingFileHandler) and getattr(h, "baseFilename", None) == str(log_file) for h in ua_logger.handlers)
+    if not has_ua_file:
+        ua_logger.addHandler(file_handler)
+
+    # 确保控制台处理器存在（幂等）
+    has_console = any(isinstance(h, logging.StreamHandler) for h in root.handlers)
+    if not has_console:
+        console = logging.StreamHandler(stream=sys.stdout)
+        console.setFormatter(formatter)
+        root.addHandler(console)
+
+    # 设定日志级别
     if root.level == logging.NOTSET or root.level > logging.INFO:
         root.setLevel(logging.INFO)
-    logging.getLogger("uvicorn.access").addHandler(handler)
 
 _configure_logging()
 app = FastAPI(title=settings.SITE_NAME, version="0.2.0")
@@ -68,6 +90,8 @@ def on_startup():
     ensure_database_schema()
     apply_schema_upgrades()
     bootstrap_defaults()
+    # 迁移执行可能修改了 logging（alembic.ini），此处重新校准日志到控制台+文件
+    _configure_logging()
 
 
 # 路由注册
@@ -82,3 +106,5 @@ app.include_router(dashboard_router.router)
 # 便于 uv run 直接引用
 def get_app():
     return app
+
+
