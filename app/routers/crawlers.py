@@ -1378,10 +1378,51 @@ def update_my_crawler(
     if payload.name and payload.name.strip():
         crawler.name = payload.name.strip()
     if payload.is_public is not None:
+        # 同步公开状态与快捷链接：开启公开时自动生成/启用快捷链接；关闭时停用对应链接
         crawler.is_public = payload.is_public
-        if payload.is_public and not crawler.public_slug:
-            crawler.public_slug = _ensure_quick_slug(db)
-        if not payload.is_public:
+        if payload.is_public:
+            # 若未设置 public_slug，则自动生成唯一 slug
+            if not crawler.public_slug:
+                crawler.public_slug = _ensure_quick_slug(db)
+            # 确保存在以 public_slug 为路径、指向该爬虫的快捷链接
+            link = (
+                db.query(CrawlerAccessLink)
+                .filter(
+                    CrawlerAccessLink.slug == crawler.public_slug,
+                    CrawlerAccessLink.target_type == "crawler",
+                )
+                .first()
+            )
+            if not link:
+                link = CrawlerAccessLink(
+                    slug=crawler.public_slug,
+                    target_type="crawler",
+                    description="自动创建：公开爬虫访问链接",
+                    allow_logs=True,
+                    crawler=crawler,
+                    created_by=current_user,
+                    is_active=True,
+                )
+                db.add(link)
+            else:
+                # 已存在同名链接时，指向当前爬虫并启用
+                link.crawler = crawler
+                link.api_key = None
+                link.group = None
+                link.is_active = True
+        else:
+            # 关闭公开：停用与 public_slug 匹配的链接（若存在），并清除 public_slug
+            if crawler.public_slug:
+                link = (
+                    db.query(CrawlerAccessLink)
+                    .filter(
+                        CrawlerAccessLink.slug == crawler.public_slug,
+                        CrawlerAccessLink.target_type == "crawler",
+                    )
+                    .first()
+                )
+                if link:
+                    link.is_active = False
             crawler.public_slug = None
     db.commit()
     db.refresh(crawler)

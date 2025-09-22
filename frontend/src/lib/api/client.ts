@@ -3,21 +3,11 @@ import { buildApiUrl } from "@/lib/env";
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export interface RequestOptions<TBody = unknown> {
-  /**
-   * 通过 zustand 获取到的访问令牌
-   */
-  token?: string | null;
-  /**
-   * JSON 请求体或 FormData
-   */
+  /** JSON 请求体或 FormData */
   body?: TBody | FormData;
-  /**
-   * 附加查询参数
-   */
+  /** 附加查询参数 */
   searchParams?: Record<string, string | number | boolean | undefined>;
-  /**
-   * 额外的 fetch 配置
-   */
+  /** 额外的 fetch 配置 */
   init?: RequestInit;
 }
 
@@ -89,10 +79,7 @@ async function request<TResponse, TBody = unknown>(
     }
   }
 
-  const token = options.token ?? headers.get("Authorization") ?? undefined;
-  if (token && typeof token === "string") {
-    headers.set("Authorization", token.startsWith("Bearer") ? token : `Bearer ${token}`);
-  }
+  // 不再附加 Authorization: Bearer；统一依赖 Cookie 会话
 
   const response = await fetch(url, init);
   if (!response.ok) {

@@ -6,7 +6,6 @@ import { apiClient } from "@/lib/api/client";
 import type { ApiError } from "@/lib/api/client";
 import { endpoints } from "@/lib/api/endpoints";
 import type { AdminUserSummary, InviteCode, RegistrationSettings, UserGroup } from "@/lib/api/types";
-import { useAuthStore } from "@/store/auth-store";
 
 export const adminKeys = {
   all: ["admin"] as const,
@@ -17,45 +16,33 @@ export const adminKeys = {
 };
 
 export function useAdminUsersQuery() {
-  const token = useAuthStore((state) => state.token);
-
   return useQuery<AdminUserSummary[], ApiError>({
     queryKey: adminKeys.users(),
-    enabled: Boolean(token),
-    queryFn: async () => apiClient.get<AdminUserSummary[]>(endpoints.admin.users, { token }),
+    queryFn: async () => apiClient.get<AdminUserSummary[]>(endpoints.admin.users),
     staleTime: 30 * 1000,
   });
 }
 
 export function useAdminGroupsQuery() {
-  const token = useAuthStore((state) => state.token);
-
   return useQuery<UserGroup[], ApiError>({
     queryKey: adminKeys.groups(),
-    enabled: Boolean(token),
-    queryFn: async () => apiClient.get<UserGroup[]>(endpoints.admin.groups, { token }),
+    queryFn: async () => apiClient.get<UserGroup[]>(endpoints.admin.groups),
     staleTime: 5 * 60 * 1000,
   });
 }
 
 export function useAdminInvitesQuery() {
-  const token = useAuthStore((state) => state.token);
-
   return useQuery<InviteCode[], ApiError>({
     queryKey: adminKeys.invites(),
-    enabled: Boolean(token),
-    queryFn: async () => apiClient.get<InviteCode[]>(endpoints.admin.invites, { token }),
+    queryFn: async () => apiClient.get<InviteCode[]>(endpoints.admin.invites),
     staleTime: 30 * 1000,
   });
 }
 
 export function useRegistrationSettingQuery() {
-  const token = useAuthStore((state) => state.token);
-
   return useQuery<RegistrationSettings, ApiError>({
     queryKey: adminKeys.settings(),
-    enabled: Boolean(token),
-    queryFn: async () => apiClient.get<RegistrationSettings>(endpoints.admin.settings, { token }),
+    queryFn: async () => apiClient.get<RegistrationSettings>(endpoints.admin.settings),
     staleTime: 5 * 60 * 1000,
   });
 }

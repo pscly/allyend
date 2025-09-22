@@ -40,7 +40,6 @@ interface UpdateTokenInput {
 }
 
 export function useUploadFileMutation() {
-  const token = useAuthStore((state) => state.token);
   const queryClient = useQueryClient();
 
   return useMutation<FileUploadResponse, ApiError, UploadFileInput>({
@@ -54,7 +53,7 @@ export function useUploadFileMutation() {
       if (description) {
         form.append("description", description);
       }
-      return apiClient.post<FileUploadResponse>(endpoints.files.uploadMine, form, { token });
+      return apiClient.post<FileUploadResponse>(endpoints.files.uploadMine, form);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: filesKeys.list() });
@@ -63,11 +62,10 @@ export function useUploadFileMutation() {
 }
 
 export function useDeleteFileMutation() {
-  const token = useAuthStore((state) => state.token);
   const queryClient = useQueryClient();
 
   return useMutation<{ ok: boolean }, ApiError, number>({
-    mutationFn: async (fileId) => apiClient.delete<{ ok: boolean }>(endpoints.files.deleteFile(fileId), { token }),
+    mutationFn: async (fileId) => apiClient.delete<{ ok: boolean }>(endpoints.files.deleteFile(fileId)),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: filesKeys.list() });
     },
@@ -75,7 +73,6 @@ export function useDeleteFileMutation() {
 }
 
 export function useUpdateFileMutation() {
-  const token = useAuthStore((state) => state.token);
   const queryClient = useQueryClient();
 
   return useMutation<FileEntry, ApiError, UpdateFileInput>({
@@ -86,7 +83,6 @@ export function useUpdateFileMutation() {
           description: description ?? undefined,
           visibility,
         },
-        { token },
       ),
     onSuccess: async () => {
       await Promise.all([
@@ -98,7 +94,6 @@ export function useUpdateFileMutation() {
 }
 
 export function useCreateTokenMutation() {
-  const token = useAuthStore((state) => state.token);
   const queryClient = useQueryClient();
 
   return useMutation<FileToken, ApiError, CreateTokenInput>({
@@ -112,7 +107,6 @@ export function useCreateTokenMutation() {
           allowed_ips: allowedIps,
           allowed_cidrs: allowedCidrs,
         },
-        { token },
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: filesKeys.tokens() });
@@ -121,7 +115,6 @@ export function useCreateTokenMutation() {
 }
 
 export function useUpdateTokenMutation() {
-  const token = useAuthStore((state) => state.token);
   const queryClient = useQueryClient();
 
   return useMutation<FileToken, ApiError, UpdateTokenInput>({
@@ -142,7 +135,7 @@ export function useUpdateTokenMutation() {
       if (allowedCidrs !== undefined) {
         form.append("allowed_cidrs", allowedCidrs ?? "");
       }
-      return apiClient.patch<FileToken>(endpoints.files.tokenById(tokenId), form, { token });
+      return apiClient.patch<FileToken>(endpoints.files.tokenById(tokenId), form);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: filesKeys.tokens() });

@@ -32,7 +32,6 @@ interface CreateInviteInput {
 }
 
 export function useUpdateAdminUserMutation() {
-  const token = useAuthStore((state) => state.token);
   const queryClient = useQueryClient();
 
   return useMutation<AdminUserSummary, ApiError, UpdateAdminUserInput>({
@@ -47,7 +46,7 @@ export function useUpdateAdminUserMutation() {
       if (isActive !== undefined) {
         payload.is_active = isActive;
       }
-      return apiClient.patch<AdminUserSummary>(endpoints.admin.userById(userId), payload, { token });
+      return apiClient.patch<AdminUserSummary>(endpoints.admin.userById(userId), payload);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: adminKeys.users() });
@@ -56,7 +55,6 @@ export function useUpdateAdminUserMutation() {
 }
 
 export function useCreateInviteMutation() {
-  const token = useAuthStore((state) => state.token);
   const queryClient = useQueryClient();
 
   return useMutation<InviteCode, ApiError, CreateInviteInput>({
@@ -70,7 +68,6 @@ export function useCreateInviteMutation() {
           expires_in_minutes: expiresInMinutes,
           target_group_id: targetGroupId,
         },
-        { token },
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: adminKeys.invites() });
@@ -79,11 +76,10 @@ export function useCreateInviteMutation() {
 }
 
 export function useDeleteInviteMutation() {
-  const token = useAuthStore((state) => state.token);
   const queryClient = useQueryClient();
 
   return useMutation<{ ok: boolean }, ApiError, number>({
-    mutationFn: async (inviteId) => apiClient.delete<{ ok: boolean }>(endpoints.admin.inviteById(inviteId), { token }),
+    mutationFn: async (inviteId) => apiClient.delete<{ ok: boolean }>(endpoints.admin.inviteById(inviteId)),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: adminKeys.invites() });
     },
@@ -91,16 +87,11 @@ export function useDeleteInviteMutation() {
 }
 
 export function useUpdateRegistrationModeMutation() {
-  const token = useAuthStore((state) => state.token);
   const queryClient = useQueryClient();
 
   return useMutation<RegistrationSettings, ApiError, RegistrationMode>({
     mutationFn: async (mode) =>
-      apiClient.patch<RegistrationSettings>(
-        endpoints.admin.registration,
-        { mode },
-        { token },
-      ),
+      apiClient.patch<RegistrationSettings>(endpoints.admin.registration, { mode }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: adminKeys.settings() });
     },

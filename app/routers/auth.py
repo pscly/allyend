@@ -21,7 +21,7 @@ from ..config import settings
 from ..constants import ROLE_ADMIN, ROLE_SUPERADMIN, ROLE_USER, THEME_PRESETS, LOG_LEVEL_OPTIONS
 from ..dependencies import get_current_user, get_db
 from ..models import APIKey, Crawler, CrawlerGroup, InviteCode, InviteUsage, SystemSetting, User, UserGroup
-from ..schemas import Token, UserCreate, APIKeyOut, APIKeyCreate, APIKeyUpdate, PublicAPIKeyOut, UserProfileOut
+from ..schemas import UserCreate, APIKeyOut, APIKeyCreate, APIKeyUpdate, PublicAPIKeyOut, UserProfileOut
 from ..utils.time_utils import now
 from ..utils.audit import record_operation, summarize_api_key, summarize_group
 
@@ -200,7 +200,16 @@ def login_form(
         )
     token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     resp = RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
-    resp.set_cookie("access_token", token, httponly=False)
+    # 表单登录也使用同样的 Cookie 策略
+    resp.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
+        path=settings.COOKIE_PATH or "/",
+        secure=bool(settings.COOKIE_SECURE),
+        domain=settings.COOKIE_DOMAIN or None,
+    )
     return resp
 
 
@@ -253,21 +262,39 @@ def register_form(
             },
             status_code=exc.status_code if exc.status_code < 500 else 400,
         )
-    return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    # 注册成功后直接设置 Cookie 并跳转到控制台
+    user = db.query(User).filter(User.username == username.strip()).first()
+    token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    resp = RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
+    resp.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
+        path=settings.COOKIE_PATH or "/",
+        secure=bool(settings.COOKIE_SECURE),
+        domain=settings.COOKIE_DOMAIN or None,
+    )
+    return resp
 
 
 @router.get("/logout")
 def logout():
     resp = RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
-    resp.delete_cookie("access_token")
+    # 与设置时一致的 path/domain，确保删除生效
+    resp.delete_cookie(
+        key="access_token",
+        path=settings.COOKIE_PATH or "/",
+        domain=settings.COOKIE_DOMAIN or None,
+    )
     return resp
 
 
 # -------- API 形式（可配合前端/移动端） --------
 
 
-@router.post("/api/auth/register", response_model=Token)
-def api_register(payload: UserCreate, request: Request, db: Session = Depends(get_db)):
+@router.post("/api/auth/register", response_model=UserProfileOut)
+def api_register(payload: UserCreate, request: Request, response: Response, db: Session = Depends(get_db)):
     _perform_registration(
         db,
         payload.username.strip(),
@@ -279,16 +306,36 @@ def api_register(payload: UserCreate, request: Request, db: Session = Depends(ge
     )
     user = db.query(User).filter(User.username == payload.username.strip()).first()
     token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    return Token(access_token=token)
+    # 仅使用 Cookie 会话（HttpOnly + 可配置属性）
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
+        path=settings.COOKIE_PATH or "/",
+        secure=bool(settings.COOKIE_SECURE),
+        domain=settings.COOKIE_DOMAIN or None,
+    )
+    return user
 
 
-@router.post("/api/auth/login", response_model=Token)
-def api_login(payload: UserCreate, db: Session = Depends(get_db)):
+@router.post("/api/auth/login", response_model=UserProfileOut)
+def api_login(payload: UserCreate, response: Response, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == payload.username).first()
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="用户名或密码错误")
     token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    return Token(access_token=token)
+    # 仅使用 Cookie 会话（HttpOnly + 可配置属性）
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
+        path=settings.COOKIE_PATH or "/",
+        secure=bool(settings.COOKIE_SECURE),
+        domain=settings.COOKIE_DOMAIN or None,
+    )
+    return user
 
 
 @router.get("/api/users/me", response_model=UserProfileOut)

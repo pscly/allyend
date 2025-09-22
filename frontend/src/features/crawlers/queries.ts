@@ -21,7 +21,6 @@ import type {
   CrawlerSummary,
   QuickLink,
 } from "@/lib/api/types";
-import { useAuthStore } from "@/store/auth-store";
 
 export const crawlerKeys = {
   all: ["crawlers"] as const,
@@ -72,19 +71,14 @@ export interface HeartbeatQueryOptions {
   enabled?: boolean;
 }
 
-function useToken() {
-  return useAuthStore((state) => state.token);
-}
+// 统一使用 Cookie 会话，不再依赖 token 存储
 
 export function useCrawlerGroupsQuery() {
-  const token = useToken();
-  const enabled = Boolean(token);
   return useQuery<CrawlerGroup[], ApiError>({
     queryKey: crawlerKeys.groups(),
-    queryFn: async () => apiClient.get<CrawlerGroup[]>(endpoints.crawlers.groups.list, { token }),
-    enabled,
+    queryFn: async () => apiClient.get<CrawlerGroup[]>(endpoints.crawlers.groups.list),
     staleTime: 60 * 1000,
-    refetchInterval: enabled ? 60 * 1000 : false,
+    refetchInterval: 60 * 1000,
     // v5 移除 keepPreviousData，使用 placeholderData 保留上一次数据
     placeholderData: (prev) => prev,
   });
@@ -92,33 +86,26 @@ export function useCrawlerGroupsQuery() {
 }
 
 export function useConfigTemplatesQuery() {
-  const token = useToken();
-  const enabled = Boolean(token);
   return useQuery<CrawlerConfigTemplate[], ApiError>({
     queryKey: crawlerKeys.configTemplates(),
-    queryFn: async () => apiClient.get<CrawlerConfigTemplate[]>(endpoints.crawlers.config.templates.list, { token }),
-    enabled,
+    queryFn: async () => apiClient.get<CrawlerConfigTemplate[]>(endpoints.crawlers.config.templates.list),
     staleTime: 60 * 1000,
-    refetchInterval: enabled ? 60 * 1000 : false,
+    refetchInterval: 60 * 1000,
     placeholderData: (prev) => prev,
   });
 }
 
 export function useConfigAssignmentsQuery() {
-  const token = useToken();
-  const enabled = Boolean(token);
   return useQuery<CrawlerConfigAssignment[], ApiError>({
     queryKey: crawlerKeys.configAssignments(),
-    queryFn: async () => apiClient.get<CrawlerConfigAssignment[]>(endpoints.crawlers.config.assignments.list, { token }),
-    enabled,
+    queryFn: async () => apiClient.get<CrawlerConfigAssignment[]>(endpoints.crawlers.config.assignments.list),
     staleTime: 60 * 1000,
-    refetchInterval: enabled ? 60 * 1000 : false,
+    refetchInterval: 60 * 1000,
     placeholderData: (prev) => prev,
   });
 }
 
 export function useCrawlersQuery(filters: CrawlerListFilters = {}) {
-  const token = useToken();
   const statusKey = filters.statuses?.length
     ? filters.statuses.join(",")
     : filters.status ?? "";
@@ -145,31 +132,23 @@ export function useCrawlersQuery(filters: CrawlerListFilters = {}) {
     return params;
   }, [statusKey, groupKey, apiKeyKey, keywordKey]);
 
-  const enabled = Boolean(token);
-
   return useQuery<CrawlerSummary[], ApiError>({
     queryKey: crawlerKeys.list(searchParams),
     queryFn: async () =>
       apiClient.get<CrawlerSummary[]>(endpoints.crawlers.list, {
-        token,
         searchParams,
       }),
-    enabled,
     staleTime: 15 * 1000,
-    refetchInterval: enabled ? 15 * 1000 : false,
+    refetchInterval: 15 * 1000,
     placeholderData: (prev) => prev,
   });
 }
 
 export function useCrawlerDetailQuery(crawlerId: number | string, enabled = true) {
-  const token = useToken();
-  const shouldEnable = Boolean(token) && enabled && Boolean(crawlerId);
+  const shouldEnable = enabled && Boolean(crawlerId);
   return useQuery<CrawlerSummary, ApiError>({
     queryKey: crawlerKeys.detail(crawlerId),
-    queryFn: async () =>
-      apiClient.get<CrawlerSummary>(endpoints.crawlers.detail(crawlerId), {
-        token,
-      }),
+    queryFn: async () => apiClient.get<CrawlerSummary>(endpoints.crawlers.detail(crawlerId)),
     enabled: shouldEnable,
     staleTime: 10 * 1000,
     refetchInterval: shouldEnable ? 12 * 1000 : false,
@@ -177,11 +156,10 @@ export function useCrawlerDetailQuery(crawlerId: number | string, enabled = true
 }
 
 export function useCrawlerRunsQuery(crawlerId: number | string, enabled = true) {
-  const token = useToken();
-  const shouldEnable = Boolean(token) && enabled;
+  const shouldEnable = enabled;
   return useQuery<CrawlerRun[], ApiError>({
     queryKey: crawlerKeys.runs(crawlerId),
-    queryFn: async () => apiClient.get<CrawlerRun[]>(endpoints.crawlers.runs(crawlerId), { token }),
+    queryFn: async () => apiClient.get<CrawlerRun[]>(endpoints.crawlers.runs(crawlerId)),
     enabled: shouldEnable,
     staleTime: 10 * 1000,
     refetchInterval: shouldEnable ? 15 * 1000 : false,
@@ -190,13 +168,11 @@ export function useCrawlerRunsQuery(crawlerId: number | string, enabled = true) 
 }
 
 export function useCrawlerLogsQuery(crawlerId: number | string, limit = 50, enabled = true) {
-  const token = useToken();
-  const shouldEnable = Boolean(token) && enabled;
+  const shouldEnable = enabled;
   return useQuery<CrawlerLog[], ApiError>({
     queryKey: crawlerKeys.logs(crawlerId, limit),
     queryFn: async () =>
       apiClient.get<CrawlerLog[]>(endpoints.crawlers.logs(crawlerId), {
-        token,
         searchParams: { limit: String(limit) },
       }),
     enabled: shouldEnable,
@@ -211,8 +187,7 @@ export function useCrawlerHeartbeatsQuery(
   options: HeartbeatQueryOptions = {},
 ) {
   const { limit = 500, start, end, maxPoints = 600, enabled = true } = options;
-  const token = useToken();
-  const shouldEnable = Boolean(token) && enabled;
+  const shouldEnable = enabled;
 
   const searchParams: Record<string, string> = { limit: String(limit) };
   if (start) {
@@ -229,7 +204,6 @@ export function useCrawlerHeartbeatsQuery(
     queryKey: crawlerKeys.heartbeats(crawlerId, limit, start ?? null, end ?? null, maxPoints ?? null),
     queryFn: async () =>
       apiClient.get<CrawlerHeartbeat[]>(endpoints.crawlers.heartbeats(crawlerId), {
-        token,
         searchParams,
       }),
     enabled: shouldEnable,
@@ -245,14 +219,12 @@ export function useCrawlerCommandsQuery(
   enabled = true,
   options: { limit?: number; refetchInterval?: number | false } = {},
 ) {
-  const token = useToken();
   const limit = options.limit ?? 200;
-  const shouldEnable = Boolean(token) && enabled;
+  const shouldEnable = enabled;
   return useQuery<CrawlerCommand[], ApiError>({
     queryKey: crawlerKeys.commands(crawlerId, includeFinished, limit),
     queryFn: async () =>
       apiClient.get<CrawlerCommand[]>(endpoints.crawlers.commands.list(crawlerId), {
-        token,
         searchParams: {
           include_finished: includeFinished ? "1" : "0",
           limit: String(limit),
@@ -267,12 +239,10 @@ export function useCrawlerCommandsQuery(
 }
 
 export function useCrawlerConfigFetchQuery(crawlerId: number | string, enabled = true) {
-  const token = useToken();
-  const shouldEnable = Boolean(token) && enabled && Boolean(crawlerId);
+  const shouldEnable = enabled && Boolean(crawlerId);
   return useQuery<CrawlerConfigFetch, ApiError>({
     queryKey: crawlerKeys.configFetch(crawlerId),
-    queryFn: async () =>
-      apiClient.get<CrawlerConfigFetch>(endpoints.crawlers.config.fetch(crawlerId), { token }),
+    queryFn: async () => apiClient.get<CrawlerConfigFetch>(endpoints.crawlers.config.fetch(crawlerId)),
     enabled: shouldEnable,
     staleTime: 30 * 1000,
     refetchInterval: shouldEnable ? 60 * 1000 : false,
@@ -280,14 +250,11 @@ export function useCrawlerConfigFetchQuery(crawlerId: number | string, enabled =
 }
 
 export function useAlertRulesQuery() {
-  const token = useToken();
-  const enabled = Boolean(token);
   return useQuery<CrawlerAlertRule[], ApiError>({
     queryKey: crawlerKeys.alertRules(),
-    queryFn: async () => apiClient.get<CrawlerAlertRule[]>(endpoints.crawlers.alerts.rules.list, { token }),
-    enabled,
+    queryFn: async () => apiClient.get<CrawlerAlertRule[]>(endpoints.crawlers.alerts.rules.list),
     staleTime: 45 * 1000,
-    refetchInterval: enabled ? 45 * 1000 : false,
+    refetchInterval: 45 * 1000,
     placeholderData: (prev) => prev,
   });
 }
@@ -299,19 +266,14 @@ export interface AlertEventsFilters {
 }
 
 export function useAlertEventsQuery(filters: AlertEventsFilters = {}, enabled = true) {
-  const token = useToken();
-  const shouldEnable = Boolean(token) && enabled;
+  const shouldEnable = enabled;
   const searchParams: Record<string, string> = {};
   if (filters.ruleId) searchParams.rule_id = String(filters.ruleId);
   if (filters.status) searchParams.status_filter = filters.status;
   if (filters.limit) searchParams.limit = String(filters.limit);
   return useQuery<CrawlerAlertEvent[], ApiError>({
     queryKey: crawlerKeys.alertEvents(searchParams),
-    queryFn: async () =>
-      apiClient.get<CrawlerAlertEvent[]>(endpoints.crawlers.alerts.events, {
-        token,
-        searchParams,
-      }),
+    queryFn: async () => apiClient.get<CrawlerAlertEvent[]>(endpoints.crawlers.alerts.events, { searchParams }),
     enabled: shouldEnable,
     staleTime: 30 * 1000,
     refetchInterval: shouldEnable ? 30 * 1000 : false,
@@ -320,11 +282,10 @@ export function useAlertEventsQuery(filters: AlertEventsFilters = {}, enabled = 
 }
 
 export function useApiKeysQuery(enabled = true) {
-  const token = useToken();
-  const shouldEnable = Boolean(token) && enabled;
+  const shouldEnable = enabled;
   return useQuery<ApiKey[], ApiError>({
     queryKey: apiKeyQueryKeys.all,
-    queryFn: async () => apiClient.get<ApiKey[]>(endpoints.apiKeys.list, { token }),
+    queryFn: async () => apiClient.get<ApiKey[]>(endpoints.apiKeys.list),
     enabled: shouldEnable,
     staleTime: 60 * 1000,
     refetchInterval: shouldEnable ? 60 * 1000 : false,
@@ -333,11 +294,10 @@ export function useApiKeysQuery(enabled = true) {
 }
 
 export function useQuickLinksQuery(enabled = true) {
-  const token = useToken();
-  const shouldEnable = Boolean(token) && enabled;
+  const shouldEnable = enabled;
   return useQuery<QuickLink[], ApiError>({
     queryKey: quickLinkKeys.all,
-    queryFn: async () => apiClient.get<QuickLink[]>(endpoints.crawlers.quickLinks.list, { token }),
+    queryFn: async () => apiClient.get<QuickLink[]>(endpoints.crawlers.quickLinks.list),
     enabled: shouldEnable,
     staleTime: 30 * 1000,
     refetchInterval: shouldEnable ? 30 * 1000 : false,

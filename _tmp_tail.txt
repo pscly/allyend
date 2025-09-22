@@ -1,281 +1,346 @@
-    api_key: Mapped[Optional[APIKey]] = relationship("APIKey", back_populates="logs")
-
-
-class OperationAuditLog(Base):
-    __tablename__ = "operation_audit_logs"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    action: Mapped[str] = mapped_column(String(64))
-    target_type: Mapped[str] = mapped_column(String(32))
-    target_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
-    target_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-    before: Mapped[Optional[dict]] = mapped_column(MutableDict.as_mutable(JSON), nullable=True)
-    after: Mapped[Optional[dict]] = mapped_column(MutableDict.as_mutable(JSON), nullable=True)
-    actor_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
-    actor_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-    actor_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
-
-    actor: Mapped[Optional["User"]] = relationship("User")
-
-
-class CrawlerHeartbeat(Base):
-    __tablename__ = "crawler_heartbeats"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    status: Mapped[str] = mapped_column(String(16))
-    payload: Mapped[Optional[dict]] = mapped_column(MutableDict.as_mutable(JSON), nullable=True)
-    source_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
-
-    crawler_id: Mapped[int] = mapped_column(ForeignKey("crawlers.id"))
-    crawler: Mapped["Crawler"] = relationship("Crawler", back_populates="heartbeat_events")
-
-    api_key_id: Mapped[int] = mapped_column(ForeignKey("api_keys.id"))
-    api_key: Mapped["APIKey"] = relationship("APIKey")
-
-
-class CrawlerCommand(Base):
-    __tablename__ = "crawler_commands"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    command: Mapped[str] = mapped_column(String(32))
-    payload: Mapped[Optional[dict]] = mapped_column(MutableDict.as_mutable(JSON), nullable=True)
-    status: Mapped[str] = mapped_column(String(16), default="pending")
-    result: Mapped[Optional[dict]] = mapped_column(MutableDict.as_mutable(JSON), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
-    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-
-    crawler_id: Mapped[int] = mapped_column(ForeignKey("crawlers.id"))
-    crawler: Mapped["Crawler"] = relationship("Crawler", back_populates="commands")
-
-    issued_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    issued_by: Mapped[Optional["User"]] = relationship("User", back_populates="crawler_commands")
-
-
-class CrawlerAccessLink(Base):
-    __tablename__ = "crawler_access_links"
-    __table_args__ = (UniqueConstraint("slug", name="uq_crawler_access_slug"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    slug: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    target_type: Mapped[str] = mapped_column(String(16))  # crawler / api_key / group
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    allow_logs: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
-
-    crawler_id: Mapped[Optional[int]] = mapped_column(ForeignKey("crawlers.id"), nullable=True)
-    crawler: Mapped[Optional[Crawler]] = relationship("Crawler", back_populates="quick_links")
-
-    api_key_id: Mapped[Optional[int]] = mapped_column(ForeignKey("api_keys.id"), nullable=True)
-    api_key: Mapped[Optional[APIKey]] = relationship("APIKey", back_populates="quick_links")
-
-    group_id: Mapped[Optional[int]] = mapped_column(ForeignKey("crawler_groups.id"), nullable=True)
-    group: Mapped[Optional[CrawlerGroup]] = relationship("CrawlerGroup", back_populates="quick_links")
-
-    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    created_by: Mapped[Optional[User]] = relationship("User")
-
-    @property
-    def crawler_local_id(self) -> Optional[int]:
-        return self.crawler.local_id if self.crawler else None
-
-    @property
-    def api_key_local_id(self) -> Optional[int]:
-        return self.api_key.local_id if self.api_key else None
-
-    @property
-    def group_slug(self) -> Optional[str]:
-        return self.group.slug if self.group else None
-
-
-
-class CrawlerConfigTemplate(Base):
-    __tablename__ = "crawler_config_templates"
-    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_crawler_config_template_name"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(128))
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    format: Mapped[str] = mapped_column(String(16), default="json")
-    content: Mapped[str] = mapped_column(Text)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
-
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    user: Mapped["User"] = relationship("User", back_populates="config_templates")
-
-    assignments: Mapped[List["CrawlerConfigAssignment"]] = relationship(
-        "CrawlerConfigAssignment",
-        back_populates="template",
-    )
-
-
-class CrawlerConfigAssignment(Base):
-    __tablename__ = "crawler_config_assignments"
-    __table_args__ = (
-        UniqueConstraint("user_id", "target_type", "target_id", name="uq_crawler_config_assignment_target"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(128))
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    format: Mapped[str] = mapped_column(String(16), default="json")
-    content: Mapped[str] = mapped_column(Text)
-    version: Mapped[int] = mapped_column(Integer, default=1)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
-
-    target_type: Mapped[str] = mapped_column(String(16))
-    target_id: Mapped[int] = mapped_column(Integer)
-
-    template_id: Mapped[Optional[int]] = mapped_column(ForeignKey("crawler_config_templates.id"), nullable=True)
-    template: Mapped[Optional["CrawlerConfigTemplate"]] = relationship("CrawlerConfigTemplate", back_populates="assignments")
-
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    user: Mapped["User"] = relationship("User", back_populates="config_assignments")
-
-
-class CrawlerAlertRule(Base):
-    __tablename__ = "crawler_alert_rules"
-    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_crawler_alert_rule_name"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(128))
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    trigger_type: Mapped[str] = mapped_column(String(32))
-    target_type: Mapped[str] = mapped_column(String(16), default="all")
-    target_ids: Mapped[list[int]] = mapped_column(MutableList.as_mutable(JSON), default=list)
-    payload_field: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-    comparator: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
-    threshold: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    status_from: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
-    status_to: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
-    consecutive_failures: Mapped[int] = mapped_column(Integer, default=1)
-    cooldown_minutes: Mapped[int] = mapped_column(Integer, default=10)
-    channels: Mapped[list[dict]] = mapped_column(MutableList.as_mutable(JSON), default=list)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
-    last_triggered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    user: Mapped["User"] = relationship("User", back_populates="alert_rules")
-
-    states: Mapped[List["CrawlerAlertState"]] = relationship("CrawlerAlertState", back_populates="rule", cascade="all, delete-orphan")
-    events: Mapped[List["CrawlerAlertEvent"]] = relationship("CrawlerAlertEvent", back_populates="rule", cascade="all, delete-orphan")
-
-
-class CrawlerAlertState(Base):
-    __tablename__ = "crawler_alert_states"
-    __table_args__ = (UniqueConstraint("rule_id", "crawler_id", name="uq_crawler_alert_state"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    rule_id: Mapped[int] = mapped_column(ForeignKey("crawler_alert_rules.id"))
-    crawler_id: Mapped[int] = mapped_column(ForeignKey("crawlers.id"))
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    consecutive_hits: Mapped[int] = mapped_column(Integer, default=0)
-    last_triggered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    last_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
-    last_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    context: Mapped[dict] = mapped_column(MutableDict.as_mutable(JSON), default=dict)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
-
-    rule: Mapped["CrawlerAlertRule"] = relationship("CrawlerAlertRule", back_populates="states")
-    crawler: Mapped["Crawler"] = relationship("Crawler")
-    user: Mapped["User"] = relationship("User")
-
-
-class CrawlerAlertEvent(Base):
-    __tablename__ = "crawler_alert_events"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    rule_id: Mapped[int] = mapped_column(ForeignKey("crawler_alert_rules.id"))
-    crawler_id: Mapped[int] = mapped_column(ForeignKey("crawlers.id"))
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    triggered_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
-    status: Mapped[str] = mapped_column(String(16), default="pending")
-    message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    payload: Mapped[dict] = mapped_column(MutableDict.as_mutable(JSON), default=dict)
-    channel_results: Mapped[list[dict]] = mapped_column(MutableList.as_mutable(JSON), default=list)
-    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-
-    rule: Mapped["CrawlerAlertRule"] = relationship("CrawlerAlertRule", back_populates="events")
-    crawler: Mapped["Crawler"] = relationship("Crawler")
-    user: Mapped["User"] = relationship("User", back_populates="alert_events")
-
-class FileAPIToken(Base):
-    __tablename__ = "file_api_tokens"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    token: Mapped[str] = mapped_column(String(128), unique=True, index=True)
-    name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    allowed_ips: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    allowed_cidrs: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    usage_count: Mapped[int] = mapped_column(Integer, default=0)
-    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
-
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    user: Mapped[User] = relationship("User", back_populates="file_tokens")
-
-    uploads: Mapped[List["FileEntry"]] = relationship("FileEntry", back_populates="uploaded_by_token")
-    logs: Mapped[List["FileAccessLog"]] = relationship("FileAccessLog", back_populates="token")
-
-
-class FileEntry(Base):
-    __tablename__ = "file_entries"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    storage_path: Mapped[str] = mapped_column(String(255), unique=True)
-    original_name: Mapped[str] = mapped_column(String(255))
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    content_type: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-    size_bytes: Mapped[int] = mapped_column(Integer)
-    checksum_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    visibility: Mapped[str] = mapped_column(String(16), default="private")  # private/group/public
-    is_anonymous: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
-    download_count: Mapped[int] = mapped_column(Integer, default=0)
-
-    owner_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    owner: Mapped[Optional[User]] = relationship("User", back_populates="files_owned", foreign_keys=[owner_id])
-
-    owner_group_id: Mapped[Optional[int]] = mapped_column(ForeignKey("user_groups.id"), nullable=True)
-    owner_group: Mapped[Optional[UserGroup]] = relationship("UserGroup")
-
-    uploaded_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    uploaded_by_user: Mapped[Optional[User]] = relationship("User", foreign_keys=[uploaded_by_user_id])
-
-    uploaded_by_token_id: Mapped[Optional[int]] = mapped_column(ForeignKey("file_api_tokens.id"), nullable=True)
-    uploaded_by_token: Mapped[Optional[FileAPIToken]] = relationship("FileAPIToken", back_populates="uploads")
-
-    access_logs: Mapped[List["FileAccessLog"]] = relationship("FileAccessLog", back_populates="file", cascade="all, delete-orphan")
-
-
-class FileAccessLog(Base):
-    __tablename__ = "file_access_logs"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    action: Mapped[str] = mapped_column(String(32))  # upload/download/delete/list
-    ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    status: Mapped[str] = mapped_column(String(32), default="success")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
-
-    file_id: Mapped[Optional[int]] = mapped_column(ForeignKey("file_entries.id"), nullable=True)
-    file: Mapped[Optional[FileEntry]] = relationship("FileEntry", back_populates="access_logs")
-
-    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    user: Mapped[Optional[User]] = relationship("User")
-
-    token_id: Mapped[Optional[int]] = mapped_column(ForeignKey("file_api_tokens.id"), nullable=True)
-    token: Mapped[Optional[FileAPIToken]] = relationship("FileAPIToken", back_populates="logs")
-
+"use client";
+
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+import { apiClient } from "@/lib/api/client";
+import type { ApiError } from "@/lib/api/client";
+import { endpoints } from "@/lib/api/endpoints";
+import type {
+  ApiKey,
+  CrawlerAlertEvent,
+  CrawlerAlertRule,
+  CrawlerCommand,
+  CrawlerConfigAssignment,
+  CrawlerConfigFetch,
+  CrawlerConfigTemplate,
+  CrawlerGroup,
+  CrawlerHeartbeat,
+  CrawlerLog,
+  CrawlerRun,
+  CrawlerSummary,
+  QuickLink,
+} from "@/lib/api/types";
+import { useAuthStore } from "@/store/auth-store";
+
+export const crawlerKeys = {
+  all: ["crawlers"] as const,
+  list: (filters?: Record<string, unknown>) => ["crawlers", "list", filters] as const,
+  detail: (id: number | string) => ["crawlers", id, "detail"] as const,
+  runs: (id: number | string) => ["crawlers", id, "runs"] as const,
+  logs: (id: number | string, limit: number) => ["crawlers", id, "logs", limit] as const,
+  heartbeats: (
+    id: number | string,
+    limit: number,
+    start?: string | null,
+    end?: string | null,
+    maxPoints?: number,
+  ) => ["crawlers", id, "heartbeats", limit, start ?? null, end ?? null, maxPoints ?? null] as const,
+  commands: (id: number | string, includeFinished: boolean, limit: number) =>
+    ["crawlers", id, "commands", includeFinished, limit] as const,
+  groups: () => ["crawlers", "groups"] as const,
+  configTemplates: () => ["crawlers", "config", "templates"] as const,
+  configAssignments: () => ["crawlers", "config", "assignments"] as const,
+  configFetch: (id: number | string) => ["crawlers", id, "config"] as const,
+  alertRules: () => ["crawlers", "alerts", "rules"] as const,
+  alertEvents: (filters?: Record<string, unknown>) => ["crawlers", "alerts", "events", filters] as const,
+};
+
+export const apiKeyQueryKeys = {
+  all: ["apiKeys"] as const,
+};
+
+export const quickLinkKeys = {
+  all: ["quickLinks"] as const,
+};
+
+export interface CrawlerListFilters {
+  status?: "online" | "warning" | "offline";
+  statuses?: Array<"online" | "warning" | "offline">;
+  groupId?: number | "none";
+  groupIds?: Array<number | "none">;
+  apiKeyId?: number | "none";
+  apiKeyIds?: Array<number>;
+  keyword?: string;
+}
+
+export interface HeartbeatQueryOptions {
+  limit?: number;
+  start?: string;
+  end?: string;
+  maxPoints?: number;
+  enabled?: boolean;
+}
+
+function useToken() {
+  return useAuthStore((state) => state.token);
+}
+
+export function useCrawlerGroupsQuery() {
+  const token = useToken();
+  const enabled = Boolean(token);
+  return useQuery<CrawlerGroup[], ApiError>({
+    queryKey: crawlerKeys.groups(),
+    queryFn: async () => apiClient.get<CrawlerGroup[]>(endpoints.crawlers.groups.list, { token }),
+    enabled,
+    staleTime: 60 * 1000,
+    refetchInterval: enabled ? 60 * 1000 : false,
+    // v5 移除 keepPreviousData，使用 placeholderData 保留上一次数据
+    placeholderData: (prev) => prev,
+  });
+
+}
+
+export function useConfigTemplatesQuery() {
+  const token = useToken();
+  const enabled = Boolean(token);
+  return useQuery<CrawlerConfigTemplate[], ApiError>({
+    queryKey: crawlerKeys.configTemplates(),
+    queryFn: async () => apiClient.get<CrawlerConfigTemplate[]>(endpoints.crawlers.config.templates.list, { token }),
+    enabled,
+    staleTime: 60 * 1000,
+    refetchInterval: enabled ? 60 * 1000 : false,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useConfigAssignmentsQuery() {
+  const token = useToken();
+  const enabled = Boolean(token);
+  return useQuery<CrawlerConfigAssignment[], ApiError>({
+    queryKey: crawlerKeys.configAssignments(),
+    queryFn: async () => apiClient.get<CrawlerConfigAssignment[]>(endpoints.crawlers.config.assignments.list, { token }),
+    enabled,
+    staleTime: 60 * 1000,
+    refetchInterval: enabled ? 60 * 1000 : false,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useCrawlersQuery(filters: CrawlerListFilters = {}) {
+  const token = useToken();
+  const statusKey = filters.statuses?.length
+    ? filters.statuses.join(",")
+    : filters.status ?? "";
+  const groupKey = filters.groupIds?.length
+    ? filters.groupIds.map((value) => (value === "none" ? "none" : String(value))).join(",")
+    : filters.groupId !== undefined
+      ? filters.groupId === "none"
+        ? "none"
+        : String(filters.groupId)
+      : "";
+  const apiKeyKey = filters.apiKeyIds?.length
+    ? filters.apiKeyIds.map((value) => String(value)).join(",")
+    : typeof filters.apiKeyId === "number"
+      ? String(filters.apiKeyId)
+      : "";
+  const keywordKey = filters.keyword ?? "";
+
+  const searchParams = useMemo(() => {
+    const params: Record<string, string> = {};
+    if (statusKey) params.status_filter = statusKey;
+    if (groupKey) params.group_ids = groupKey;
+    if (apiKeyKey) params.api_key_ids = apiKeyKey;
+    if (keywordKey) params.keyword = keywordKey;
+    return params;
+  }, [statusKey, groupKey, apiKeyKey, keywordKey]);
+
+  const enabled = Boolean(token);
+
+  return useQuery<CrawlerSummary[], ApiError>({
+    queryKey: crawlerKeys.list(searchParams),
+    queryFn: async () =>
+      apiClient.get<CrawlerSummary[]>(endpoints.crawlers.list, {
+        token,
+        searchParams,
+      }),
+    enabled,
+    staleTime: 15 * 1000,
+    refetchInterval: enabled ? 15 * 1000 : false,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useCrawlerDetailQuery(crawlerId: number | string, enabled = true) {
+  const token = useToken();
+  const shouldEnable = Boolean(token) && enabled && Boolean(crawlerId);
+  return useQuery<CrawlerSummary, ApiError>({
+    queryKey: crawlerKeys.detail(crawlerId),
+    queryFn: async () =>
+      apiClient.get<CrawlerSummary>(endpoints.crawlers.detail(crawlerId), {
+        token,
+      }),
+    enabled: shouldEnable,
+    staleTime: 10 * 1000,
+    refetchInterval: shouldEnable ? 12 * 1000 : false,
+  });
+}
+
+export function useCrawlerRunsQuery(crawlerId: number | string, enabled = true) {
+  const token = useToken();
+  const shouldEnable = Boolean(token) && enabled;
+  return useQuery<CrawlerRun[], ApiError>({
+    queryKey: crawlerKeys.runs(crawlerId),
+    queryFn: async () => apiClient.get<CrawlerRun[]>(endpoints.crawlers.runs(crawlerId), { token }),
+    enabled: shouldEnable,
+    staleTime: 10 * 1000,
+    refetchInterval: shouldEnable ? 15 * 1000 : false,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useCrawlerLogsQuery(crawlerId: number | string, limit = 50, enabled = true) {
+  const token = useToken();
+  const shouldEnable = Boolean(token) && enabled;
+  return useQuery<CrawlerLog[], ApiError>({
+    queryKey: crawlerKeys.logs(crawlerId, limit),
+    queryFn: async () =>
+      apiClient.get<CrawlerLog[]>(endpoints.crawlers.logs(crawlerId), {
+        token,
+        searchParams: { limit: String(limit) },
+      }),
+    enabled: shouldEnable,
+    staleTime: 8 * 1000,
+    refetchInterval: shouldEnable ? 12 * 1000 : false,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useCrawlerHeartbeatsQuery(
+  crawlerId: number | string,
+  options: HeartbeatQueryOptions = {},
+) {
+  const { limit = 500, start, end, maxPoints = 600, enabled = true } = options;
+  const token = useToken();
+  const shouldEnable = Boolean(token) && enabled;
+
+  const searchParams: Record<string, string> = { limit: String(limit) };
+  if (start) {
+    searchParams.start = start;
+  }
+  if (end) {
+    searchParams.end = end;
+  }
+  if (maxPoints) {
+    searchParams.max_points = String(maxPoints);
+  }
+
+  return useQuery<CrawlerHeartbeat[], ApiError>({
+    queryKey: crawlerKeys.heartbeats(crawlerId, limit, start ?? null, end ?? null, maxPoints ?? null),
+    queryFn: async () =>
+      apiClient.get<CrawlerHeartbeat[]>(endpoints.crawlers.heartbeats(crawlerId), {
+        token,
+        searchParams,
+      }),
+    enabled: shouldEnable,
+    staleTime: 8 * 1000,
+    refetchInterval: shouldEnable ? 8 * 1000 : false,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useCrawlerCommandsQuery(
+  crawlerId: number | string,
+  includeFinished = false,
+  enabled = true,
+  options: { limit?: number; refetchInterval?: number | false } = {},
+) {
+  const token = useToken();
+  const limit = options.limit ?? 200;
+  const shouldEnable = Boolean(token) && enabled;
+  return useQuery<CrawlerCommand[], ApiError>({
+    queryKey: crawlerKeys.commands(crawlerId, includeFinished, limit),
+    queryFn: async () =>
+      apiClient.get<CrawlerCommand[]>(endpoints.crawlers.commands.list(crawlerId), {
+        token,
+        searchParams: {
+          include_finished: includeFinished ? "1" : "0",
+          limit: String(limit),
+        },
+      }),
+    enabled: shouldEnable,
+    staleTime: 8 * 1000,
+    refetchInterval: shouldEnable ? options.refetchInterval ?? 12 * 1000 : false,
+    placeholderData: (prev) => prev,
+  });
+
+}
+
+export function useCrawlerConfigFetchQuery(crawlerId: number | string, enabled = true) {
+  const token = useToken();
+  const shouldEnable = Boolean(token) && enabled && Boolean(crawlerId);
+  return useQuery<CrawlerConfigFetch, ApiError>({
+    queryKey: crawlerKeys.configFetch(crawlerId),
+    queryFn: async () =>
+      apiClient.get<CrawlerConfigFetch>(endpoints.crawlers.config.fetch(crawlerId), { token }),
+    enabled: shouldEnable,
+    staleTime: 30 * 1000,
+    refetchInterval: shouldEnable ? 60 * 1000 : false,
+  });
+}
+
+export function useAlertRulesQuery() {
+  const token = useToken();
+  const enabled = Boolean(token);
+  return useQuery<CrawlerAlertRule[], ApiError>({
+    queryKey: crawlerKeys.alertRules(),
+    queryFn: async () => apiClient.get<CrawlerAlertRule[]>(endpoints.crawlers.alerts.rules.list, { token }),
+    enabled,
+    staleTime: 45 * 1000,
+    refetchInterval: enabled ? 45 * 1000 : false,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export interface AlertEventsFilters {
+  ruleId?: number;
+  status?: string;
+  limit?: number;
+}
+
+export function useAlertEventsQuery(filters: AlertEventsFilters = {}, enabled = true) {
+  const token = useToken();
+  const shouldEnable = Boolean(token) && enabled;
+  const searchParams: Record<string, string> = {};
+  if (filters.ruleId) searchParams.rule_id = String(filters.ruleId);
+  if (filters.status) searchParams.status_filter = filters.status;
+  if (filters.limit) searchParams.limit = String(filters.limit);
+  return useQuery<CrawlerAlertEvent[], ApiError>({
+    queryKey: crawlerKeys.alertEvents(searchParams),
+    queryFn: async () =>
+      apiClient.get<CrawlerAlertEvent[]>(endpoints.crawlers.alerts.events, {
+        token,
+        searchParams,
+      }),
+    enabled: shouldEnable,
+    staleTime: 30 * 1000,
+    refetchInterval: shouldEnable ? 30 * 1000 : false,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useApiKeysQuery(enabled = true) {
+  const token = useToken();
+  const shouldEnable = Boolean(token) && enabled;
+  return useQuery<ApiKey[], ApiError>({
+    queryKey: apiKeyQueryKeys.all,
+    queryFn: async () => apiClient.get<ApiKey[]>(endpoints.apiKeys.list, { token }),
+    enabled: shouldEnable,
+    staleTime: 60 * 1000,
+    refetchInterval: shouldEnable ? 60 * 1000 : false,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useQuickLinksQuery(enabled = true) {
+  const token = useToken();
+  const shouldEnable = Boolean(token) && enabled;
+  return useQuery<QuickLink[], ApiError>({
+    queryKey: quickLinkKeys.all,
+    queryFn: async () => apiClient.get<QuickLink[]>(endpoints.crawlers.quickLinks.list, { token }),
+    enabled: shouldEnable,
+    staleTime: 30 * 1000,
+    refetchInterval: shouldEnable ? 30 * 1000 : false,
+    placeholderData: (prev) => prev,
+  });
+}

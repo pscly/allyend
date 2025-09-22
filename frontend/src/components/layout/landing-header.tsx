@@ -21,13 +21,12 @@ interface LandingAuthState {
 }
 
 function useLandingAuthState(): LandingAuthState {
-  const { hydrated, token, profile } = useAuthStore((state) => ({
+  const { hydrated, profile } = useAuthStore((state) => ({
     hydrated: state.hydrated,
-    token: state.token,
     profile: state.profile,
   }));
 
-  const loggedIn = hydrated && Boolean(token);
+  const loggedIn = hydrated && Boolean(profile);
   return {
     loggedIn,
     ctaHref: loggedIn ? "/dashboard" : "/login",

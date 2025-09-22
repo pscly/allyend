@@ -45,6 +45,12 @@ class Settings(BaseSettings):
 
     FRONTEND_ORIGINS: list[str] = ["http://localhost:3000"]
 
+    # Cookie 会话配置
+    COOKIE_SECURE: bool = False
+    COOKIE_SAMESITE: str = "lax"  # 可选："lax" | "strict" | "none"
+    COOKIE_DOMAIN: str | None = None
+    COOKIE_PATH: str = "/"
+
     @field_validator("FRONTEND_ORIGINS", mode="before")
     @classmethod
     def _normalize_frontend_origins(cls, value):
@@ -57,6 +63,16 @@ class Settings(BaseSettings):
         if isinstance(value, (tuple, set)):
             return [str(item).strip() for item in value if str(item).strip()]
         return list(value)
+
+    @field_validator("COOKIE_SAMESITE", mode="before")
+    @classmethod
+    def _normalize_cookie_samesite(cls, value: str) -> str:
+        if value is None:
+            return "lax"
+        v = str(value).strip().lower()
+        if v not in {"lax", "strict", "none"}:
+            return "lax"
+        return v
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

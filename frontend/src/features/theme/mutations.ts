@@ -44,15 +44,10 @@ function mergeTheme(profile: UserProfile | null, theme: ThemeSetting): UserProfi
 }
 
 export function useUpdateThemeMutation() {
-  const token = useAuthStore((state) => state.token);
   const queryClient = useQueryClient();
 
   return useMutation<ThemeSetting, ApiError, ThemeSettingUpdateInput>({
-    mutationFn: async (payload) => {
-      return apiClient.patch<ThemeSetting>(endpoints.dashboard.theme, buildThemeBody(payload), {
-        token,
-      });
-    },
+    mutationFn: async (payload) => apiClient.patch<ThemeSetting>(endpoints.dashboard.theme, buildThemeBody(payload)),
     onSuccess: async (data) => {
       const store = useAuthStore.getState();
       const nextProfile = mergeTheme(store.profile, data);

@@ -72,12 +72,9 @@ def test_profile_returns_user_payload(client, session_factory):
         json={"username": "tester", "password": "secret"},
     )
     assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
 
-    profile_response = client.get(
-        "/api/users/me",
-        headers={"Authorization": f"Bearer {token}"},
-    )
+    # 使用同一个客户端会自动携带 Cookie 会话
+    profile_response = client.get("/api/users/me")
     assert profile_response.status_code == 200
     payload = profile_response.json()
     assert payload["username"] == "tester"

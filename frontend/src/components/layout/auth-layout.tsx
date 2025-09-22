@@ -15,13 +15,13 @@ interface AuthLayoutProps {
 export function AuthLayout({ children }: AuthLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const token = useAuthStore((state) => state.token);
+  const profile = useAuthStore((state) => state.profile);
 
   useEffect(() => {
-    if (token) {
+    if (profile) {
       router.replace("/dashboard");
     }
-  }, [router, token]);
+  }, [router, profile]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-background via-background to-muted/30 px-4 py-12">

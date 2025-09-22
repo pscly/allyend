@@ -5,6 +5,7 @@
 **为什么选择 AllYend**
 - 面向采集/自动化团队：统一管理爬虫实例、运行批次、日志与远程指令
 - 安全的文件中转：上传令牌、私有/分组/公开可见、访问审计与下载统计
+- 爬虫公开链接自动同步：将爬虫设为公开时，系统会自动生成对应的 `/pa/<slug>` 快捷访问链接并启用；取消公开则自动停用该链接。
 - 轻量治理：邀请码注册、分组开关、管理员面板、主题偏好
 - 工程友好：Alembic 迁移、日志轮转、Docker Compose + Nginx 一键上线
 
@@ -123,8 +124,8 @@ sequenceDiagram
     DB-->>BE: 用户信息
     BE-->>BE: 生成 JWT access_token
     BE-->>FE: 返回 Token + 用户资料
-    FE-->>U: 保存 Token 并初始化
-    FE->>BE: 后续请求附带 Authorization: Bearer
+    FE-->>U: 写入 HttpOnly Cookie 并初始化
+    FE->>BE: 后续请求自动附带 Cookie (access_token)
     BE-->>FE: 返回受保护资源
 ```
 
@@ -192,6 +193,11 @@ sequenceDiagram
   - `SECRET_KEY`：JWT 签名密钥（务必修改）
   - `ACCESS_TOKEN_EXPIRE_MINUTES`：Token 过期分钟数（默认 120）
   - `HOST`/`PORT`：监听地址与端口（默认 `0.0.0.0:9093`）
+  - Cookie 会话：
+    - `COOKIE_SECURE`：是否仅在 HTTPS 传输 Cookie（默认 false；生产建议 true）
+    - `COOKIE_SAMESITE`：`lax` | `strict` | `none`（默认 `lax`；跨站前后端域名时用 `none` 且需 `COOKIE_SECURE=true`）
+    - `COOKIE_DOMAIN`：可选，设置跨子域共享的域名（如 `.example.com`）
+    - `COOKIE_PATH`：Cookie 作用路径（默认 `/`）
 - 注册与邀请
   - `ALLOW_DIRECT_SIGNUP`：是否允许自由注册（默认 true）
   - `ROOT_ADMIN_USERNAME`、`ROOT_ADMIN_PASSWORD`、`ROOT_ADMIN_INVITE_CODE`
@@ -248,6 +254,11 @@ client.run_command_loop(crawler_id=crawler["id"], interval_seconds=5, handler=ha
 - `docker compose up -d --build` 一键启动；Nginx 反代见 `deploy/nginx/default.conf`
 - 默认端口：前端 3000（经反代暴露 8080），后端 9093
 - 数据卷：`./data:/app/data`、`./logs:/app/logs`
+
+### 生产环境 Cookie 建议
+
+- 同站部署（前后端同域）：保持默认 `COOKIE_SAMESITE=lax`，可选开启 `COOKIE_SECURE=true`（强烈建议在 HTTPS 下开启）。
+- 跨站部署（前端与后端不同域或跨子域）：设置 `COOKIE_SAMESITE=none` 且必须 `COOKIE_SECURE=true`；必要时配置 `COOKIE_DOMAIN=.yourdomain.com` 以在子域间共享登录态。
 - 生产建议：启用 HTTPS/HTTP2、压缩、缓存策略；限制上传体积
 
 ## 质量与安全建议

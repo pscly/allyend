@@ -93,6 +93,13 @@ def on_startup():
     _configure_logging()
 
 
+# 健康检查与就绪探针（便于排查“卡住”）
+@app.get("/health")
+def healthcheck():
+    """返回应用健康状态，用于本地/容器探活"""
+    return {"status": "ok"}
+
+
 # 路由注册
 app.include_router(auth_router.router)
 app.include_router(crawlers_router.router)

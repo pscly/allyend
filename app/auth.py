@@ -48,15 +48,7 @@ def decode_access_token(token: str) -> Optional[str]:
 
 
 def get_token_from_request(request: Request) -> Optional[str]:
-    """从 Authorization 或 Cookie 中获取 Token"""
-    auth = request.headers.get("Authorization")
-    if auth and auth.lower().startswith("bearer "):
-        return auth.split(" ", 1)[1]
-    cookie = request.cookies.get("access_token")
-    if cookie:
-        # 允许直接 token 或以 Bearer 开头
-        if cookie.lower().startswith("bearer "):
-            return cookie.split(" ", 1)[1]
-        return cookie
-    return None
+    """仅从 Cookie 中获取 Token（废弃 Authorization: Bearer 兼容）"""
+    token = request.cookies.get("access_token")
+    return token or None
 

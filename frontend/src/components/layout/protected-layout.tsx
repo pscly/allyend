@@ -21,7 +21,6 @@ interface ProtectedLayoutProps {
 export function ProtectedLayout({ children }: ProtectedLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const token = useAuthStore((state) => state.token);
   const persistedProfile = useAuthStore((state) => state.profile);
   const hydrated = useAuthStore((state) => state.hydrated);
 
@@ -32,20 +31,15 @@ export function ProtectedLayout({ children }: ProtectedLayoutProps) {
     error,
     isFetching,
   } = useCurrentUserQuery({
-    enabled: hydrated && Boolean(token),
+    // 基于 Cookie 的会话，水合后即可请求
+    enabled: hydrated,
   });
 
   const profile = useMemo(() => data ?? persistedProfile ?? null, [data, persistedProfile]);
 
   useApplyUserTheme(profile);
 
-  useEffect(() => {
-    if (!hydrated || token) {
-      return;
-    }
-    const target = pathname && pathname.startsWith("/") ? pathname : "/dashboard";
-    router.replace(`/login?from=${encodeURIComponent(target)}`);
-  }, [hydrated, pathname, router, token]);
+  // 基于 /api/users/me 的 401 决定是否跳转登录；不再依赖本地 token
 
   useEffect(() => {
     if (!hydrated || !isError || !error) {
@@ -65,10 +59,6 @@ export function ProtectedLayout({ children }: ProtectedLayoutProps) {
   );
 
   if (!hydrated) {
-    return blockingLoader;
-  }
-
-  if (!token) {
     return blockingLoader;
   }
 
