@@ -16,9 +16,6 @@ Python SDK：便于在爬虫客户端中上报状态、心跳与远程指令回�
 """
 from __future__ import annotations
 
-# 中文编码要求：UTF-8，无 BOM
-# 本文件为 Python SDK，面向全新项目开发，去除兼容性包袱，保持实现简洁清晰。
-
 import builtins
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, Iterator, Optional
@@ -27,75 +24,18 @@ import sys
 import time
 
 import requests
-try:  # 可选依赖：若可用则启用连接池重试与退避
-    from urllib3.util.retry import Retry  # type: ignore
-    from requests.adapters import HTTPAdapter  # type: ignore
-    _HAS_RETRY = True
-except Exception:  # 运行环境不具备 urllib3 Retry 时自动降级为无重试
-    _HAS_RETRY = False
 
 
 class CrawlerClient:
-    """同步 SDK 客户端（简洁实现，默认无历史兼容逻辑）。
+    """简单同步客户端封装"""
 
-    特性：
-    - 连接池 + 可选重试：对临时网络故障更友好
-    - 上下文管理：建议使用 with 语法自动释放连接
-    - API 直观：贴近服务端 REST 设计
-    """
-
-    def __init__(
-        self,
-        base_url: str,
-        api_key: str,
-        timeout: float = 10.0,
-        retries: int = 2,
-        backoff_factor: float = 0.3,
-    ) -> None:
-        # 基础配置
+    def __init__(self, base_url: str, api_key: str, timeout: float = 10.0) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_base = self._normalize_api_base(self.base_url)
         self.api_key = api_key
-        self.timeout = float(timeout)
-
-        # 会话与鉴权
         self.session = requests.Session()
         self.session.headers.update({"X-API-Key": self.api_key})
-
-        # 可选：启用简单重试（对 5xx/连接错误）
-        if _HAS_RETRY and retries and retries > 0:
-            self._enable_retries(retries=int(retries), backoff_factor=float(backoff_factor))
-
-    # -------------- 生命周期管理 --------------
-    def close(self) -> None:
-        """关闭底层 HTTP 连接池。"""
-        try:
-            self.session.close()
-        except Exception:
-            pass
-
-    def __enter__(self) -> "CrawlerClient":  # 上下文管理：with 使用
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        self.close()
-
-    def _enable_retries(self, retries: int, backoff_factor: float) -> None:
-        """为会话适配器启用重试策略（需要 urllib3 Retry）。"""
-        if not _HAS_RETRY:
-            return
-        retry = Retry(
-            total=retries,
-            connect=retries,
-            read=retries,
-            backoff_factor=backoff_factor,
-            status_forcelist=(500, 502, 503, 504),
-            allowed_methods=("HEAD", "GET", "POST", "PUT", "PATCH", "DELETE"),
-            raise_on_status=False,
-        )
-        adapter = HTTPAdapter(max_retries=retry)
-        self.session.mount("http://", adapter)
-        self.session.mount("https://", adapter)
+        self.timeout = timeout
 
     @staticmethod
     def _normalize_api_base(base_url: str) -> str:
@@ -308,43 +248,3 @@ class CrawlerClient:
         mirror: bool = True,
         _mirror_func: Callable[..., None] | None = builtins.print,
     ) -> Callable[..., None]:
-        """返回一个可代替 print 的函数，自动写入日志。"""
-
-        def _printer(*args: Any, **kwargs: Any) -> None:
-            level_override = kwargs.pop("level", None)
-            mirror_override = kwargs.pop("mirror", mirror)
-            message = self._compose_message(args, kwargs)
-            level_value = level_override if level_override is not None else default_level
-            self.log(crawler_id=crawler_id, level=level_value, message=message, run_id=run_id)
-            if mirror_override and _mirror_func is not None:
-                _mirror_func(*args, **kwargs)
-
-        return _printer
-
-    @contextmanager
-    def capture_print(
-        self,
-        crawler_id: int,
-        run_id: Optional[int] = None,
-        default_level: str | int = "INFO",
-        mirror: bool = True,
-    ) -> Iterator[None]:
-        """上下文管理器：在 with 块内将 print 自动同步到后台日志。"""
-
-        original_print = builtins.print
-        printer = self.printer(
-            crawler_id,
-            run_id=run_id,
-            default_level=default_level,
-            mirror=mirror,
-            _mirror_func=original_print,
-        )
-
-        def patched_print(*args: Any, **kwargs: Any) -> None:
-            printer(*args, **kwargs)
-
-        builtins.print = patched_print
-        try:
-            yield
-        finally:
-            builtins.print = original_print
