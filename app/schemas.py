@@ -4,7 +4,7 @@ Pydantic 模型定义（请求/响应）
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -54,6 +54,33 @@ class UserGroupOut(BaseModel):
         from_attributes = True
 
 
+class CrawlerGroupOut(BaseModel):
+    id: int
+    name: str
+    slug: str
+    description: Optional[str] = None
+    color: Optional[str] = None
+    crawler_count: int = 0
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CrawlerGroupCreate(BaseModel):
+    name: str
+    slug: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+
+
+class CrawlerGroupUpdate(BaseModel):
+    name: Optional[str] = None
+    slug: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+
+
 class InviteCodeCreate(BaseModel):
     note: Optional[str] = None
     allow_admin: bool = False
@@ -91,9 +118,25 @@ class APIKeyOut(BaseModel):
     created_at: datetime
     last_used_at: Optional[datetime]
     last_used_ip: Optional[str]
+    allowed_ips: Optional[str] = None
+    group: Optional[CrawlerGroupOut] = None
+    crawler_id: Optional[int] = None
+    crawler_local_id: Optional[int] = None
+    crawler_name: Optional[str] = None
+    crawler_status: Optional[str] = None
+    crawler_last_heartbeat: Optional[datetime] = None
+    crawler_public_slug: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class APIKeyCreate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    group_id: Optional[int] = None
+    allowed_ips: Optional[str] = None
+    is_public: bool = False
 
 
 class APIKeyUpdate(BaseModel):
@@ -101,6 +144,8 @@ class APIKeyUpdate(BaseModel):
     description: Optional[str] = None
     active: Optional[bool] = None
     is_public: Optional[bool] = None
+    group_id: Optional[int] = None
+    allowed_ips: Optional[str] = None
 
 
 class PublicAPIKeyOut(BaseModel):
@@ -116,6 +161,11 @@ class PublicAPIKeyOut(BaseModel):
 
 class CrawlerRegisterRequest(BaseModel):
     name: str
+
+
+class HeartbeatPayload(BaseModel):
+    status: Optional[str] = None
+    payload: Optional[dict] = None
 
 
 class RunStartResponse(BaseModel):
@@ -138,8 +188,22 @@ class CrawlerOut(BaseModel):
     created_at: datetime
     last_heartbeat: Optional[datetime] = None
     last_source_ip: Optional[str] = None
+    status: str
+    status_changed_at: Optional[datetime] = None
+    uptime_ratio: Optional[float] = None
+    uptime_minutes: Optional[float] = None
+    heartbeat_payload: Optional[dict] = None
     is_public: bool
     public_slug: Optional[str] = None
+    api_key_id: int
+    api_key_local_id: Optional[int] = None
+    api_key_name: Optional[str] = None
+    api_key_active: Optional[bool] = None
+    group: Optional[CrawlerGroupOut] = None
+    config_assignment_id: Optional[int] = None
+    config_assignment_name: Optional[str] = None
+    config_assignment_version: Optional[int] = None
+    config_assignment_format: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -162,6 +226,42 @@ class RunOut(BaseModel):
         from_attributes = True
 
 
+class CrawlerHeartbeatOut(BaseModel):
+    id: int
+    status: str
+    payload: Optional[dict] = None
+    source_ip: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CrawlerCommandOut(BaseModel):
+    id: int
+    command: str
+    payload: Optional[dict] = None
+    status: str
+    result: Optional[dict] = None
+    created_at: datetime
+    processed_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CrawlerCommandCreate(BaseModel):
+    command: str
+    payload: Optional[dict] = None
+    expires_in_seconds: Optional[int] = Field(default=None, ge=10, le=86400)
+
+
+class CrawlerCommandAck(BaseModel):
+    status: Optional[str] = Field(default=None, description="执行结果状态，例如 success/failed")
+    result: Optional[dict] = None
+
+
 class LogOut(BaseModel):
     id: int
     level: str
@@ -175,6 +275,23 @@ class LogOut(BaseModel):
     source_ip: Optional[str] = None
     api_key_id: Optional[int] = None
     api_key_local_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OperationAuditLogOut(BaseModel):
+    id: int
+    action: str
+    target_type: str
+    target_id: Optional[int] = None
+    target_name: Optional[str] = None
+    before: Optional[dict] = None
+    after: Optional[dict] = None
+    actor_id: Optional[int] = None
+    actor_name: Optional[str] = None
+    actor_ip: Optional[str] = None
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -201,10 +318,17 @@ class ThemeSettingUpdate(BaseModel):
 
 class QuickLinkCreate(BaseModel):
     slug: Optional[str] = Field(default=None, min_length=6, max_length=64)
-    target_type: str
+    target_type: Literal["crawler", "api_key", "group"]
     target_id: int
     allow_logs: bool = True
     description: Optional[str] = None
+
+
+class QuickLinkUpdate(BaseModel):
+    slug: Optional[str] = Field(default=None, min_length=6, max_length=64)
+    description: Optional[str] = None
+    allow_logs: Optional[bool] = None
+    is_active: Optional[bool] = None
 
 
 class QuickLinkOut(BaseModel):
@@ -219,10 +343,177 @@ class QuickLinkOut(BaseModel):
     crawler_local_id: Optional[int] = None
     api_key_id: Optional[int] = None
     api_key_local_id: Optional[int] = None
+    group_id: Optional[int] = None
+    group_slug: Optional[str] = None
+    group_name: Optional[str] = None
 
     class Config:
         from_attributes = True
 
+
+
+
+class CrawlerConfigTemplateCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    format: Literal["json", "yaml"] = "json"
+    content: str
+    is_active: bool = True
+
+
+class CrawlerConfigTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    format: Optional[Literal["json", "yaml"]] = None
+    content: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class CrawlerConfigTemplateOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    format: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CrawlerConfigAssignmentCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    target_type: Literal["crawler", "group", "api_key"]
+    target_id: int
+    format: Literal["json", "yaml"] = "json"
+    content: str
+    template_id: Optional[int] = None
+    is_active: bool = True
+
+
+class CrawlerConfigAssignmentUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    format: Optional[Literal["json", "yaml"]] = None
+    content: Optional[str] = None
+    template_id: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class CrawlerConfigAssignmentOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    target_type: str
+    target_id: int
+    format: str
+    content: str
+    version: int
+    is_active: bool
+    template_id: Optional[int] = None
+    template_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CrawlerConfigFetchOut(BaseModel):
+    has_config: bool
+    assignment_id: Optional[int] = None
+    name: Optional[str] = None
+    format: Optional[str] = None
+    version: Optional[int] = None
+    content: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AlertChannelConfig(BaseModel):
+    type: Literal["email", "webhook"]
+    target: str
+    enabled: bool = True
+    note: Optional[str] = None
+
+
+class CrawlerAlertRuleCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    trigger_type: Literal["status_offline", "payload_threshold"]
+    target_type: Literal["all", "group", "crawler", "api_key"] = "all"
+    target_ids: list[int] = Field(default_factory=list)
+    status_from: Optional[str] = None
+    status_to: Optional[str] = None
+    payload_field: Optional[str] = None
+    comparator: Optional[Literal["gt", "ge", "lt", "le", "eq", "ne"]] = "gt"
+    threshold: Optional[float] = None
+    consecutive_failures: int = Field(default=1, ge=1, le=10)
+    cooldown_minutes: int = Field(default=10, ge=0, le=1440)
+    channels: list[AlertChannelConfig] = Field(default_factory=list)
+    is_active: bool = True
+
+
+class CrawlerAlertRuleUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    trigger_type: Optional[Literal["status_offline", "payload_threshold"]] = None
+    target_type: Optional[Literal["all", "group", "crawler", "api_key"]] = None
+    target_ids: Optional[list[int]] = None
+    status_from: Optional[str] = None
+    status_to: Optional[str] = None
+    payload_field: Optional[str] = None
+    comparator: Optional[Literal["gt", "ge", "lt", "le", "eq", "ne"]] = None
+    threshold: Optional[float] = None
+    consecutive_failures: Optional[int] = Field(default=None, ge=1, le=10)
+    cooldown_minutes: Optional[int] = Field(default=None, ge=0, le=1440)
+    channels: Optional[list[AlertChannelConfig]] = None
+    is_active: Optional[bool] = None
+
+
+class CrawlerAlertRuleOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    trigger_type: str
+    target_type: str
+    target_ids: list[int]
+    status_from: Optional[str] = None
+    status_to: Optional[str] = None
+    payload_field: Optional[str] = None
+    comparator: Optional[str] = None
+    threshold: Optional[float] = None
+    consecutive_failures: int
+    cooldown_minutes: int
+    channels: list[AlertChannelConfig]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    last_triggered_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CrawlerAlertEventOut(BaseModel):
+    id: int
+    rule_id: int
+    crawler_id: int
+    crawler_local_id: Optional[int] = None
+    crawler_name: Optional[str] = None
+    triggered_at: datetime
+    status: str
+    message: Optional[str] = None
+    payload: dict
+    channel_results: list[dict]
+    error: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 class FileTokenCreate(BaseModel):
     token: Optional[str] = Field(default=None, description='可选，自定义令牌，默认补齐 up- 前缀')

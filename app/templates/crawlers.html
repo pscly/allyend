@@ -45,6 +45,7 @@
       <select id="link-target-type" name="target_type">
         <option value="crawler">爬虫</option>
         <option value="api_key">API Key</option>
+        <option value="group">分组</option>
       </select>
       <label for="link-target-id">目标 ID（本账号序号）</label>
       <input id="link-target-id" name="target_id" type="number" required />
@@ -283,7 +284,16 @@
     tbody.innerHTML = data.map(link => {
       const linkUrl = `/pa/${link.slug}`;
       const allowLogs = link.allow_logs ? '是' : '否';
-      const target = link.target_type === 'crawler' ? `Crawler #${link.crawler_local_id ?? link.crawler_id ?? '-'}` : `API Key #${link.api_key_local_id ?? link.api_key_id ?? '-'}`;
+      let target;
+      if (link.target_type === 'crawler') {
+        target = `Crawler #${link.crawler_local_id ?? link.crawler_id ?? '-'}`;
+      } else if (link.target_type === 'api_key') {
+        target = `API Key #${link.api_key_local_id ?? link.api_key_id ?? '-'}`;
+      } else if (link.target_type === 'group') {
+        target = `Group ${link.group_slug ?? ''} (#${link.group_id ?? '-'})`;
+      } else {
+        target = '-';
+      }
       return `<tr><td><a href="${linkUrl}" target="_blank">${link.slug}</a></td><td>${link.target_type}</td><td>${target}</td><td>${allowLogs}</td><td>${new Date(link.created_at).toLocaleString()}</td><td><button class="text" onclick="deleteLink(${link.id})">删除</button></td></tr>`;
     }).join('');
   }

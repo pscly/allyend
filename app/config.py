@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     FILE_STORAGE_DIR: str = "data/files"
     LOG_DIR: str = "logs"
 
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_USE_TLS: bool = True
+    ALERT_EMAIL_SENDER: str | None = None
+    ALERT_WEBHOOK_TIMEOUT: float = 5.0
+
     FRONTEND_ORIGINS: list[str] = ["http://localhost:3000"]
 
     @field_validator("FRONTEND_ORIGINS", mode="before")

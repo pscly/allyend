@@ -15,11 +15,55 @@ export const endpoints = {
     logs: "/files/api/logs",
   },
   crawlers: {
-    list: "/pa/api/me",
-    register: "/pa/api/register",
+    list: `/pa/api/me`,
+    register: `/pa/api/register`,
+    detail: (id: number | string) => `/pa/api/me/${id}`,
     runs: (id: number | string) => `/pa/api/me/${id}/runs`,
     logs: (id: number | string) => `/pa/api/me/${id}/logs`,
-    quickLinks: (_id?: number | string) => `/pa/api/links`,
+    heartbeats: (id: number | string) => `/pa/api/me/${id}/heartbeats`,
+    commands: {
+      list: (id: number | string) => `/pa/api/me/${id}/commands`,
+      create: (id: number | string) => `/pa/api/me/${id}/commands`,
+      ack: (crawlerId: number | string, commandId: number | string) => `/pa/api/${crawlerId}/commands/${commandId}/ack`,
+      fetch: (id: number | string) => `/pa/api/${id}/commands/next`,
+    },
+    groups: {
+      list: `/pa/api/groups`,
+      byId: (id: number | string) => `/pa/api/groups/${id}`,
+    },
+    config: {
+      templates: {
+        list: `/pa/api/config/templates`,
+        create: `/pa/api/config/templates`,
+        byId: (id: number | string) => `/pa/api/config/templates/${id}`,
+      },
+      assignments: {
+        list: `/pa/api/config/assignments`,
+        create: `/pa/api/config/assignments`,
+        byId: (id: number | string) => `/pa/api/config/assignments/${id}`,
+      },
+      fetch: (id: number | string) => `/pa/api/${id}/config`,
+    },
+    alerts: {
+      rules: {
+        list: `/pa/api/alerts/rules`,
+        create: `/pa/api/alerts/rules`,
+        byId: (id: number | string) => `/pa/api/alerts/rules/${id}`,
+      },
+      events: `/pa/api/alerts/events`,
+    },
+    quickLinks: {
+      list: `/pa/api/links`,
+      byId: (id: number | string) => `/pa/api/links/${id}`,
+    },
+  },
+  apiKeys: {
+    list: `/api/keys`,
+    create: `/api/keys`,
+    update: (id: number | string) => `/api/keys/${id}`,
+    delete: (id: number | string) => `/api/keys/${id}`,
+    rotate: (id: number | string) => `/api/keys/${id}/rotate`,
+    public: `/api/public/keys`,
   },
   admin: {
     users: "/admin/api/users",
