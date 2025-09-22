@@ -59,127 +59,16 @@ def _build_alembic_config() -> Config:
 
 
 def ensure_database_schema(target: str = "head") -> None:
-    """确保数据库迁移已经应用，兼容旧版本无版本表的场景。"""
-    inspector = inspect(engine)
-    has_version_table = inspector.has_table("alembic_version")
-    alembic_config = _build_alembic_config()
+    """确保数据库结构迁移至指定版本（默认 head）。
 
-    if not has_version_table:
-        existing_tables = [name for name in inspector.get_table_names() if name != "alembic_version"]
-        if existing_tables:
-            command.stamp(alembic_config, target)
-            return
+    说明：已移除历史兼容与运行期 DDL 补齐，统一由 Alembic 迁移脚本管理结构变更。
+    新库将直接创建；旧库请通过迁移脚本演进。
+    """
+    alembic_config = _build_alembic_config()
     command.upgrade(alembic_config, target)
 
 
-def apply_schema_upgrades() -> None:
-    """确保新增列存在并对旧数据进行补齐。"""
-
-    def ensure(table: str, column: str, ddl: str) -> bool:
-        inspector = inspect(engine)
-        columns = {col["name"] for col in inspector.get_columns(table)}
-        if column not in columns:
-            column_ddl = ddl.strip()
-            if not column_ddl.lower().startswith(column.lower() + " "):
-                column_ddl = f"{column} {column_ddl}"
-            with engine.begin() as conn:
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column_ddl}"))
-            return True
-        return False
-
-    added_level_code = ensure("log_entries", "level_code", "INTEGER DEFAULT 20")
-    if added_level_code:
-        with engine.begin() as conn:
-            for name, code in LOG_LEVEL_NAME_TO_CODE.items():
-                conn.execute(
-                    text("UPDATE log_entries SET level_code = :code WHERE level = :name"),
-                    {"code": code, "name": name},
-                )
-            conn.execute(text("UPDATE log_entries SET level_code = 20 WHERE level_code IS NULL"))
-
-    # user 主题字段（旧版本兼容）
-    ensure("users", "theme_name", "VARCHAR(32) DEFAULT 'classic'")
-    ensure("users", "theme_primary", "VARCHAR(16) DEFAULT '#10b981'")
-    ensure("users", "theme_secondary", "VARCHAR(16) DEFAULT '#1f2937'")
-    ensure("users", "theme_background", "VARCHAR(16) DEFAULT '#f9fafb'")
-    ensure("users", "is_dark_mode", "BOOLEAN DEFAULT 0")
-    ensure("users", "display_name", "VARCHAR(128)")
-    ensure("users", "email", "VARCHAR(128)")
-
-    # 新增权限相关字段
-    ensure("users", "role", "VARCHAR(32) DEFAULT 'user'")
-    ensure("users", "is_root_admin", "BOOLEAN DEFAULT 0")
-    ensure("users", "group_id", "INTEGER")
-    ensure("users", "invited_by_id", "INTEGER")
-    ensure("users", "invite_code_id", "INTEGER")
-
-    # API Key 扩展
-    ensure("api_keys", "name", "VARCHAR(64)")
-    ensure("api_keys", "description", "TEXT")
-    ensure("api_keys", "last_used_at", "DATETIME")
-    ensure("api_keys", "last_used_ip", "VARCHAR(64)")
-    ensure("api_keys", "is_public", "BOOLEAN DEFAULT 0")
-    api_key_local_added = ensure("api_keys", "local_id", "INTEGER")
-
-    # 爬虫与运行扩展
-    ensure("crawlers", "is_public", "BOOLEAN DEFAULT 0")
-    ensure("crawlers", "public_slug", "VARCHAR(64)")
-    ensure("crawlers", "last_source_ip", "VARCHAR(64)")
-    crawler_local_added = ensure("crawlers", "local_id", "INTEGER")
-    ensure("crawler_runs", "source_ip", "VARCHAR(64)")
-
-    with engine.begin() as conn:
-        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_api_keys_user_local ON api_keys(user_id, local_id)"))
-        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_crawlers_user_local ON crawlers(user_id, local_id)"))
-
-    needs_backfill = api_key_local_added or crawler_local_added
-    if not needs_backfill:
-        with engine.begin() as conn:
-            result = conn.execute(text("SELECT COUNT(1) FROM api_keys WHERE local_id IS NULL"))
-            needs_backfill = needs_backfill or result.scalar_one() > 0
-            result = conn.execute(text("SELECT COUNT(1) FROM crawlers WHERE local_id IS NULL"))
-            needs_backfill = needs_backfill or result.scalar_one() > 0
-
-    if needs_backfill:
-        from .models import APIKey, Crawler
-
-        with SessionLocal() as session:
-            def _assign_local_ids(model):
-                changed = False
-                counters = {}
-                rows = (
-                    session.query(model)
-                    .order_by(model.user_id, model.created_at, model.id)
-                    .all()
-                )
-                for row in rows:
-                    current = counters.get(row.user_id, 0)
-                    if row.local_id and row.local_id > 0:
-                        counters[row.user_id] = max(current, row.local_id)
-                        continue
-                    next_value = current + 1
-                    row.local_id = next_value
-                    counters[row.user_id] = next_value
-                    changed = True
-                return changed
-
-            changed = False
-            changed = _assign_local_ids(APIKey) or changed
-            changed = _assign_local_ids(Crawler) or changed
-            if changed:
-                session.commit()
-            else:
-                session.rollback()
-
-    # 日志来源
-    ensure("crawlers", "is_public", "BOOLEAN DEFAULT 0")
-    ensure("crawlers", "public_slug", "VARCHAR(64)")
-    ensure("crawlers", "last_source_ip", "VARCHAR(64)")
-    ensure("crawler_runs", "source_ip", "VARCHAR(64)")
-
-    # 日志来源
-    ensure("log_entries", "source_ip", "VARCHAR(64)")
-    ensure("log_entries", "api_key_id", "INTEGER")
+## 兼容层 apply_schema_upgrades 已移除：统一依赖 Alembic 迁移
 
 
 def bootstrap_defaults() -> None:
@@ -283,7 +172,6 @@ __all__ = [
     "engine",
     "SessionLocal",
     "ensure_database_schema",
-    "apply_schema_upgrades",
     "bootstrap_defaults",
 ]
 

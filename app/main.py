@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .database import ensure_database_schema, apply_schema_upgrades, bootstrap_defaults
+from .database import ensure_database_schema, bootstrap_defaults
 from .routers import auth as auth_router
 from .routers import crawlers as crawlers_router
 from .routers import dashboard as dashboard_router
@@ -88,7 +88,6 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 def on_startup():
     # 启动时应用迁移并校验数据结构
     ensure_database_schema()
-    apply_schema_upgrades()
     bootstrap_defaults()
     # 迁移执行可能修改了 logging（alembic.ini），此处重新校准日志到控制台+文件
     _configure_logging()

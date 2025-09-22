@@ -1,59 +1,69 @@
-# AllYend 平台 v0.2.x
+# AllYend 平台
 
-> FastAPI + Next.js 的一站式采集资产运营平台，覆盖授权、安全、审计与可观测全链路。
+> 一站式“采集资产 + 文件协作 + 团队治理 + 审计可观测”平台。后端基于 FastAPI/SQLAlchemy/Alembic，前端采用 Next.js 14。
+
+**为什么选择 AllYend**
+- 面向采集/自动化团队：统一管理爬虫实例、运行批次、日志与远程指令
+- 安全的文件中转：上传令牌、私有/分组/公开可见、访问审计与下载统计
+- 轻量治理：邀请码注册、分组开关、管理员面板、主题偏好
+- 工程友好：Alembic 迁移、日志轮转、Docker Compose + Nginx 一键上线
+
+**核心能力**
+- 爬虫接入与监控：注册、心跳、运行、日志、远程指令、公共链接
+- 文件服务：令牌上传、重名别名下载、可见性与权限校验、全量访问日志
+- 团队与权限：用户/分组/角色（user/admin/superadmin）、注册模式（开放/邀请码/关闭）
+
+**技术栈**
+- 前端：Next.js 14、TypeScript、Tailwind、shadcn/ui、TanStack Query
+- 后端：FastAPI、Pydantic v2、SQLAlchemy 2、Alembic、Uvicorn、Jinja2
+- 存储：SQLite 默认（兼容 MySQL/PostgreSQL）、本地文件系统，轮转日志到 `logs/`
 
 ## 目录
-- [1. 项目总览](#1-项目总览)
-- [2. 架构蓝图](#2-架构蓝图)
-- [3. 核心业务流程](#3-核心业务流程)
-- [4. 环境准备](#4-环境准备)
-- [5. 快速启动](#5-快速启动)
-- [6. 配置清单](#6-配置清单)
-- [7. 后端服务说明](#7-后端服务说明)
-- [8. 前端应用说明](#8-前端应用说明)
-- [9. SDK 与自动化接入](#9-sdk-与自动化接入)
-- [10. 测试与质量保障](#10-测试与质量保障)
-- [11. 部署与运维建议](#11-部署与运维建议)
-- [12. 安全与合规实践](#12-安全与合规实践)
-- [13. 路线图与扩展方向](#13-路线图与扩展方向)
-- [14. 相关文档](#14-相关文档)
 
-## 1. 项目总览
+- [10 分钟上手（本地）](#10-分钟上手本地)
+- [一键容器化](#一键容器化)
+- [架构要点一览](#架构要点一览)
+- [架构与蓝图](#架构与蓝图)
+- [业务流程与时序图](#业务流程与时序图)
+- [配置清单](#配置清单)
+- [SDK 快速用法](#sdk-快速用法)
+- [常用命令](#常用命令)
+- [部署与运维](#部署与运维)
+- [质量与安全建议](#质量与安全建议)
 
-### TL;DR
-- 面向数据采集团队，提供爬虫调度、文件中转、访问审计、权限控制的一体化平台。
-- 前端使用 Next.js 14 App Router，后端采用 FastAPI + SQLAlchemy 单体，前后端可独立部署。
-- 内置 API Key、上传令牌、公开链接等机制，既能服务自动化脚本也能满足人工协作。
-- 默认集成日志轮转、心跳监控、批次追踪，便于快速定位线上问题。
+## 10 分钟上手（本地）
 
-### 核心能力
-- **爬虫资产生命周期**：注册、心跳、运行批次、日志、快捷分享链接全链路打通。
-- **文件安全分发**：上传令牌、公开/私有/分组可见性、访问审计与下载统计。
-- **团队协作治理**：邀请码注册、分组权限、管理员控制面板、个人主题配置。
-- **可观测与审计**：RotatingFileHandler 日志、数据库存量指标、前端仪表盘实时刷新。
+1) 准备依赖：Python ≥ 3.12、Node.js 22.x、pnpm 9.x、uv
+2) 复制配置：`.env` 与 `frontend/.env`（按需修改数据库/站点参数）
+3) 启动后端
+   - `uv venv && uv sync`
+   - `uv run uvicorn app.main:get_app --reload --port 9093`
+4) 启动前端
+   - `cd frontend && pnpm i && pnpm dev`
+5) 访问控制台：`http://localhost:3000`
 
-### 适用场景
-- 多人维护的采集脚本或机器人，需要统一管理 API Key、运行状态与告警链路。
-- 需要在团队或外部合作方之间安全地中转文件，保留访问留痕。
-- 希望在现有企业内部已有 IAM 之外快速搭建轻量级协作平台。
+提示：初次启动会自动执行数据库迁移与默认数据自举（用户组/邀请码/超级管理员）。
 
-### 已知限制
-- API Key 默认以明文保存在数据库，生产环境应考虑哈希或加密存储。
-- 当前使用 SQLAlchemy 自动建表，尚未接入 Alembic 等迁移工具（生产部署需手动维护）。
-- 平台暂未内置消息推送/告警通道，可结合现有监控系统扩展。
-- 前端页面仍在逐步对接所有 API，部分功能存在占位或示例数据。
+## 一键容器化
 
-## 2. 架构蓝图
+- `docker compose up -d --build`
+- 默认入口：`http://localhost:8080`（前端），反代 `/api` → 后端 `9093`
 
-### 技术栈总览
-| 层级 | 技术选型 | 说明 |
-| --- | --- | --- |
-| 前端 | Next.js 14、React 18.3、TypeScript 5、Tailwind CSS、shadcn/ui、TanStack Query、zustand、react-hook-form、zod | 现代化单页体验，App Router 支持流式渲染与服务端组件。 |
-| 后端 | FastAPI、SQLAlchemy 2、Pydantic v2、Uvicorn、PyJWT、Passlib | 高性能异步 API 服务，统一 Schema 与依赖注入。 |
-| 数据与存储 | SQLite 默认、兼容 MySQL/PostgreSQL、文件系统存储、RotatingFileHandler 日志 | `data/` 目录用于数据库与文件，`logs/` 记录运行日志。 |
-| 工程化 | uv、pnpm、Vitest、Playwright、Docker Compose、Husky + lint-staged | 覆盖依赖管理、测试、预提交检查与容器化部署。 |
+## 架构要点一览
 
-### 系统组件拓扑
+- 统一 API 前缀：业务 `/api`、爬虫 `/pa/api`、文件 `/files/*`、公共页 `/pa/:slug`
+- 启动钩子：自动 `alembic upgrade head` + 默认数据 `bootstrap_defaults()`
+- 日志：应用日志写入 `logs/allyend.log`（RotatingFileHandler），数据库层面保留访问/操作留痕
+- CORS：`FRONTEND_ORIGINS` 支持逗号分隔或 JSON 数组
+
+## 典型使用场景
+
+- 团队管理多套采集脚本，统一查看“在线/告警/日志”，并下发远程指令
+- 与外部协作方进行文件中转，令牌限 IP/CIDR，所有访问全留痕
+- 在企业内部低成本搭建轻量协作平台，逐步扩展到多租户/细粒度权限
+
+## 架构与蓝图
+
 ```mermaid
 flowchart LR
     subgraph Client["终端调用方"]
@@ -62,29 +72,32 @@ flowchart LR
         Guest["公开访客"]
         CI["CI 作业"]
     end
+
     subgraph Frontend["Next.js 14 控制台"]
         App["App Router 页面"]
         State["zustand + TanStack Query 状态层"]
         Form["react-hook-form + zod 表单"]
     end
+
     subgraph Backend["FastAPI 服务层"]
-        Auth["Auth Router\n登录/注册/JWT"]
-        Files["Files Router\n文件与令牌"]
-        Crawlers["Crawler Router\n心跳/运行/日志"]
-        Admin["Admin Router\n分组/设置"]
-        Dashboard["Dashboard Router\n仪表盘视图"]
+        Auth["Auth Router\\n登录/注册/JWT"]
+        Files["Files Router\\n文件与令牌"]
+        Crawlers["Crawler Router\\n心跳/运行/日志/指令"]
+        Admin["Admin Router\\n分组/设置"]
+        Dashboard["Dashboard Router\\n页面视图"]
     end
+
     subgraph Infra["持久化与周边"]
-        DB[("SQLAlchemy ORM\nSQLite/MySQL/PostgreSQL")]
-        Storage[("文件存储\n`data/files`")]
-        Log[("RotatingFileHandler\n`logs/allyend.log`")]
+        DB[("SQLAlchemy ORM\\nSQLite/MySQL/PostgreSQL")]
+        Storage[("文件存储\\n`data/files`")]
+        Log[("RotatingFileHandler\\n`logs/allyend.log`")]
     end
 
     Browser --> Frontend
     Frontend --> Backend
     Script -->|X-API-Key| Crawlers
     CI -->|上传令牌| Files
-    Guest -->|公共 slug| Files
+    Guest -->|公共 slug| Crawlers
 
     Backend --> DB
     Files --> Storage
@@ -93,21 +106,10 @@ flowchart LR
     Backend --> Frontend
 ```
 
-### 模块分层与职责
-| 模块 | 路径 | 职责要点 |
-| --- | --- | --- |
-| `app/main.py` | FastAPI 入口，配置日志、CORS、静态资源与路由挂载。 |
-| `app/routers/` | 业务域路由：`auth`（认证与钥匙）、`crawlers`（爬虫 API + 公共入口）、`files`（文件/令牌/审计）、`admin`（分组与系统设置）、`dashboard`（仪表盘视图）。 |
-| `app/models.py` | SQLAlchemy ORM 定义。覆盖用户、API Key、爬虫、运行批次、文件条目、访问日志等实体。 |
-| `app/schemas.py` | Pydantic 模型，统一请求/响应 Schema。 |
-| `frontend/src/` | Next.js 源码，按 features + app page 分层，结合 shadcn/ui 打造组件体系。 |
-| `sdk/crawler_client.py` | Python SDK，封装爬虫注册、心跳、运行、日志与 print 捕获能力。 |
-| `test/` | Pytest 用例，覆盖认证流程与文件工具逻辑。 |
-| `docker-compose.yaml` | 一键启动前后端的容器编排示例。 |
+## 业务流程与时序图
 
-## 3. 核心业务流程
+### 登录与授权
 
-### 3.1 登录与授权序列
 ```mermaid
 sequenceDiagram
     participant U as 用户浏览器
@@ -117,319 +119,142 @@ sequenceDiagram
 
     U->>FE: 输入账号 + 密码
     FE->>BE: POST /api/auth/login
-    BE->>DB: 查询用户并验证密码
+    BE->>DB: 验证用户与密码
     DB-->>BE: 用户信息
     BE-->>BE: 生成 JWT access_token
-    BE-->>FE: Token + 用户资料
-    FE-->>U: 保存 Token（cookie/localStorage）并初始化状态
+    BE-->>FE: 返回 Token + 用户资料
+    FE-->>U: 保存 Token 并初始化
     FE->>BE: 后续请求附带 Authorization: Bearer
-    BE-->>FE: 返回授权接口数据
+    BE-->>FE: 返回受保护资源
 ```
 
-### 3.2 爬虫生命周期
+### 爬虫接入生命周期
+
 ```mermaid
 flowchart TD
     Start([开始接入])
-    Register[注册爬虫<br/>POST /pa/api/register]
-    Heartbeat[心跳上报<br/>POST /{id}/heartbeat]
-    RunStart[创建运行批次<br/>POST /runs/start]
-    Log[推送运行日志<br/>POST /logs]
-    RunFinish[结束批次<br/>POST /runs/{id}/finish]
-    PublicLink[可选：创建分享链接<br/>POST /pa/api/links]
-    Dashboard[控制台仪表盘可视化]
+    Register["注册爬虫<br/>POST /pa/api/register"]
+    Heartbeat["心跳上报<br/>POST /:id/heartbeat"]
+    RunStart["创建运行批次<br/>POST /runs/start"]
+    Log["推送运行日志<br/>POST /logs"]
+    RunFinish["结束批次<br/>POST /runs/:id/finish"]
+    PublicLink["可选：创建分享链接<br/>POST /pa/api/links"]
+    Dashboard["控制台仪表盘可视化"]
 
     Start --> Register --> Heartbeat --> RunStart --> Log --> RunFinish --> Dashboard
     RunStart --> PublicLink
     Log --> Dashboard
 ```
 
-### 3.3 文件令牌与访问闭环
+### 文件令牌与访问闭环
+
 ```mermaid
 flowchart TD
     Owner[资源所有者]
     CreateToken[控制台生成上传/下载令牌]
     Distribute[下发令牌给合作方]
-    Upload[持令牌上传文件<br/>POST /files/{token}/up]
-    Store[写入 data/files 并生成 FileEntry]
-    Approve[管理可见性/描述<br/>PATCH /files/me/{id}]
-    Share[公开或授权访问<br/>GET /files/{identifier}]
-    Audit[查询访问审计<br/>GET /files/api/logs]
+    Upload["持令牌上传文件<br/>POST /files/:token/up"]
+    Store["写入 data/files 并生成 FileEntry"]
+    Approve["管理可见性/描述<br/>PATCH /files/me/:id"]
+    Share["公开或授权访问<br/>GET /files/:identifier"]
+    Audit["查询访问审计<br/>GET /files/api/logs"]
 
     Owner --> CreateToken --> Distribute --> Upload --> Store --> Approve --> Share --> Audit
 ```
 
-## 4. 环境准备
+### 远程指令轮询（SDK 默认处理）
 
-- Python ≥ 3.10（推荐 3.12）并安装 [uv](https://github.com/astral-sh/uv) 管理虚拟环境与依赖。
-- Node.js 22.x（Active LTS）与 pnpm 9.x。Windows 建议 `scoop install nodejs-lts pnpm`，macOS/Linux 使用 `nvm use 22 && corepack enable`。
-- 可使用 SQLite 作为开发数据库；生产建议切换 MySQL/PostgreSQL 并配置持久化卷。
-- 需要 Git、Docker（可选）以及基本的编译工具链。
+```mermaid
+sequenceDiagram
+    participant C as 爬虫脚本
+    participant SDK as CrawlerClient
+    participant API as /pa/api
 
-### 仓库结构速览
-```text
-.
-├── app/                # FastAPI 服务端
-├── frontend/           # Next.js 14 控制台
-├── sdk/                # Python SDK
-├── test/               # Pytest 用例
-├── data/               # 默认数据库/文件存储（挂载卷）
-├── logs/               # 应用轮转日志
-├── .env.example        # 后端环境变量模板
-├── frontend/.env.example
-├── docker-compose.yaml # 容器编排示例
-└── README.md           # 本文档
+    loop 每 N 秒
+      SDK->>API: POST /:id/commands/next
+      API-->>SDK: 返回批量指令
+      alt 自定义 handler 存在
+        C->>SDK: 执行 handler(cmd)
+        SDK->>API: POST /:id/commands/:cmd/ack (success|failed)
+      else 默认处理
+        SDK->>API: ack accepted (restart/shutdown)
+        opt restart/shutdown
+          SDK->>SDK: os.execv / sys.exit
+        end
+      end
+    end
 ```
 
-## 5. 快速启动
+## 配置清单
 
-### 5.1 本地开发（推荐）
-```bash
-git clone <repo-url> allyend
-cd allyend
+- 基础
+  - `DATABASE_URL`：默认 `sqlite:///./data/app.db`
+  - `SECRET_KEY`：JWT 签名密钥（务必修改）
+  - `ACCESS_TOKEN_EXPIRE_MINUTES`：Token 过期分钟数（默认 120）
+  - `HOST`/`PORT`：监听地址与端口（默认 `0.0.0.0:9093`）
+- 注册与邀请
+  - `ALLOW_DIRECT_SIGNUP`：是否允许自由注册（默认 true）
+  - `ROOT_ADMIN_USERNAME`、`ROOT_ADMIN_PASSWORD`、`ROOT_ADMIN_INVITE_CODE`
+  - `DEFAULT_ADMIN_INVITE_CODE`、`DEFAULT_USER_INVITE_CODE`
+- 文件与日志
+  - `FILE_STORAGE_DIR`：默认 `data/files`
+  - `LOG_DIR`：默认 `logs`（内含 `allyend.log`，轮转）
+- 跨域与前端
+  - `FRONTEND_ORIGINS`：允许的前端域名（逗号分隔或 JSON 数组）
+- 告警/通知（可选）
+  - `SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/`SMTP_PASSWORD`/`SMTP_USE_TLS`
+  - `ALERT_EMAIL_SENDER`、`ALERT_WEBHOOK_TIMEOUT`
 
-# 初始化配置
-copy .env.example .env
-copy frontend/.env.example frontend/.env  # macOS/Linux 使用 cp
+## SDK 快速用法
 
-# 后端依赖
-python -m pip install -U uv
-uv venv
-uv sync
-
-# 前端依赖
-cd frontend
-pnpm install
-cd ..
-```
-
-```bash
-# 启动 FastAPI（热重载）
-uv run uvicorn app.main:get_app --reload --host 0.0.0.0 --port 9093
-
-# 另开终端启动 Next.js
-cd frontend
-pnpm dev
-```
-
-访问 `http://localhost:3000` 登录控制台（默认根管理员邀请码 `ALLYEND-ROOT`）。
-
-### 5.2 Docker Compose 快速体验
-```bash
-# 首次构建镜像
-docker compose build
-
-# 后台运行
-docker compose up -d
-
-# 查看日志
-docker compose logs -f backend
-docker compose logs -f frontend
-```
-容器会自动挂载当前目录的 `data/` 与 `logs/`，停用后数据仍然保留。
-默认通过 `reverse-proxy` 服务统一暴露 `http://localhost:8080`，浏览器侧的接口请求全部走 `/api` 前缀。
-
-### 5.3 常用脚本
-- `uv run pytest`：运行后端测试。
-- `pnpm lint` / `pnpm typecheck`：前端静态检查。
-- `pnpm test` / `pnpm test:ui`：单元测试与端到端测试。
-- `pnpm build && pnpm start`：生产模式验证。
-
-## 6. 配置清单
-
-### 后端 `.env` 核心项
-| 变量 | 作用 | 默认值 | 备注 |
-| --- | --- | --- | --- |
-| `SITE_NAME` | 平台名称 | `AllYend` | 影响模板与前端显示。 |
-| `SECRET_KEY` | JWT 签名密钥 | `please_change_me_to_a_random_string` | 生产环境务必替换。 |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Token 过期时间 | `120` | 单位分钟。 |
-| `DATABASE_URL` | SQLAlchemy 数据源 | `sqlite:///./data/app.db` | 可切换 MySQL/PostgreSQL。 |
-| `FRONTEND_ORIGINS` | 允许的 CORS 来源 | `["http://localhost:3000","http://localhost:8080"]` | 支持逗号分隔或 JSON 数组。 |
-| `ROOT_ADMIN_USERNAME` / `ROOT_ADMIN_PASSWORD` | 首个超级管理员凭据 | `allroot` / `please_set_a_strong_password` | 启动时自动创建。 |
-| `ALLOW_DIRECT_SIGNUP` | 是否允许自由注册 | `true` | 设为 `false` 时需邀请码。 |
-| `FILE_STORAGE_DIR` | 文件物理存储路径 | `data/files` | 需具备读写权限。 |
-| `LOG_DIR` | 日志输出目录 | `logs` | 内含 `allyend.log`。 |
-
-### 前端 `frontend/.env`
-| 变量 | 说明 | 默认值 |
-| --- | --- | --- |
-| `NEXT_PUBLIC_API_BASE_URL` | 后端 API 地址 | `/api` |
-| `NEXT_PUBLIC_APP_BASE_URL` | 前端站点地址 | `http://localhost:8080` |
-
-### Docker Compose 参数
-| 变量 | 说明 | 默认值 |
-| --- | --- | --- |
-| `DOCKER_PROXY_PORT` | 宿主机暴露的 HTTP 入口 | `8080` |
-| `DOCKER_DATA_DIR` / `DOCKER_LOG_DIR` | 数据/日志挂载路径 | `./data` / `./logs` |
-| `NEXT_PUBLIC_API_BASE_URL` | 构建时注入的后端地址 | `/api` |
-| `NEXT_PUBLIC_APP_BASE_URL` | 构建时注入的前端基准地址（用于生成绝对链接） | `http://localhost:8080` |
-
-## 7. 后端服务说明
-
-### 架构特点
-- FastAPI + Pydantic v2 保障类型安全，依赖注入集中在 `app/dependencies.py`。
-- SQLAlchemy 2.0 ORM 建模，复用 `Base` 与 `SessionLocal`，支持多数据库。
-- JWT 鉴权与基于依赖的 RBAC 控制，结合邀请码与分组能力。
-- RotatingFileHandler + 数据库审计表提供可追溯日志。
-
-### 目录导览
-| 位置 | 内容 |
-| --- | --- |
-| `app/auth.py` | 密码哈希、JWT 生成、依赖工具。 |
-| `app/database.py` | Session 工厂、基础模型、启动时初始化与默认数据。 |
-| `app/constants.py` | 角色、主题、日志级别等常量。 |
-| `app/utils/` | 时间处理、文件工具、校验函数。 |
-| `app/templates/` | 登录、公共页面的 Jinja2 模板。 |
-| `app/static/` | 公共资源、风格文件。 |
-
-### 数据模型摘要
-| 实体 | 说明 |
-| --- | --- |
-| `UserGroup` | 用户分组，定义功能开关与默认组。 |
-| `User` | 平台用户，支持邀请链路、分组、角色。 |
-| `APIKey` | 接入凭证，包含启用状态、公开标记、最后使用信息。 |
-| `Crawler` / `CrawlerRun` / `LogEntry` | 爬虫实例、运行批次与日志明细。 |
-| `CrawlerAccessLink` | 快捷分享链接，支持公开爬虫或 API Key。 |
-| `FileAPIToken` | 上传令牌，支持 IP/CIDR 限制、启停控制。 |
-| `FileEntry` | 文件元数据，记录存储路径、可见性、下载统计。 |
-| `FileAccessLog` | 文件访问审计，追踪上传/下载/删除行为。 |
-| `InviteCode` / `InviteUsage` | 邀请码与使用记录。 |
-| `SystemSetting` | 全局设置（如注册模式）。 |
-
-### API 分组概览
-- `/api/auth/*`：登录、注册、个人资料、API Key 管理。
-- `/api/users/me/theme`：主题偏好保存。
-- `/pa/api/*`：爬虫注册、心跳、运行、日志及公共链接。
-- `/files/*`：文件上传、下载、令牌操作与日志。
-- `/admin/api/*`：用户与分组管理、站点级配置。
-- `/dashboard/*`：仪表盘数据源。
-
-### 数据库迁移流程（Alembic）
-- `alembic.ini` 位于项目根目录，迁移脚本存放在 `migrations/versions/`，可通过 Git 跟踪。
-- 后端启动会调用 `app.database.ensure_database_schema()`：若旧库缺失版本表会自动 `stamp head`，全新环境会执行 `upgrade head`。
-- 所有命令默认读取 `.env` 中的 `DATABASE_URL`，也可以通过临时设置环境变量覆盖，便于切换到测试库。
-
-#### 初始化 / 兼容旧版本
-1. **新环境**：直接运行 `uv run alembic upgrade head` 或启动后端即可创建全部表结构。
-2. **旧环境迁移**：升级前请备份数据库，首次启动会自动 `stamp head`；如需手动处理，可执行 `uv run alembic stamp head` 后再运行后续迁移。
-
-#### 常用命令（uv 执行）
-```powershell
-uv run alembic revision --autogenerate -m "描述本次变更"
-uv run alembic upgrade head
-uv run alembic downgrade -1
-uv run alembic history --verbose
-uv run alembic current
-```
-
-#### 开发建议
-- 自动生成的脚本会放在 `migrations/versions/*.py`，提交前务必 review 并补充必要的数据迁移或默认值。
-- SQLite 环境默认启用 `render_as_batch`，支持列新增/修改；切换到 MySQL/PostgreSQL 无需额外配置。
-- 推荐使用临时库验证迁移：`$env:DATABASE_URL='sqlite:///./data/tmp.db'; uv run alembic upgrade head`，验证后删除临时 DB。
-- Docker 镜像的启动命令会先执行 `alembic upgrade head`，确保容器自动同步结构。
-- 需要在代码中主动触发迁移时，可调用 `ensure_database_schema()`，例如 `uv run python -c "from app.database import ensure_database_schema; ensure_database_schema()"`。
-
-
-## 8. 前端应用说明
-
-### 核心设计
-- App Router + Server Components，结合 `layout.tsx` 管理认证重定向与全局状态。
-- `zustand` 存储登录态与 UI 偏好，`TanStack Query` 处理 API 数据缓存与错误提示。
-- `react-hook-form` + `zod` 提供一致的表单体验，配合 shadcn/ui 自定义组件库。
-- 提供登录页、仪表盘、爬虫管理、文件管理、系统设置等视图骨架。
-
-### 目录导览
-| 目录 | 内容 |
-| --- | --- |
-| `src/app/` | 页面与路由（`page.tsx` 登录页、`dashboard` 等子路由）。 |
-| `src/features/` | 业务模块（如 crawlers、files、admin）的 UI 与逻辑。 |
-| `src/components/` | 布局、导航、表单控件与通用组件。 |
-| `src/lib/` | API 客户端、工具方法、fetch 封装。 |
-| `src/store/` | zustand slices。 |
-| `src/hooks/` | 自定义 Hooks（鉴权、主题等）。 |
-| `src/ui/` | shadcn/ui 生成的基础组件。 |
-
-### 状态与网络策略
-- Axios/Fetch 封装统一注入 Token 与错误处理，集中于 `src/lib`。
-- Query Keys 以业务域划分，便于乐观更新与缓存失效。
-- Toast 与对话框集中在 `components/providers` 管理，支持全局调用。
-
-## 9. SDK 与自动化接入
-
-### 快速上手
 ```python
 from sdk.crawler_client import CrawlerClient
 
-client = CrawlerClient(base_url="http://localhost:9093", api_key="<你的 API Key>")
+client = CrawlerClient(base_url="http://localhost:9093", api_key="<你的APIKey>")
 crawler = client.register_crawler("news_spider")
 run = client.start_run(crawler_id=crawler["id"])
-
 client.log(crawler_id=crawler["id"], level="INFO", message="启动完成", run_id=run["id"])
-client.heartbeat(crawler_id=crawler["id"])
-
+client.heartbeat(crawler_id=crawler["id"], payload={"stage": "init"})
 with client.capture_print(crawler_id=crawler["id"], run_id=run["id"], default_level="INFO"):
-    print("这条信息会同步到平台日志")
+    print("这条信息会被同步到平台日志")
 client.finish_run(crawler_id=crawler["id"], run_id=run["id"], status="success")
 ```
 
-### 能力摘要
-| 方法 | 说明 |
-| --- | --- |
-| `register_crawler(name)` | 初始化爬虫实例，返回 ID/slug。 |
-| `heartbeat(crawler_id)` | 更新最后心跳时间与 IP。 |
-| `start_run(crawler_id)` / `finish_run(...)` | 管理运行批次状态。 |
-| `log(...)` | 写入运行日志，支持级别与 run 关联。 |
-| `printer()` / `capture_print()` | 将脚本中的输出镜像到平台日志。 |
+要处理远程指令：
 
-更多细节可阅读 `sdk/crawler_client.py` 内联注释。
+```python
+def handle(cmd: dict) -> dict | None:
+    if (cmd.get("command") or "").lower() == "hot_update_config":
+        # 重新加载配置...
+        return {"ok": True}
+    return None
 
-## 10. 测试与质量保障
+client.run_command_loop(crawler_id=crawler["id"], interval_seconds=5, handler=handle)
+```
 
-| 范围 | 命令 | 说明 |
-| --- | --- | --- |
-| 后端单元测试 | `uv run pytest` | 使用内存 SQLite，覆盖认证与文件工具。 |
-| 前端类型检查 | `pnpm typecheck` | TypeScript 严格模式。 |
-| 前端语法/样式 | `pnpm lint` | ESLint 9 + Stylelint。 |
-| 前端单元测试 | `pnpm test` | Vitest（可结合 jsdom）。 |
-| 前端 E2E | `pnpm test:ui` | Playwright，首次运行需 `pnpm playwright install`。 |
-| 提交前检查 | Husky + lint-staged | 自动执行格式化与 lint。 |
+## 常用命令
 
-建议在 CI 中按照“类型检查 → 单元测试 → E2E”顺序执行。
+- 环境与依赖：`uv venv && uv sync`
+- 启动后端（开发）：`uv run uvicorn app.main:get_app --reload --port 9093`
+- 数据库迁移：
+  - `uv run alembic revision --autogenerate -m "feat: xxx"`
+  - `uv run alembic upgrade head`
+  - `uv run alembic downgrade -1`
+- 前端：`cd frontend && pnpm i && pnpm dev`
+- 测试：`uv run pytest`；`cd frontend && pnpm test`（E2E：`pnpm test:ui`）
 
-## 11. 部署与运维建议
+## 部署与运维
 
-- **容器化部署**：使用 `Dockerfile.backend` + `frontend/Dockerfile` 打包，建议在 Compose/Swarm/Kubernetes 中分别部署，前端可托管在 CDN/边缘节点。
-- **反向代理**：使用 Nginx / Caddy，将 `/api`、`/pa`、`/files` 等路由转发至后端，前端托管于 `/`。务必启用 HTTPS 和 HTTP/2。
-- **日志与监控**：`logs/allyend.log` 已轮转，建议同步至集中日志平台（ELK、Loki）。爬虫心跳可结合 Prometheus 自定义 Exporter。
-- **备份策略**：定期备份 `data/` 与数据库，必要时改用对象存储（S3/OSS）存放文件，并在 `.env` 中配置路径。
-- **扩展配置**：生产环境建议接入 Alembic 维护数据迁移，启用 WAF 或网关限制高风险接口访问。
+- `docker compose up -d --build` 一键启动；Nginx 反代见 `deploy/nginx/default.conf`
+- 默认端口：前端 3000（经反代暴露 8080），后端 9093
+- 数据卷：`./data:/app/data`、`./logs:/app/logs`
+- 生产建议：启用 HTTPS/HTTP2、压缩、缓存策略；限制上传体积
 
-## 12. 安全与合规实践
+## 质量与安全建议
 
-- JWT 长度与过期时间可按需调整，推荐结合 HTTPS 与 HttpOnly Cookie。
-- API Key 支持启停与公开标记，可在管理后台强化审批流程。
-- 上传令牌支持 IP/CIDR 白名单，结合文件访问日志可审计异常。
-- 对外公开页面（`/pa/{slug}`）可配置 CDN 缓存，避免源站压力。
-- 建议在生产环境启用对象存储与防病毒扫描，满足合规要求。
+- 生产环境务必替换 `SECRET_KEY` 与默认邀请码；按需禁用自由注册
+- 为 API Key/上传令牌配置 IP/CIDR 白名单；公开标记需经过审批
+- 挂载并备份 `data/` 与 `logs/`，必要时迁移到对象存储；前端建议走 CDN
+- 通过 Nginx/Caddy 启用 HTTPS/HTTP2，并合理设置上传大小与限流
 
-## 13. 路线图与扩展方向
-
-- ✅ 完成前后端分离与核心 API。
-- ⏳ 计划中：前端对接全部业务接口、完善状态管理与表单校验。
-- ⏳ 引入 Alembic 迁移与种子数据脚本，保障版本升级。
-- ⏳ 增加 Webhook/消息推送，便于自动化告警。
-- ⏳ 扩展多租户能力与细粒度权限控制。
-
-欢迎通过 Issue/PR 贡献想法，一同完善 AllYend。
-
-## 14. 相关文档
-
-- `frontend/README.md`：前端开发说明。
-- `sdk/crawler_client.py`：Python SDK 注释与示例。
-- `docker-compose.yaml`：容器化部署参考。
-- `test/`：后端测试用例。
-- `gorai.md`：历史讨论与需求背景。
-
----
-
-如在使用过程中遇到问题，欢迎提交 Issue 或直接交流，共建更稳定易用的数据采集协作平台。
-
+如需提交问题或建议，欢迎创建 Issue/PR，一起打磨更稳定易用的 AllYend。

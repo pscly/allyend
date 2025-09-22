@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session, joinedload
 
 from ..config import settings
-from ..constants import ROLE_ADMIN, ROLE_SUPERADMIN, THEME_PRESETS, LOG_LEVEL_OPTIONS
+from ..constants import ROLE_USER, ROLE_ADMIN, ROLE_SUPERADMIN, THEME_PRESETS, LOG_LEVEL_OPTIONS
 from ..dependencies import get_current_user, get_db
 from ..models import InviteCode, SystemSetting, User, UserGroup
 from ..utils.time_utils import now
