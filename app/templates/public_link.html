@@ -169,10 +169,10 @@
         const levelText = levelMap[code] || item.level || 'INFO';
         let owner = '';
         if (linkSummary.type === 'crawler') {
-          const localId = item.crawler_local_id ?? item.crawler_id;
+          const localId = item.crawler_local_id;
           owner = item.crawler_name || `爬虫 #${localId}`;
         } else {
-          const localId = item.api_key_local_id ?? item.api_key_id ?? '';
+          const localId = item.api_key_local_id;
           const suffix = localId ? ` #${localId}` : '';
           owner = `${linkSummary.name || 'API Key'}${suffix}`;
         }

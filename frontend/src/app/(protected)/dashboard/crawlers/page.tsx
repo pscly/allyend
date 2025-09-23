@@ -1103,9 +1103,9 @@ export default function CrawlersPage() {
               <div className="space-y-2 text-sm text-muted-foreground">
                 <p>目标：
                   {editingQuickLink.target_type === "crawler"
-                    ? ` 爬虫 #${editingQuickLink.crawler_local_id ?? editingQuickLink.crawler_id}`
+                    ? ` 爬虫 #${editingQuickLink.crawler_local_id}`
                     : editingQuickLink.target_type === "api_key"
-                      ? ` API Key #${editingQuickLink.api_key_local_id ?? editingQuickLink.api_key_id}`
+                      ? ` API Key #${editingQuickLink.api_key_local_id}`
                       : ` 分组 ${editingQuickLink.group_name ?? editingQuickLink.group_slug}`}
                 </p>
               </div>
@@ -1163,7 +1163,7 @@ export default function CrawlersPage() {
                   {createQuickLinkForm.watch("targetType") === "crawler"
                     ? crawlers.map((crawler) => (
                         <option key={crawler.id} value={crawler.id}>
-                          {crawler.name}（#{crawler.local_id ?? crawler.id}）
+                          {crawler.name}（#{crawler.local_id}）
                         </option>
                       ))
                     : createQuickLinkForm.watch("targetType") === "api_key"
@@ -1260,12 +1260,12 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <CrawlerStatusBadge status={crawler.status} />
-            <span className="text-xs text-muted-foreground">#{crawler.local_id ?? crawler.id}</span>
+            <span className="text-xs text-muted-foreground">#{crawler.local_id}</span>
           </div>
           <h3 className="text-lg font-semibold text-foreground">{crawler.name}</h3>
           <p className="flex items-center gap-2 text-xs text-muted-foreground">
             <LinkIcon className="h-3.5 w-3.5" />
-            {crawler.api_key_name ?? `Key #${crawler.api_key_local_id ?? crawler.api_key_id}`}
+            {crawler.api_key_name}
             {crawler.api_key_active === false ? <span className="rounded bg-rose-500/15 px-2 py-0.5 text-[10px] text-rose-500">Key 已禁用</span> : null}
           </p>
         </div>

@@ -531,7 +531,7 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
     if (targetType === "crawler") {
       return crawlers.map((crawler) => (
         <option key={crawler.id} value={crawler.id}>
-          {crawler.name}（#{crawler.local_id ?? crawler.id}）
+          {crawler.name}（#{crawler.local_id}）
         </option>
       ));
     }

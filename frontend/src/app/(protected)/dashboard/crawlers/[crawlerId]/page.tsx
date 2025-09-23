@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ChevronLeft, Copy, Loader2, PlayCircle, RefreshCcw, Send, Shield, ShieldOff, TriangleAlert } from "lucide-react";
+import { AlertTriangle, ChevronLeft, Copy, Loader2, PlayCircle, RefreshCcw, Send, Shield, ShieldOff, TriangleAlert, Maximize2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,10 +15,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { CrawlerStatusBadge } from "@/features/crawlers/components/status-badge";
 import { HeartbeatChart } from "@/features/crawlers/components/heartbeat-chart";
 import { copyToClipboard } from "@/lib/clipboard";
+import { env } from "@/lib/env";
 import {
   useCrawlerDetailQuery,
   useCrawlerHeartbeatsQuery,
@@ -94,6 +96,11 @@ export default function CrawlerDetailPage() {
 
   const [heartbeatRange, setHeartbeatRange] = useState<HeartbeatRange>("12h");
   const [selectedMetric, setSelectedMetric] = useState<string>("__status");
+  // 放大查看对话框开关
+  const [openHb, setOpenHb] = useState(false);
+  const [openLogs, setOpenLogs] = useState(false);
+  const [openCmds, setOpenCmds] = useState(false);
+  const [openCfg, setOpenCfg] = useState(false);
 
   const detailQuery = useCrawlerDetailQuery(validId ? crawlerId : 0, validId);
   const heartbeatQueryOptions = useMemo<HeartbeatQueryOptions>(() => {
@@ -197,11 +204,11 @@ export default function CrawlerDetailPage() {
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <CrawlerStatusBadge status={crawler.status} />
-                <span className="text-xs text-muted-foreground">#{crawler.local_id ?? crawler.id}</span>
+                <span className="text-xs text-muted-foreground">#{crawler.local_id}</span>
               </div>
               <h1 className="text-xl font-semibold text-foreground">{crawler.name}</h1>
               <p className="text-xs text-muted-foreground">
-                分组：{crawler.group?.name ?? "未分组"} · Key：{crawler.api_key_name ?? `#${crawler.api_key_local_id ?? crawler.api_key_id}`}
+                分组：{crawler.group?.name ?? "未分组"} · Key：{crawler.api_key_name}
               </p>
             </div>
           ) : (
@@ -267,20 +274,28 @@ export default function CrawlerDetailPage() {
         <div className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4">
           <h2 className="text-sm font-medium text-foreground">公开与访问</h2>
           {crawler?.public_slug ? (
-            <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-500/50 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-600">
-              <span className="truncate">/pa/{crawler.public_slug}</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() =>
-                  copyToClipboard(`/pa/${crawler.public_slug}`)
-                    .then((ok) => ok && toast({ title: "已复制公开地址" }))
-                    .catch(() => undefined)
-                }
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
+            (() => {
+              const origin = typeof window !== "undefined" ? window.location.origin : env.appBaseUrl;
+              const publicUrl = `${origin}/pa/${crawler.public_slug}`;
+              return (
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-500/50 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-600">
+                  <a href={publicUrl} target="_blank" rel="noreferrer" className="truncate underline-offset-2 hover:underline">
+                    {publicUrl}
+                  </a>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() =>
+                      copyToClipboard(publicUrl)
+                        .then((ok) => ok && toast({ title: "已复制公开地址" }))
+                        .catch(() => undefined)
+                    }
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              );
+            })()
           ) : (
             <p className="text-xs text-muted-foreground">未生成公开页。可在列表页使用“创建公开页”。</p>
           )}
@@ -308,6 +323,9 @@ export default function CrawlerDetailPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="gap-1" onClick={() => setOpenHb(true)}>
+                <Maximize2 className="h-4 w-4" /> 放大
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm">
@@ -367,9 +385,14 @@ export default function CrawlerDetailPage() {
         <div className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4">
           <header className="flex items-center justify-between">
             <h2 className="text-sm font-medium text-foreground">运行日志</h2>
-            <Button variant="outline" size="sm" onClick={() => logQuery.refetch()} disabled={logQuery.isFetching}>
-              {logQuery.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="gap-1" onClick={() => setOpenLogs(true)}>
+                <Maximize2 className="h-4 w-4" /> 放大
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => logQuery.refetch()} disabled={logQuery.isFetching}>
+                {logQuery.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+              </Button>
+            </div>
           </header>
           <ScrollArea className="h-[280px] rounded-xl border border-border/60">
             <div className="min-w-full divide-y divide-border/60">
@@ -393,8 +416,15 @@ export default function CrawlerDetailPage() {
       <section className="grid gap-4 xl:grid-cols-2">
         <div className="space-y-4 rounded-2xl border border-border/70 bg-card/80 p-4">
           <header className="space-y-1">
-            <h2 className="text-sm font-medium text-foreground">远程指令</h2>
-            <p className="text-xs text-muted-foreground">爬虫在下次心跳时拉取待执行指令并回执结果。</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-medium text-foreground">远程指令</h2>
+                <p className="text-xs text-muted-foreground">爬虫在下次心跳时拉取待执行指令并回执结果。</p>
+              </div>
+              <Button variant="outline" size="sm" className="gap-1" onClick={() => setOpenCmds(true)}>
+                <Maximize2 className="h-4 w-4" /> 放大
+              </Button>
+            </div>
           </header>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={() => sendQuickCommand("pause")}>暂停</Button>
@@ -454,8 +484,15 @@ export default function CrawlerDetailPage() {
 
         <div className="space-y-4 rounded-2xl border border-border/70 bg-card/80 p-4">
           <header className="space-y-1">
-            <h2 className="text-sm font-medium text-foreground">配置下发</h2>
-            <p className="text-xs text-muted-foreground">爬虫通过 Key 拉取生效配置，支持模板/指派版本化。</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-medium text-foreground">配置下发</h2>
+                <p className="text-xs text-muted-foreground">爬虫通过 Key 拉取生效配置，支持模板/指派版本化。</p>
+              </div>
+              <Button variant="outline" size="sm" className="gap-1" onClick={() => setOpenCfg(true)}>
+                <Maximize2 className="h-4 w-4" /> 放大
+              </Button>
+            </div>
           </header>
           <div className="rounded-xl border border-border/60 p-3 text-sm">
             {cfgQuery.isLoading ? (
@@ -471,6 +508,143 @@ export default function CrawlerDetailPage() {
           </div>
         </div>
       </section>
+
+      {/* 放大查看对话框 */}
+      <Dialog open={openHb} onOpenChange={setOpenHb}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>心跳记录</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <HeartbeatChart
+              data={(hbQuery.data ?? []) as CrawlerHeartbeat[]}
+              metricKey={selectedMetric}
+              loading={hbQuery.isLoading || hbQuery.isFetching}
+            />
+            <div className="rounded-xl border border-border/60">
+              <ScrollArea className="h-[60vh]">
+                <div className="min-w-full divide-y divide-border/60">
+                  {((hbQuery.data ?? []) as CrawlerHeartbeat[]).slice().reverse().map((hb) => (
+                    <div key={hb.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className={`h-2 w-2 rounded-full ${hb.status === "online" ? "bg-emerald-500" : hb.status === "warning" ? "bg-amber-500" : "bg-rose-500"}`} />
+                        <span className="text-foreground">{hb.status}</span>
+                      </div>
+                      <div className="text-muted-foreground">{hb.source_ip ?? "-"}</div>
+                      <div className="text-muted-foreground">{new Date(hb.created_at).toLocaleString("zh-CN", { hour12: false })}</div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={openLogs} onOpenChange={setOpenLogs}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>运行日志</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="h-[70vh] rounded-xl border border-border/60">
+            <div className="min-w-full divide-y divide-border/60">
+              {((logQuery.data ?? []) as CrawlerLog[]).map((log) => (
+                <div key={log.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                  <span className="font-medium text-foreground">{log.level}</span>
+                  <span className="mx-3 flex-1 truncate text-foreground">{log.message}</span>
+                  <span className="text-muted-foreground">{new Date(log.ts).toLocaleString("zh-CN", { hour12: false })}</span>
+                </div>
+              ))}
+              {!((logQuery.data ?? []) as CrawlerLog[]).length ? (
+                <div className="flex h-[50vh] items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <AlertTriangle className="h-4 w-4" /> 暂无日志
+                </div>
+              ) : null}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={openCmds} onOpenChange={setOpenCmds}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>远程指令</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => sendQuickCommand("pause")}>暂停</Button>
+              <Button size="sm" onClick={() => sendQuickCommand("resume")}>恢复</Button>
+              <Button size="sm" onClick={() => sendQuickCommand("restart")} className="gap-1">
+                <PlayCircle className="h-4 w-4" /> 重启
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => sendQuickCommand("hot_update_config")}>热更新配置</Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  const task = typeof window !== "undefined" ? window.prompt("输入要切换的任务标识（task）:") : "";
+                  if (task && task.trim()) {
+                    sendCommand(`switch_task ${task.trim()}`);
+                  }
+                }}
+              >
+                切换任务
+              </Button>
+              <Button size="sm" variant="destructive" onClick={() => sendQuickCommand("graceful_shutdown")}>
+                平滑停机
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input value={customCmd} onChange={(e) => setCustomCmd(e.target.value)} placeholder="自定义指令，如: set_rate 2.0" />
+              <Button size="sm" disabled={!customCmd || sending} onClick={() => sendCommand(customCmd)}>
+                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} 发送
+              </Button>
+            </div>
+            <div className="rounded-xl border border-border/60">
+              <div className="flex items-center justify-between border-b border-border/60 px-3 py-2 text-xs text-muted-foreground">
+                <span>指令历史</span>
+                <Button variant="ghost" size="sm" onClick={() => cmdQuery.refetch()} disabled={cmdQuery.isFetching}>
+                  {cmdQuery.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                </Button>
+              </div>
+              <ScrollArea className="h-[60vh]">
+                <div className="min-w-full divide-y divide-border/60">
+                  {((cmdQuery.data ?? []) as CrawlerCommand[]).map((cmd) => (
+                    <div key={cmd.id} className="grid grid-cols-12 items-center gap-2 px-3 py-2 text-xs">
+                      <div className="col-span-3 truncate text-foreground">{cmd.command}</div>
+                      <div className="col-span-2 text-muted-foreground">{cmd.status}</div>
+                      <div className="col-span-4 truncate text-muted-foreground">{cmd.result ? JSON.stringify(cmd.result) : "—"}</div>
+                      <div className="col-span-3 text-muted-foreground">{new Date(cmd.created_at).toLocaleString("zh-CN", { hour12: false })}</div>
+                    </div>
+                  ))}
+                  {!((cmdQuery.data ?? []) as CrawlerCommand[]).length ? (
+                    <div className="flex h-[40vh] items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <AlertTriangle className="h-4 w-4" /> 暂无指令
+                    </div>
+                  ) : null}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={openCfg} onOpenChange={setOpenCfg}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>配置下发</DialogTitle>
+          </DialogHeader>
+          <div className="rounded-xl border border-border/60 p-3 text-sm">
+            {cfgQuery.isLoading ? (
+              <Skeleton className="h-10 w-full" />
+            ) : cfgQuery.data?.has_config ? (
+              <div className="space-y-1 text-sm">
+                <p className="text-foreground">{cfgQuery.data.name} · v{cfgQuery.data.version}</p>
+                <p className="text-xs text-muted-foreground">{cfgQuery.data.format?.toUpperCase()} · 更新于 {cfgQuery.data.updated_at ? new Date(cfgQuery.data.updated_at).toLocaleString("zh-CN", { hour12: false }) : "—"}</p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">未发现生效配置。可在“配置与告警”页进行指派。</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

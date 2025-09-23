@@ -97,14 +97,14 @@ function buildDetailItems(summary: PublicLinkSummary) {
   }
   if (summary.type === "crawler") {
     baseItems.push(
-      { label: "内部 ID", value: summary.local_id ?? summary.crawler_id },
+      { label: "内部 ID", value: summary.local_id },
       { label: "当前状态", value: statusBadge(summary.status) },
       { label: "最后心跳", value: formatDateTime(summary.last_heartbeat) },
       { label: "来源 IP", value: summary.last_source_ip || "-" },
     );
   } else if (summary.type === "api_key") {
     baseItems.push(
-      { label: "内部 ID", value: summary.local_id ?? summary.api_key_id },
+      { label: "内部 ID", value: summary.local_id },
       { label: "最后使用时间", value: formatDateTime(summary.last_used_at) },
       { label: "来源 IP", value: summary.last_used_ip || "-" },
       {
@@ -165,9 +165,9 @@ function renderGroupMembers(summary: PublicLinkSummary) {
             <div key={crawler.id} className="grid gap-2 px-6 py-3 md:grid-cols-4">
               <div>
                 <p className="text-sm font-medium text-foreground">
-                  {crawler.name || `爬虫 #${crawler.local_id ?? crawler.id}`}
+                  {crawler.name || `爬虫 #${crawler.local_id}`}
                 </p>
-                <p className="text-xs text-muted-foreground">内部 ID：{crawler.local_id ?? crawler.id}</p>
+                <p className="text-xs text-muted-foreground">内部 ID：{crawler.local_id}</p>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-xs text-muted-foreground">状态</span>

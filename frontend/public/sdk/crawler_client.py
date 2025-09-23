@@ -25,6 +25,7 @@ from typing import Any, Callable, Dict, Iterator, Optional
 import os
 import sys
 import time
+import threading
 
 import requests
 try:  # 可选依赖：若可用则启用连接池重试与退避
@@ -62,6 +63,10 @@ class CrawlerClient:
         self.session = requests.Session()
         self.session.headers.update({"X-API-Key": self.api_key})
 
+        # 后台指令线程控制
+        self._cmd_thread: threading.Thread | None = None
+        self._cmd_stop: threading.Event | None = None
+
         # 可选：启用简单重试（对 5xx/连接错误）
         if _HAS_RETRY and retries and retries > 0:
             self._enable_retries(retries=int(retries), backoff_factor=float(backoff_factor))
@@ -69,6 +74,12 @@ class CrawlerClient:
     # -------------- 生命周期管理 --------------
     def close(self) -> None:
         """关闭底层 HTTP 连接池。"""
+        # 优先停止后台线程
+        try:
+            self.stop_command_worker()
+        except Exception:
+            pass
+        # 关闭 HTTP 连接池
         try:
             self.session.close()
         except Exception:
@@ -99,15 +110,14 @@ class CrawlerClient:
 
     @staticmethod
     def _normalize_api_base(base_url: str) -> str:
-        """根据传入的基础地址推导出 /pa/api 根路径。"""
+        """最简化根路径规范化：仅支持 /pa/api。
+
+        - 若传入已以 /pa/api 结尾，则直接使用；
+        - 否则在末尾追加 /pa/api。
+        说明：移除历史兼容分支，保持 SDK 与后端当前设计一致。
+        """
         base = base_url.rstrip("/")
-        if base.endswith("/pa/api"):
-            return base
-        if base.endswith("/api"):
-            return base
-        if base.endswith("/pa"):
-            return f"{base}/api"
-        return f"{base}/pa/api"
+        return base if base.endswith("/pa/api") else f"{base}/pa/api"
 
     def register_crawler(self, name: str) -> Dict[str, Any]:
         r = self.session.post(f"{self.api_base}/register", json={"name": name}, timeout=self.timeout)
@@ -276,6 +286,103 @@ class CrawlerClient:
                     time.sleep(interval)
                 except Exception:
                     pass
+
+    # ---------------- 线程化：远程指令后台轮询 ----------------
+    def start_command_worker(
+        self,
+        crawler_id: int,
+        interval_seconds: float = 5.0,
+        handler: Optional[Callable[[Dict[str, Any]], Optional[Dict[str, Any]]]] = None,
+        on_error: Optional[Callable[[Exception], None]] = None,
+        daemon: bool = True,
+    ) -> None:
+        """启动后台线程循环获取并执行远程指令。
+
+        - 单例线程：若已在运行，将先请求停止原线程再启动新线程。
+        - 使用事件停止，sleep 期间也可被及时打断。
+        - 参数与 run_command_loop 一致。
+        """
+        # 若已有线程，先停止
+        if self._cmd_thread and self._cmd_thread.is_alive():
+            self.stop_command_worker()
+
+        stop_evt = threading.Event()
+        self._cmd_stop = stop_evt
+
+        def _worker() -> None:
+            interval = max(1.0, float(interval_seconds or 5.0))
+            while not stop_evt.is_set():
+                try:
+                    commands = self.fetch_commands(crawler_id)
+                    for cmd in commands:
+                        if stop_evt.is_set():
+                            break
+                        name = str(cmd.get("command", "")).strip().lower()
+                        result: Optional[Dict[str, Any]] = None
+                        payload = cmd.get("payload") or {}
+                        if handler is not None:
+                            try:
+                                result = handler(cmd)
+                            except Exception as exc:
+                                self.ack_command(crawler_id, cmd["id"], status="failed", result={"error": str(exc)})
+                                continue
+                        else:
+                            if name == "restart":
+                                self.ack_command(crawler_id, cmd["id"], status="accepted", result={"action": "restart"})
+                                self.restart_self(delay_seconds=0.2)
+                                continue
+                            elif name in {"graceful_shutdown", "shutdown"}:
+                                self.ack_command(crawler_id, cmd["id"], status="accepted", result={"action": name})
+                                self.shutdown_self(delay_seconds=0.2)
+                                continue
+                            elif name == "hot_update_config":
+                                result = {"action": name, "note": "ack-only"}
+                            elif name.startswith("switch_task"):
+                                task = None
+                                parts = str(cmd.get("command", "")).split()
+                                if len(parts) >= 2:
+                                    task = parts[1]
+                                if not task:
+                                    task = (payload or {}).get("task")
+                                result = {"action": "switch_task", "task": task}
+                            elif name in {"pause", "resume"}:
+                                result = {"action": name}
+                            else:
+                                result = {"note": "no-op"}
+                        self.ack_command(crawler_id, cmd["id"], status="success", result=result)
+                except KeyboardInterrupt:
+                    break
+                except Exception as exc:
+                    if on_error:
+                        try:
+                            on_error(exc)
+                        except Exception:
+                            pass
+                finally:
+                    # 使用事件等待，可被 stop 及时打断
+                    stop_evt.wait(timeout=max(1.0, float(interval_seconds or 5.0)))
+
+        t = threading.Thread(target=_worker, name=f"cmd-worker-{crawler_id}")
+        t.daemon = bool(daemon)
+        t.start()
+        self._cmd_thread = t
+
+    def stop_command_worker(self, timeout: float = 2.0) -> None:
+        """请求停止并等待后台指令线程退出。"""
+        if not self._cmd_thread:
+            return
+        if self._cmd_stop:
+            try:
+                self._cmd_stop.set()
+            except Exception:
+                pass
+        try:
+            self._cmd_thread.join(timeout=max(0.0, float(timeout)))
+        except Exception:
+            pass
+        finally:
+            self._cmd_thread = None
+            self._cmd_stop = None
 
     def log(self, crawler_id: int, level: str | int, message: str, run_id: Optional[int] = None) -> Dict[str, Any]:
         level_value = str(level).upper() if not isinstance(level, int) else str(level)

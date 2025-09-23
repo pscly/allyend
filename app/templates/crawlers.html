@@ -211,7 +211,7 @@
   async function loadCrawlers() {
     const data = await fetchJSON('/pa/api/me');
     crawlersSelect.innerHTML = data.map(crawler => {
-      const localId = crawler.local_id ?? crawler.id;
+      const localId = crawler.local_id;
       const displayName = crawler.name || '未命名爬虫';
       return `<option value="${crawler.id}" selected>[#${localId}] ${displayName}</option>`;
     }).join('');
@@ -220,7 +220,7 @@
       const hb = crawler.last_heartbeat ? new Date(crawler.last_heartbeat).toLocaleString() : '-';
       const slug = crawler.public_slug ? `<code>${crawler.public_slug}</code>` : '-';
       const ip = crawler.last_source_ip || '-';
-      const localId = crawler.local_id ?? crawler.id;
+      const localId = crawler.local_id;
       const displayName = crawler.name || '未命名爬虫';
       const safeName = displayName.replace(/'/g, "");
       return `<tr>
@@ -286,9 +286,9 @@
       const allowLogs = link.allow_logs ? '是' : '否';
       let target;
       if (link.target_type === 'crawler') {
-        target = `Crawler #${link.crawler_local_id ?? link.crawler_id ?? '-'}`;
+        target = `Crawler #${link.crawler_local_id}`;
       } else if (link.target_type === 'api_key') {
-        target = `API Key #${link.api_key_local_id ?? link.api_key_id ?? '-'}`;
+        target = `API Key #${link.api_key_local_id}`;
       } else if (link.target_type === 'group') {
         target = `Group ${link.group_slug ?? ''} (#${link.group_id ?? '-'})`;
       } else {
@@ -343,7 +343,7 @@
         const code = Number(item.level_code || 20);
         const badgeClass = `badge level-${code}`;
         const levelText = levelMap[code] || item.level;
-        const crawler = item.crawler_name || `#${item.crawler_local_id ?? item.crawler_id}`;
+        const crawler = item.crawler_name || `#${item.crawler_local_id}`;
         const ip = item.source_ip || '-';
         return `<div class="log-item"><div class="log-head"><span>${new Date(item.ts).toLocaleString()}</span><div class="table-actions" style="gap:8px;"><span class="badge ${badgeClass}">${levelText}</span><span class="hint">${crawler}</span><span class="hint">IP: ${ip}</span></div></div><div>${item.message}</div></div>`;
       }).join('');

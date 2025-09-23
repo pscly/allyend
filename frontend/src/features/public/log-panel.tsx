@@ -73,17 +73,17 @@ function getLevelClass(code: number) {
 
 function buildOwnerLabel(summary: PublicLinkSummary, log: CrawlerLog) {
   if (summary.type === "crawler") {
-    const local = log.crawler_local_id ?? summary.local_id ?? summary.crawler_id;
+    const local = log.crawler_local_id ?? summary.local_id;
     const name = summary.name ?? "爬虫";
     return local ? `${name} #${local}` : name;
   }
   if (summary.type === "api_key") {
     if (log.crawler_name) return log.crawler_name;
     if (summary.crawler_name) return summary.crawler_name;
-    const local = summary.local_id ?? summary.api_key_id;
+    const local = summary.local_id;
     return summary.name ? `${summary.name}${local ? ` #${local}` : ""}` : `API Key #${local}`;
   }
-  const local = log.crawler_local_id ?? log.crawler_id;
+  const local = log.crawler_local_id;
   const crawlerName = log.crawler_name ?? (local ? `爬虫 #${local}` : "成员");
   const groupName = summary.group_name ?? summary.name ?? "公开分组";
   return `${groupName} · ${crawlerName}`;

@@ -26,10 +26,10 @@ interface QuickLinkTableProps {
 
 function resolveTargetLabel(link: QuickLink): string {
   if (link.target_type === "crawler") {
-    return `Crawler #${link.crawler_local_id ?? link.crawler_id ?? "-"}`;
+    return `Crawler #${link.crawler_local_id}`;
   }
   if (link.target_type === "api_key") {
-    return `API Key #${link.api_key_local_id ?? link.api_key_id ?? "-"}`;
+    return `API Key #${link.api_key_local_id}`;
   }
   return `Group ${link.group_slug ?? ""} (#${link.group_id ?? "-"})`;
 }
