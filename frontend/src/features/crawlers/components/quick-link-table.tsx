@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ExternalLink, Eye, EyeOff, Globe, Loader2, MoreVertical, Trash2 } from "lucide-react";
 
 import type { QuickLink } from "@/lib/api/types";
+import { copyToClipboard } from "@/lib/clipboard";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -54,11 +55,15 @@ export function QuickLinkTable({
   }
 
   const handleCopy = (link: QuickLink, linkUrl: string) => {
-    navigator.clipboard.writeText(linkUrl).then(() => {
-      setCopiedId(link.id);
-      onCopy?.(link);
-      setTimeout(() => setCopiedId((prev) => (prev === link.id ? null : prev)), 2000);
-    }).catch(() => undefined);
+    copyToClipboard(linkUrl)
+      .then((ok) => {
+        if (ok) {
+          setCopiedId(link.id);
+          onCopy?.(link);
+          setTimeout(() => setCopiedId((prev) => (prev === link.id ? null : prev)), 2000);
+        }
+      })
+      .catch(() => undefined);
   };
 
   return (

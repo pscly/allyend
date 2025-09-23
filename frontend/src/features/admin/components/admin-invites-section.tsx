@@ -21,6 +21,7 @@ import { useCreateInviteMutation, useDeleteInviteMutation } from "@/features/adm
 import { useToast } from "@/hooks/use-toast";
 import { ApiError } from "@/lib/api/client";
 import type { InviteCode, UserGroup } from "@/lib/api/types";
+import { copyToClipboard } from "@/lib/clipboard";
 
 interface InviteFormState {
   note: string;
@@ -267,7 +268,7 @@ export function AdminInvitesSection() {
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7"
-                        onClick={() => navigator.clipboard.writeText(invite.code)}
+                        onClick={() => { void copyToClipboard(invite.code); }}
                         title="复制邀请码"
                       >
                         <Copy className="h-3.5 w-3.5" />

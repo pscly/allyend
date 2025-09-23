@@ -8,6 +8,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from pathlib import Path
 from sqlalchemy.orm import Session, joinedload
 
 from ..config import settings
@@ -28,7 +29,8 @@ from ..schemas import (
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-templates = Jinja2Templates(directory="app/templates")
+_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 REGISTRATION_MODE_KEY = "registration_mode"
 DEFAULT_REGISTRATION_MODE = "open" if settings.ALLOW_DIRECT_SIGNUP else "invite"
 

@@ -53,6 +53,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import { env } from "@/lib/env";
 import { cn } from "@/lib/utils";
+import { copyToClipboard } from "@/lib/clipboard";
 import { ApiError } from "@/lib/api/client";
 import type { ApiKey, CrawlerGroup, CrawlerSummary, QuickLink } from "@/lib/api/types";
 
@@ -960,7 +961,11 @@ export default function CrawlersPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => navigator.clipboard.writeText(generatedKey).then(() => toast({ title: "已复制 Key" }))}
+                    onClick={() =>
+                      copyToClipboard(generatedKey)
+                        .then((ok) => ok && toast({ title: "已复制 Key" }))
+                        .catch(() => undefined)
+                    }
                   >
                     <Copy className="h-4 w-4" />
                   </Button>
@@ -1231,9 +1236,14 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
 
   const handleCopyPublicLink = () => {
     if (!publicLink) return;
-    navigator.clipboard
-      .writeText(publicLink)
-      .then(() => toast({ title: "已复制公开地址", description: publicLink }))
+    copyToClipboard(publicLink)
+      .then((ok) => {
+        if (ok) {
+          toast({ title: "已复制公开地址", description: publicLink });
+        } else {
+          toast({ title: "复制失败", variant: "destructive" });
+        }
+      })
       .catch(() => toast({ title: "复制失败", variant: "destructive" }));
   };
 

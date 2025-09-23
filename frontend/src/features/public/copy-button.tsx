@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { copyToClipboard } from "@/lib/clipboard";
 
 interface CopyTextButtonProps {
   value: string;
@@ -15,9 +16,11 @@ export function CopyTextButton({ value, label = "复制" }: CopyTextButtonProps)
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      const ok = await copyToClipboard(value);
+      if (ok) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }
     } catch (error) {
       console.error("复制失败", error);
     }

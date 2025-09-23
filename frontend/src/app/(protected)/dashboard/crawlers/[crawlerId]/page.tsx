@@ -18,6 +18,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { CrawlerStatusBadge } from "@/features/crawlers/components/status-badge";
 import { HeartbeatChart } from "@/features/crawlers/components/heartbeat-chart";
+import { copyToClipboard } from "@/lib/clipboard";
 import {
   useCrawlerDetailQuery,
   useCrawlerHeartbeatsQuery,
@@ -271,7 +272,11 @@ export default function CrawlerDetailPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => navigator.clipboard.writeText(`/pa/${crawler.public_slug}`).then(() => toast({ title: "已复制公开地址" }))}
+                onClick={() =>
+                  copyToClipboard(`/pa/${crawler.public_slug}`)
+                    .then((ok) => ok && toast({ title: "已复制公开地址" }))
+                    .catch(() => undefined)
+                }
               >
                 <Copy className="h-4 w-4" />
               </Button>

@@ -13,6 +13,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from pathlib import Path
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
@@ -43,7 +44,8 @@ def _derive_status(last_heartbeat: Optional[datetime]) -> str:
     return "offline"
 
 
-templates = Jinja2Templates(directory="app/templates")
+_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 templates.env.globals.update(site_icp=settings.SITE_ICP, theme_presets=THEME_PRESETS, log_levels=LOG_LEVEL_OPTIONS, site_name=settings.SITE_NAME)
 
 def _hydrate_api_key(key: APIKey) -> APIKey:

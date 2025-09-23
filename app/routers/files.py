@@ -31,7 +31,8 @@ from ..utils.time_utils import now
 
 router = APIRouter(tags=["files"])
 
-templates = Jinja2Templates(directory="app/templates")
+_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 templates.env.globals.update(site_icp=settings.SITE_ICP, theme_presets=THEME_PRESETS, log_levels=LOG_LEVEL_OPTIONS, site_name=settings.SITE_NAME)
 
 

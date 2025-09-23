@@ -151,7 +151,7 @@ export interface CrawlerSummary {
   heartbeat_payload: Record<string, unknown> | null;
   is_public: boolean;
   public_slug: string | null;
-  api_key_id: number;
+  api_key_id: number | null;
   api_key_local_id: number | null;
   api_key_name: string | null;
   api_key_active: boolean | null;

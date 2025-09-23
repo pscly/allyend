@@ -18,6 +18,7 @@ import type { ApiError } from "@/lib/api/client";
 import { endpoints } from "@/lib/api/endpoints";
 import { buildApiUrl } from "@/lib/env";
 import { cn } from "@/lib/utils";
+import { copyToClipboard } from "@/lib/clipboard";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -414,7 +415,7 @@ export default function FilesPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => navigator.clipboard.writeText(tokenItem.token)}
+                          onClick={() => { void copyToClipboard(tokenItem.token); }}
                         >
                           复制
                         </Button>

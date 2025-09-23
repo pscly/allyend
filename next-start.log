@@ -1,0 +1,10 @@
+
+> frontend@0.1.0 start D:\1tmp\codetets\frontend
+> next start
+
+  ▲ Next.js 14.2.32
+  - Local:        http://localhost:3000
+
+ ✓ Starting...
+ ✓ Ready in 1659ms
+ ELIFECYCLE  Command failed with exit code 3221225786.

@@ -11,8 +11,6 @@ from typing import Optional
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
-from alembic import command
-from alembic.config import Config
 
 from .config import settings
 from .constants import (
@@ -49,26 +47,23 @@ engine = create_engine(
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 
-def _build_alembic_config() -> Config:
-    """构建 Alembic 配置指向当前项目。"""
-    project_root = Path(__file__).resolve().parent.parent
-    config = Config(str(project_root / "alembic.ini"))
-    config.set_main_option("script_location", str(project_root / "migrations"))
-    config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
-    return config
+def ensure_database_schema() -> None:
+    """确保数据库结构就绪（无迁移版本，直接按 ORM 创建）。
 
-
-def ensure_database_schema(target: str = "head") -> None:
-    """确保数据库结构迁移至指定版本（默认 head）。
-
-    说明：已移除历史兼容与运行期 DDL 补齐，统一由 Alembic 迁移脚本管理结构变更。
-    新库将直接创建；旧库请通过迁移脚本演进。
+    - 初始开发阶段：直接调用 Base.metadata.create_all(engine)
+    - 若后续引入迁移，可替换为 Alembic 升级逻辑
     """
-    alembic_config = _build_alembic_config()
-    command.upgrade(alembic_config, target)
+    # 延迟导入，避免循环
+    from .models import Base as ModelsBase  # noqa: WPS433
+
+    try:
+        ModelsBase.metadata.create_all(bind=engine)
+    except Exception:
+        # 尽量不要阻断启动；将错误留给上层日志
+        raise
 
 
-## 兼容层 apply_schema_upgrades 已移除：统一依赖 Alembic 迁移
+## 兼容层 apply_schema_upgrades 已移除：初期不再使用 Alembic 迁移
 
 
 def bootstrap_defaults() -> None:

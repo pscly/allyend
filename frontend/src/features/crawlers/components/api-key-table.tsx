@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Copy, Loader2, MoreVertical, RotateCcw, Shield, ShieldOff } from "lucide-react";
 
 import type { ApiKey, CrawlerGroup } from "@/lib/api/types";
+import { copyToClipboard } from "@/lib/clipboard";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -53,12 +54,14 @@ export function ApiKeyTable({
 
   const handleCopy = async (key: ApiKey) => {
     try {
-      await navigator.clipboard.writeText(key.key);
-      setCopiedId(key.id);
-      onCopy?.(key);
-      setTimeout(() => setCopiedId((prev) => (prev === key.id ? null : prev)), 2000);
+      const ok = await copyToClipboard(key.key);
+      if (ok) {
+        setCopiedId(key.id);
+        onCopy?.(key);
+        setTimeout(() => setCopiedId((prev) => (prev === key.id ? null : prev)), 2000);
+      }
     } catch {
-      // ignore clipboard errors silently
+      // 忽略复制失败
     }
   };
 

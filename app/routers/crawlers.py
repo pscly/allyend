@@ -21,6 +21,7 @@ import requests
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from pathlib import Path
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -91,7 +92,8 @@ from ..utils.audit import record_operation, summarize_group
 api_router = APIRouter(prefix="/pa/api", tags=["pa-crawlers"])
 public_router = APIRouter(prefix="/pa", tags=["pa-public"])
 
-templates = Jinja2Templates(directory="app/templates")
+_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 templates.env.globals.update(
     site_icp=settings.SITE_ICP,
     theme_presets=THEME_PRESETS,
@@ -1004,6 +1006,48 @@ def finish_run(
     return {"ok": True}
 
 
+@api_router.post("/{crawler_id}/logs", response_model=LogOut, status_code=201)
+def create_log(
+    crawler_id: int,
+    payload: LogCreate,
+    request: Request,
+    api_key: APIKey = Depends(_require_api_key),
+    db: Session = Depends(get_db),
+):
+    """爬虫端上报一条日志（SDK 使用 X-API-Key 调用）。
+
+    - 路径：POST /pa/api/{crawler_id}/logs
+    - 认证：请求头 X-API-Key
+    - 请求体：LogCreate(level/level_code/message/run_id)
+    - 返回：LogOut
+    """
+    crawler = (
+        db.query(Crawler)
+        .filter(Crawler.id == crawler_id, Crawler.user_id == api_key.user_id)
+        .first()
+    )
+    if not crawler:
+        raise HTTPException(status_code=404, detail="爬虫不存在")
+
+    level_name, level_code = _resolve_log_level(payload)
+    client_ip = _get_client_ip(request)
+
+    log = LogEntry(
+        crawler_id=crawler.id,
+        api_key_id=api_key.id,
+        run_id=payload.run_id,
+        level=level_name,
+        level_code=level_code,
+        message=payload.message,
+        ts=now(),
+        source_ip=client_ip,
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    return log
+
+
 @api_router.post("/{crawler_id}/commands/next", response_model=list[CrawlerCommandOut])
 def fetch_commands(
     crawler_id: int,
@@ -1227,6 +1271,8 @@ def my_crawlers(
         db.query(Crawler)
         .options(joinedload(Crawler.api_key), joinedload(Crawler.group))
         .filter(Crawler.user_id == current_user.id)
+        # 仅返回绑定了 API Key 的爬虫，清理掉历史脏数据的影响
+        .filter(Crawler.api_key_id != None)
     )
 
     status_whitelist: set[str] = set()

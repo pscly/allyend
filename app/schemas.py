@@ -190,7 +190,8 @@ class CrawlerOut(BaseModel):
     heartbeat_payload: Optional[dict] = None
     is_public: bool
     public_slug: Optional[str] = None
-    api_key_id: int
+    # 某些历史数据可能未绑定 API Key，这里允许为可空以避免 500
+    api_key_id: Optional[int] = None
     api_key_local_id: Optional[int] = None
     api_key_name: Optional[str] = None
     api_key_active: Optional[bool] = None

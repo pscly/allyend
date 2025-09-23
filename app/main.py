@@ -80,8 +80,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 静态资源
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+# 静态资源（使用绝对路径，避免工作目录差异导致 404）
+_BASE_DIR = Path(__file__).resolve().parent
+_STATIC_DIR = _BASE_DIR / "static"
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 
 @app.on_event("startup")

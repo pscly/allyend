@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -23,6 +23,7 @@ export function ProtectedLayout({ children }: ProtectedLayoutProps) {
   const pathname = usePathname();
   const persistedProfile = useAuthStore((state) => state.profile);
   const hydrated = useAuthStore((state) => state.hydrated);
+  const [mounted, setMounted] = useState(false);
 
   const {
     data,
@@ -57,6 +58,15 @@ export function ProtectedLayout({ children }: ProtectedLayoutProps) {
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
     </div>
   );
+
+  // 统一首帧：避免 SSR 与客户端水合时条件渲染不一致导致的 hydration 报错
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return blockingLoader;
+  }
 
   if (!hydrated) {
     return blockingLoader;
