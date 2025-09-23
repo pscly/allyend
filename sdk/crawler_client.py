@@ -5,14 +5,22 @@ Python SDK：便于在爬虫客户端中上报状态、心跳与远程指令回�
     from sdk.crawler_client import CrawlerClient
     client = CrawlerClient(base_url="http://localhost:9093", api_key="<你的APIKey>")
 
-    crawler = client.register_crawler("news_spider")
-    run = client.start_run(crawler_id=crawler["id"])
-    client.log(crawler_id=crawler["id"], level="INFO", message="启动")
-    client.heartbeat(crawler_id=crawler["id"], payload={"tasks_completed": 12})
+    crawler = client.register_crawler("news_spider")    # 去服务端注册
+    run = client.start_run(crawler_id=crawler["id"])    # 启动一次 代表一次爬虫任务3
+    client.log(crawler_id=crawler["id"], level="INFO", message="启动")   # 上报一个info 信息
+    client.heartbeat(crawler_id=crawler["id"], payload={"tasks_completed": 12}) # 发送心跳包，和自定义状态(如 完成数量)
     commands = client.fetch_commands(crawler_id=crawler["id"])
     for cmd in commands:
         # 执行远程指令
         client.ack_command(crawler_id=crawler["id"], command_id=cmd["id"], status="success")
+
+
+    from sdk.crawler_client import CrawlerClient
+    client = CrawlerClient(base_url="http://localhost:9093", api_key="<你的APIKey>")
+
+    
+
+
 """
 from __future__ import annotations
 
@@ -404,8 +412,7 @@ class CrawlerClient:
         text = sep.join(str(arg) for arg in args)
         if end:
             text += end
-        return text.rstrip("
-") or text
+        return text.rstrip("") or text
 
     def printer(
         self,

@@ -66,7 +66,7 @@
       {% if summary.allow_logs %}
       <div class="table-actions">
         <button class="text" type="button" onclick="resetLinkFilters()">重置</button>
-        <button type="button" onclick="loadLinkLogs()">刷新</button>
+        <button type="button" onclick="loadLinkLogs()">查询</button>
       </div>
       {% endif %}
     </div>
@@ -91,6 +91,13 @@
       <div>
         <label for="link-limit">最多条数</label>
         <input type="number" id="link-limit" min="1" max="1000" value="200" />
+      </div>
+      <div>
+        <label for="link-query">关键字/正则</label>
+        <input type="text" id="link-query" placeholder="例如：/招标计划/ 或 采集" />
+        <label class="inline" style="margin-left:8px;">
+          <input type="checkbox" id="link-regex-mode" /> 正则匹配
+        </label>
       </div>
     </div>
     <div class="log-list" id="link-log-list"></div>
@@ -147,6 +154,11 @@
       if (maxSelect) params.append('max_level', maxSelect.value);
       const limit = document.getElementById('link-limit');
       if (limit && limit.value) params.append('limit', limit.value);
+      // 将关键字/正则传给后端进行初筛
+      const queryInput = document.getElementById('link-query');
+      const regexMode = document.getElementById('link-regex-mode');
+      if (queryInput && queryInput.value) params.append('q', queryInput.value.trim());
+      if (regexMode && regexMode.checked) params.append('regex', '1');
       const response = await fetch(`${logsEndpoint}?${params.toString()}`);
       if (!response.ok) {
         container.innerHTML = '';
@@ -163,7 +175,26 @@
       }
       empty.style.display = 'none';
       const levelMap = Object.fromEntries(levelOptions.map(item => [item.code, item.name]));
-      container.innerHTML = data.map(item => {
+      // 关键字/正则二次过滤（前端）
+      const queryInput = document.getElementById('link-query');
+      const regexMode = document.getElementById('link-regex-mode');
+      let filtered = data;
+      if (queryInput && queryInput.value && typeof queryInput.value === 'string') {
+        const q = queryInput.value.trim();
+        try {
+          if (regexMode && regexMode.checked) {
+            const re = new RegExp(q);
+            filtered = filtered.filter(item => re.test(String(item.message || '')));
+          } else {
+            const needle = q.toLowerCase();
+            filtered = filtered.filter(item => String(item.message || '').toLowerCase().includes(needle));
+          }
+        } catch (_) {
+          const needle = q.toLowerCase();
+          filtered = filtered.filter(item => String(item.message || '').toLowerCase().includes(needle));
+        }
+      }
+      container.innerHTML = filtered.map(item => {
         const code = Number(item.level_code || 20);
         const badgeClass = `badge level-${code}`;
         const levelText = levelMap[code] || item.level || 'INFO';

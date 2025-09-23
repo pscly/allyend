@@ -73,7 +73,7 @@
       <h3>日志筛选</h3>
       <div class="table-actions">
         <button class="text" type="button" onclick="resetFilters()">重置</button>
-        <button type="button" onclick="loadLogs()">刷新</button>
+        <button type="button" onclick="loadLogs()">查询</button>
       </div>
     </div>
     <div class="filters">
@@ -100,6 +100,13 @@
       <div>
         <label for="log-limit">最多条数</label>
         <input type="number" id="log-limit" min="1" max="500" value="200" />
+      </div>
+      <div>
+        <label for="log-query">关键字/正则</label>
+        <input type="text" id="log-query" placeholder="例如：/招标计划/ 或 采集" />
+        <label class="inline" style="margin-left:8px;">
+          <input type="checkbox" id="log-regex-mode" /> 正则匹配
+        </label>
       </div>
     </div>
     <div class="log-list" id="log-list"></div>
@@ -329,6 +336,11 @@
     params.append('max_level', maxSelect.value);
     params.append('limit', document.getElementById('log-limit').value || '200');
     try {
+      // 将关键字/正则传给后端进行初筛
+      const queryInput = document.getElementById('log-query');
+      const regexMode = document.getElementById('log-regex-mode');
+      if (queryInput && queryInput.value) params.append('q', queryInput.value.trim());
+      if (regexMode && regexMode.checked) params.append('regex', '1');
       const data = await fetchJSON(`/pa/api/me/logs?${params.toString()}`);
       const container = document.getElementById('log-list');
       const empty = document.getElementById('log-empty');
@@ -338,8 +350,27 @@
         return;
       }
       empty.style.display = 'none';
+      // 关键字/正则二次过滤（前端）
+      const queryInput = document.getElementById('log-query');
+      const regexMode = document.getElementById('log-regex-mode');
+      let filtered = data;
+      if (queryInput && queryInput.value && typeof queryInput.value === 'string') {
+        const q = queryInput.value.trim();
+        try {
+          if (regexMode && regexMode.checked) {
+            const re = new RegExp(q);
+            filtered = filtered.filter(item => re.test(String(item.message || '')));
+          } else {
+            const needle = q.toLowerCase();
+            filtered = filtered.filter(item => String(item.message || '').toLowerCase().includes(needle));
+          }
+        } catch (_) {
+          const needle = q.toLowerCase();
+          filtered = filtered.filter(item => String(item.message || '').toLowerCase().includes(needle));
+        }
+      }
       const levelMap = Object.fromEntries(levelOptions.map(item => [item.code, item.name]));
-      container.innerHTML = data.map(item => {
+      container.innerHTML = filtered.map(item => {
         const code = Number(item.level_code || 20);
         const badgeClass = `badge level-${code}`;
         const levelText = levelMap[code] || item.level;

@@ -54,6 +54,25 @@ pnpm test:ui      # Playwright（后续补充）
 
 复制 `.env.example` 即可开始本地调试。
 
+## 前端 SDK（apiClient）
+
+- 位置：`src/lib/api/client.ts`（客户端）、`src/lib/api/endpoints.ts`（端点）、`src/lib/api/types.ts`（类型）
+- 会话：默认使用 Cookie（`credentials: include`），不附加 `Authorization` 头
+- 环境：`NEXT_PUBLIC_API_BASE_URL` 指向后端（开发常用 `http://localhost:9093`，生产经反代建议 `/api`）
+
+快速示例：
+
+```ts
+import { apiClient } from "@/lib/api/client";
+import { endpoints } from "@/lib/api/endpoints";
+import type { UserProfile } from "@/lib/api/types";
+
+await apiClient.post(endpoints.auth.login, { username: "u", password: "p" });
+const me = await apiClient.get<UserProfile>(endpoints.auth.profile);
+```
+
+常见问题与更完整示例（文件上传/指令回执/React Query 集成等）请查看：`docs/frontend-sdk.md`。
+
 ## 代码规范
 
 - ESLint 9 + @typescript-eslint 保障语法质量

@@ -45,6 +45,9 @@ class Settings(BaseSettings):
 
     FRONTEND_ORIGINS: list[str] = ["http://localhost:3000"]
 
+    # 日志查询频控（每账号每秒最大请求数）
+    LOG_QUERY_RATE_PER_SECOND: int = 5
+
     # Cookie 会话配置
     COOKIE_SECURE: bool = False
     COOKIE_SAMESITE: str = "lax"  # 可选："lax" | "strict" | "none"

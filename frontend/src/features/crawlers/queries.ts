@@ -27,7 +27,12 @@ export const crawlerKeys = {
   list: (filters?: Record<string, unknown>) => ["crawlers", "list", filters] as const,
   detail: (id: number | string) => ["crawlers", id, "detail"] as const,
   runs: (id: number | string) => ["crawlers", id, "runs"] as const,
-  logs: (id: number | string, limit: number) => ["crawlers", id, "logs", limit] as const,
+  logs: (
+    id: number | string,
+    limit: number,
+    q?: string,
+    regex?: boolean,
+  ) => ["crawlers", id, "logs", limit, q ?? "", Boolean(regex)] as const,
   heartbeats: (
     id: number | string,
     limit: number,
@@ -167,13 +172,23 @@ export function useCrawlerRunsQuery(crawlerId: number | string, enabled = true) 
   });
 }
 
-export function useCrawlerLogsQuery(crawlerId: number | string, limit = 50, enabled = true) {
-  const shouldEnable = enabled;
+export function useCrawlerLogsQuery(
+  crawlerId: number | string,
+  options: { limit?: number; q?: string; regex?: boolean; enabled?: boolean } = {},
+) {
+  const limit = options.limit ?? 50;
+  const q = options.q ?? "";
+  const regex = Boolean(options.regex);
+  const shouldEnable = options.enabled ?? true;
   return useQuery<CrawlerLog[], ApiError>({
-    queryKey: crawlerKeys.logs(crawlerId, limit),
+    queryKey: crawlerKeys.logs(crawlerId, limit, q, regex),
     queryFn: async () =>
       apiClient.get<CrawlerLog[]>(endpoints.crawlers.logs(crawlerId), {
-        searchParams: { limit: String(limit) },
+        searchParams: {
+          limit: String(limit),
+          ...(q ? { q } : {}),
+          ...(regex ? { regex: "1" } : {}),
+        },
       }),
     enabled: shouldEnable,
     staleTime: 8 * 1000,

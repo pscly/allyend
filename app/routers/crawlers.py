@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
+import re
 import math
 from typing import List, Optional, Sequence
 
@@ -17,6 +18,8 @@ import ssl
 from email.message import EmailMessage
 
 import requests
+import time
+import threading
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
@@ -107,6 +110,25 @@ LEVEL_ALIASES = {"WARN": "WARNING", "ERR": "ERROR", "FATAL": "CRITICAL"}
 HEARTBEAT_ONLINE_SECONDS = 5 * 60
 HEARTBEAT_WARN_SECONDS = 15 * 60
 COMMAND_FETCH_BATCH = 5
+MAX_REGEX_SCAN = 5000  # 后端正则筛选的最大扫描条数（保护数据库与内存）
+
+# 简易内存频控：每账号每秒最大查询次数（多实例部署建议换成 Redis 实现）
+_LOG_RATE_BUCKETS: dict[int, list[float]] = {}
+_LOG_RATE_LOCK = threading.Lock()
+
+
+def _enforce_log_rate_limit(user_id: int) -> None:
+    limit = max(1, int(getattr(settings, "LOG_QUERY_RATE_PER_SECOND", 5) or 5))
+    now = time.time()
+    window_begin = now - 1.0
+    with _LOG_RATE_LOCK:
+        arr = _LOG_RATE_BUCKETS.get(user_id) or []
+        # 清理过期时间戳
+        arr = [ts for ts in arr if ts >= window_begin]
+        if len(arr) >= limit:
+            raise HTTPException(status_code=429, detail="查询过于频繁，请稍后再试")
+        arr.append(now)
+        _LOG_RATE_BUCKETS[user_id] = arr
 
 
 def _normalize_level_code(code: int) -> int:
@@ -299,6 +321,26 @@ def _get_effective_assignment(
         ),
         crawler,
     )
+
+
+def _maybe_apply_message_search(query, q: Optional[str], use_regex: bool):
+    """为日志查询附加消息筛选。
+
+    - 关键字：使用 ilike 走数据库模糊查询。
+    - 正则：返回编译后的模式，由调用方在取出记录后进行 Python 端过滤。
+    返回值：(query, pattern)
+    """
+    if not q or not str(q).strip():
+        return query, None
+    text = str(q).strip()
+    if not use_regex:
+        return query.filter(LogEntry.message.ilike(f"%{text}%")), None
+    try:
+        pattern = re.compile(text)
+    except re.error:
+        # 无效正则时回退为包含匹配（数据库）
+        return query.filter(LogEntry.message.ilike(f"%{text}%")), None
+    return query, pattern
 
 
 def _apply_assignment_metadata(
@@ -1644,10 +1686,13 @@ def my_logs(
     min_level: int = Query(0, ge=0, le=50),
     max_level: int = Query(50, ge=0, le=50),
     limit: int = Query(200, ge=1, le=1000),
+    q: Optional[str] = Query(None, description="消息关键字或正则"),
+    regex: bool = Query(False, description="将 q 作为正则表达式进行匹配"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     _ensure_crawler_feature(current_user)
+    _enforce_log_rate_limit(current_user.id)
     ids = _parse_id_list(crawler_ids)
     min_level = _normalize_level_code(min_level)
     max_level = _normalize_level_code(max_level)
@@ -1662,11 +1707,21 @@ def my_logs(
     if ids:
         query = query.filter(LogEntry.crawler_id.in_(ids))
     query = _apply_log_filters(query, start, end, min_level, max_level)
+    query, pattern = _maybe_apply_message_search(query, q, regex)
     query = query.order_by(LogEntry.ts.desc())
-    if limit:
-        query = query.limit(limit)
-    logs = list(reversed(query.all()))
-    return _serialise_logs(logs)
+    if pattern is not None:
+        # 为保证结果质量，正则在 Python 端过滤；先放宽扫描范围再截断
+        scan_limit = min(max(limit * 10, limit), MAX_REGEX_SCAN)
+        records = query.limit(scan_limit).all()
+        asc_records = list(reversed(records))
+        filtered = [item for item in asc_records if pattern.search(item.message or "")]
+        result = filtered[-limit:] if limit else filtered
+        return _serialise_logs(result)
+    else:
+        if limit:
+            query = query.limit(limit)
+        logs = list(reversed(query.all()))
+        return _serialise_logs(logs)
 
 
 @api_router.get("/me/{crawler_id}/logs", response_model=list[LogOut])
@@ -1675,10 +1730,13 @@ def my_crawler_logs(
     limit: int = Query(100, ge=1, le=500),
     order: str = Query("asc", description="返回顺序 asc/desc"),
     before_id: Optional[int] = Query(None, ge=1),
+    q: Optional[str] = Query(None, description="消息关键字或正则"),
+    regex: bool = Query(False, description="将 q 作为正则表达式进行匹配"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     _ensure_crawler_feature(current_user)
+    _enforce_log_rate_limit(current_user.id)
     c = (
         db.query(Crawler)
         .filter(Crawler.id == crawler_id, Crawler.user_id == current_user.id)
@@ -1698,10 +1756,21 @@ def my_crawler_logs(
     )
     if before_id:
         query = query.filter(LogEntry.id < before_id)
-    records = query.limit(limit).all()
-    if not descending:
-        records = list(reversed(records))
-    return _serialise_logs(records)
+    query, pattern = _maybe_apply_message_search(query, q, regex)
+    if pattern is not None:
+        scan_limit = min(max(limit * 10, limit), MAX_REGEX_SCAN)
+        records = query.limit(scan_limit).all()
+        asc = list(reversed(records))
+        filtered = [item for item in asc if pattern.search(item.message or "")]
+        sliced = filtered[-limit:] if limit else filtered
+        if descending:
+            sliced = list(reversed(sliced))
+        return _serialise_logs(sliced)
+    else:
+        records = query.limit(limit).all()
+        if not descending:
+            records = list(reversed(records))
+        return _serialise_logs(records)
 
 
 # ------- 快捷链接管理 -------
@@ -2474,6 +2543,8 @@ def public_logs(
     min_level: int = Query(0, ge=0, le=50),
     max_level: int = Query(50, ge=0, le=50),
     limit: int = Query(200, ge=1, le=1000),
+    q: Optional[str] = Query(None, description="消息关键字或正则"),
+    regex: bool = Query(False, description="将 q 作为正则表达式进行匹配"),
     db: Session = Depends(get_db),
 ):
     link = _resolve_link(db, slug)
@@ -2500,11 +2571,20 @@ def public_logs(
         raise HTTPException(status_code=400, detail="链接目标不存在")
 
     query = _apply_log_filters(query, start, end, min_level, max_level)
+    query, pattern = _maybe_apply_message_search(query, q, regex)
     query = query.order_by(LogEntry.ts.desc())
-    if limit:
-        query = query.limit(limit)
-    logs = list(reversed(query.all()))
-    return _serialise_logs(logs)
+    if pattern is not None:
+        scan_limit = min(max(limit * 10, limit), MAX_REGEX_SCAN)
+        records = query.limit(scan_limit).all()
+        asc = list(reversed(records))
+        filtered = [item for item in asc if pattern.search(item.message or "")]
+        sliced = filtered[-limit:] if limit else filtered
+        return _serialise_logs(sliced)
+    else:
+        if limit:
+            query = query.limit(limit)
+        logs = list(reversed(query.all()))
+        return _serialise_logs(logs)
 
 
 router = api_router

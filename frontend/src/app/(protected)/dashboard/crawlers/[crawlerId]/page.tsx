@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { CrawlerStatusBadge } from "@/features/crawlers/components/status-badge";
 import { HeartbeatChart } from "@/features/crawlers/components/heartbeat-chart";
@@ -96,6 +97,11 @@ export default function CrawlerDetailPage() {
 
   const [heartbeatRange, setHeartbeatRange] = useState<HeartbeatRange>("12h");
   const [selectedMetric, setSelectedMetric] = useState<string>("__status");
+  // 日志筛选（关键字/正则）- 输入与提交分离
+  const [logFilter, setLogFilter] = useState<string>(""); // 已提交到后端的查询词
+  const [logRegex, setLogRegex] = useState<boolean>(false); // 已提交到后端的正则开关
+  const [logInput, setLogInput] = useState<string>(""); // 输入中的查询词
+  const [logRegexInput, setLogRegexInput] = useState<boolean>(false); // 输入中的正则开关
   // 放大查看对话框开关
   const [openHb, setOpenHb] = useState(false);
   const [openLogs, setOpenLogs] = useState(false);
@@ -103,6 +109,11 @@ export default function CrawlerDetailPage() {
   const [openCfg, setOpenCfg] = useState(false);
 
   const detailQuery = useCrawlerDetailQuery(validId ? crawlerId : 0, validId);
+  useEffect(() => {
+    // 将已提交的查询值同步到输入框，确保放大视图/卡片一致
+    setLogInput(logFilter);
+    setLogRegexInput(logRegex);
+  }, [logFilter, logRegex]);
   const heartbeatQueryOptions = useMemo<HeartbeatQueryOptions>(() => {
     if (!validId) {
       return { enabled: false };
@@ -140,7 +151,7 @@ export default function CrawlerDetailPage() {
     };
   }, [heartbeatRange, validId]);
   const hbQuery = useCrawlerHeartbeatsQuery(validId ? crawlerId : 0, heartbeatQueryOptions);
-  const logQuery = useCrawlerLogsQuery(validId ? crawlerId : 0, 80, validId);
+  const logQuery = useCrawlerLogsQuery(validId ? crawlerId : 0, { limit: 80, q: logFilter, regex: logRegex, enabled: validId });
   const cmdQuery = useCrawlerCommandsQuery(validId ? crawlerId : 0, true, validId, { limit: 200, refetchInterval: 12_000 });
   const cfgQuery = useCrawlerConfigFetchQuery(validId ? crawlerId : 0, validId);
 
@@ -367,13 +378,13 @@ export default function CrawlerDetailPage() {
               <ScrollArea className="h-[220px]">
                 <div className="min-w-full divide-y divide-border/60">
                   {((hbQuery.data ?? []) as CrawlerHeartbeat[]).slice().reverse().map((hb) => (
-                    <div key={hb.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                    <div key={hb.id} className="grid grid-cols-[180px_100px_1fr] items-center gap-2 px-3 py-2 text-xs">
+                      <div className="font-mono tabular-nums text-muted-foreground">{new Date(hb.created_at).toLocaleString("zh-CN", { hour12: false })}</div>
                       <div className="flex items-center gap-2">
                         <span className={`h-2 w-2 rounded-full ${hb.status === "online" ? "bg-emerald-500" : hb.status === "warning" ? "bg-amber-500" : "bg-rose-500"}`} />
                         <span className="text-foreground">{hb.status}</span>
                       </div>
                       <div className="text-muted-foreground">{hb.source_ip ?? "-"}</div>
-                      <div className="text-muted-foreground">{new Date(hb.created_at).toLocaleString("zh-CN", { hour12: false })}</div>
                     </div>
                   ))}
                 </div>
@@ -394,15 +405,41 @@ export default function CrawlerDetailPage() {
               </Button>
             </div>
           </header>
+          {/* 日志筛选条 */}
+          <div className="flex items-center gap-2 text-xs">
+            <Label htmlFor="log-filter" className="text-xs text-muted-foreground">关键字/正则</Label>
+            <Input
+              id="log-filter"
+              value={logInput}
+              onChange={(e) => setLogInput(e.target.value)}
+              placeholder="例如：/招标计划/ 或 采集"
+              className="h-8 max-w-xs"
+              onKeyDown={(e) => { if (e.key === 'Enter') { setLogFilter(logInput.trim()); setLogRegex(logRegexInput); } }}
+            />
+            <label className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground">
+              <input type="checkbox" checked={logRegexInput} onChange={(e) => setLogRegexInput(e.target.checked)} /> 正则
+            </label>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => { setLogFilter(logInput.trim()); setLogRegex(logRegexInput); }}
+            >
+              查询
+            </Button>
+          </div>
           <ScrollArea className="h-[280px] rounded-xl border border-border/60">
             <div className="min-w-full divide-y divide-border/60">
-              {((logQuery.data ?? []) as CrawlerLog[]).map((log) => (
-                <div key={log.id} className="flex items-center justify-between px-3 py-2 text-xs">
-                  <span className="font-medium text-foreground">{log.level}</span>
-                  <span className="mx-3 flex-1 truncate text-foreground">{log.message}</span>
-                  <span className="text-muted-foreground">{new Date(log.ts).toLocaleString("zh-CN", { hour12: false })}</span>
-                </div>
-              ))}
+              {(() => {
+                const logs = ((logQuery.data ?? []) as CrawlerLog[]);
+                return logs.map((log) => (
+                  <div key={log.id} className="grid grid-cols-[160px_64px_1fr_140px] items-center gap-2 px-3 py-2 text-xs">
+                    <span className="font-mono tabular-nums text-muted-foreground">{new Date(log.ts).toLocaleString("zh-CN", { hour12: false })}</span>
+                    <span className="font-medium text-foreground">{log.level}</span>
+                    <span className="truncate text-foreground">{log.message}</span>
+                    <span className="text-muted-foreground">{log.source_ip ?? "-"}</span>
+                  </div>
+                ));
+              })()}
               {!((logQuery.data ?? []) as CrawlerLog[]).length ? (
                 <div className="flex h-[220px] items-center justify-center gap-2 text-sm text-muted-foreground">
                   <AlertTriangle className="h-4 w-4" /> 暂无日志
@@ -525,13 +562,13 @@ export default function CrawlerDetailPage() {
               <ScrollArea className="h-[60vh]">
                 <div className="min-w-full divide-y divide-border/60">
                   {((hbQuery.data ?? []) as CrawlerHeartbeat[]).slice().reverse().map((hb) => (
-                    <div key={hb.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                    <div key={hb.id} className="grid grid-cols-[200px_100px_1fr] items-center gap-2 px-3 py-2 text-xs">
+                      <div className="font-mono tabular-nums text-muted-foreground">{new Date(hb.created_at).toLocaleString("zh-CN", { hour12: false })}</div>
                       <div className="flex items-center gap-2">
                         <span className={`h-2 w-2 rounded-full ${hb.status === "online" ? "bg-emerald-500" : hb.status === "warning" ? "bg-amber-500" : "bg-rose-500"}`} />
                         <span className="text-foreground">{hb.status}</span>
                       </div>
                       <div className="text-muted-foreground">{hb.source_ip ?? "-"}</div>
-                      <div className="text-muted-foreground">{new Date(hb.created_at).toLocaleString("zh-CN", { hour12: false })}</div>
                     </div>
                   ))}
                 </div>
@@ -545,15 +582,41 @@ export default function CrawlerDetailPage() {
           <DialogHeader>
             <DialogTitle>运行日志</DialogTitle>
           </DialogHeader>
+          {/* 放大视图中的筛选条 */}
+          <div className="mb-2 flex items-center gap-2 text-xs">
+            <Label htmlFor="log-filter-dialog" className="text-xs text-muted-foreground">关键字/正则</Label>
+            <Input
+              id="log-filter-dialog"
+              value={logInput}
+              onChange={(e) => setLogInput(e.target.value)}
+              placeholder="例如：/招标计划/ 或 采集"
+              className="h-8 max-w-xs"
+              onKeyDown={(e) => { if (e.key === 'Enter') { setLogFilter(logInput.trim()); setLogRegex(logRegexInput); } }}
+            />
+            <label className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground">
+              <input type="checkbox" checked={logRegexInput} onChange={(e) => setLogRegexInput(e.target.checked)} /> 正则
+            </label>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => { setLogFilter(logInput.trim()); setLogRegex(logRegexInput); }}
+            >
+              查询
+            </Button>
+          </div>
           <ScrollArea className="h-[70vh] rounded-xl border border-border/60">
             <div className="min-w-full divide-y divide-border/60">
-              {((logQuery.data ?? []) as CrawlerLog[]).map((log) => (
-                <div key={log.id} className="flex items-center justify-between px-3 py-2 text-xs">
-                  <span className="font-medium text-foreground">{log.level}</span>
-                  <span className="mx-3 flex-1 truncate text-foreground">{log.message}</span>
-                  <span className="text-muted-foreground">{new Date(log.ts).toLocaleString("zh-CN", { hour12: false })}</span>
-                </div>
-              ))}
+              {(() => {
+                const logs = ((logQuery.data ?? []) as CrawlerLog[]);
+                return logs.map((log) => (
+                  <div key={log.id} className="grid grid-cols-[180px_72px_1fr_160px] items-center gap-2 px-3 py-2 text-xs">
+                    <span className="font-mono tabular-nums text-muted-foreground">{new Date(log.ts).toLocaleString("zh-CN", { hour12: false })}</span>
+                    <span className="font-medium text-foreground">{log.level}</span>
+                    <span className="truncate text-foreground">{log.message}</span>
+                    <span className="text-muted-foreground">{log.source_ip ?? "-"}</span>
+                  </div>
+                ));
+              })()}
               {!((logQuery.data ?? []) as CrawlerLog[]).length ? (
                 <div className="flex h-[50vh] items-center justify-center gap-2 text-sm text-muted-foreground">
                   <AlertTriangle className="h-4 w-4" /> 暂无日志
