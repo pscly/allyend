@@ -1,0 +1,82 @@
+<h1>账号管理（假）</h1>
+<p class="hint">此区域为诱捕模块，所有操作均会被记录，但仅影响本会话的“影子数据”。</p>
+<a href="/admin">返回假后台首页</a>
+
+<div class="toolbar">
+  <form id="createForm" class="card" style="margin:0">
+    <label>用户名：<input name="username" placeholder="new_user" required /></label>
+    <label>角色：
+      <select name="role">
+        <option>user</option>
+        <option>editor</option>
+        <option>admin</option>
+      </select>
+    </label>
+    <button type="submit">创建账号</button>
+  </form>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>用户名</th>
+        <th>角色</th>
+        <th>状态</th>
+        <th>创建时间</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody id="usersTbody"></tbody>
+  </table>
+  <div class="muted small">注：以上为会话内影子数据，刷新或新会话可能不同。</div>
+  <div class="muted small">提示：每次操作均会写入诱捕日志。</div>
+  <script>
+    const tbody = document.getElementById('usersTbody');
+    async function loadUsers(){
+      const res = await fetch('/admin/fake/users');
+      const json = await res.json();
+      const rows = json.users || [];
+      tbody.innerHTML = rows.map(u => `
+        <tr>
+          <td>${u.id}</td>
+          <td>${u.username}</td>
+          <td>${u.role}</td>
+          <td>${u.active ? '启用' : '禁用'}</td>
+          <td class="small mono">${u.createdAt}</td>
+          <td>
+            <button data-act="toggle" data-id="${u.id}">${u.active ? '禁用' : '启用'}</button>
+            <button data-act="del" data-id="${u.id}" style="margin-left:6px;background:#b91c1c">删除</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+    tbody.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-act]');
+      if (!btn) return;
+      const id = btn.getAttribute('data-id');
+      const act = btn.getAttribute('data-act');
+      if (act === 'toggle') {
+        await fetch(`/admin/fake/users/${id}/toggle`, { method: 'POST' });
+        await loadUsers();
+        return;
+      }
+      if (act === 'del') {
+        if (!confirm('确定要删除该用户吗？')) return;
+        await fetch(`/admin/fake/users/${id}`, { method: 'DELETE' });
+        await loadUsers();
+        return;
+      }
+    });
+    const createForm = document.getElementById('createForm');
+    createForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(createForm);
+      await fetch('/admin/fake/users', { method: 'POST', body: fd });
+      createForm.reset();
+      await loadUsers();
+    });
+    loadUsers();
+  </script>
+</div>

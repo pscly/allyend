@@ -1,0 +1,44 @@
+<h1>主页装修（假）</h1>
+<p class="hint">此区域为诱捕模块，所有操作均会被记录，但仅影响本会话的“影子数据”。</p>
+<a href="/admin">返回假后台首页</a>
+
+<form id="themeForm" class="card" style="max-width:480px;margin-top:12px;">
+  <label>主题：
+    <select name="current" id="themeSelect">
+      <option value="light">简洁亮色</option>
+      <option value="dark">专业暗色</option>
+      <option value="retro">复古像素</option>
+    </select>
+  </label>
+  <button type="submit">应用主题</button>
+  <span id="msg" class="muted" style="margin-left:8px"></span>
+  <div class="muted small">注：演示主题仅改变文字提示，未实际切换全站样式。</div>
+</form>
+
+<div class="card" style="margin-top:12px;">
+  <div>当前主题：<b id="currentTheme">-</b></div>
+  <div class="muted small">可在“真实系统”中映射为 CSS 变量切换，这里仅做诱捕演示。</div>
+</div>
+
+<script>
+  const select = document.getElementById('themeSelect');
+  const currentEl = document.getElementById('currentTheme');
+  const msg = document.getElementById('msg');
+  async function init(){
+    const r = await fetch('/admin/fake/theme');
+    const j = await r.json();
+    const cur = (j.theme && j.theme.current) || 'light';
+    select.value = cur;
+    currentEl.textContent = cur;
+  }
+  document.getElementById('themeForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const r = await fetch('/admin/fake/theme', { method:'POST', body: fd });
+    const j = await r.json();
+    currentEl.textContent = j.theme.current;
+    msg.textContent = '已应用（会话影子数据）';
+    setTimeout(()=> msg.textContent = '', 1500);
+  });
+  init();
+</script>

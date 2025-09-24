@@ -90,7 +90,7 @@
 
   async function loadRegistrationMode() {
     try {
-      const data = await fetchJSON('/admin/api/settings');
+      const data = await fetchJSON('/hjxgl/api/settings');
       registrationForm.querySelectorAll('input[name="mode"]').forEach(radio => {
         radio.checked = radio.value === data.registration_mode;
       });
@@ -105,7 +105,7 @@
     const formData = new FormData(registrationForm);
     const mode = formData.get('mode');
     try {
-      await fetchJSON('/admin/api/settings/registration', {
+      await fetchJSON('/hjxgl/api/settings/registration', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode }),
@@ -121,7 +121,7 @@
   const inviteGroupSelect = document.getElementById('invite-group');
 
   async function loadGroups() {
-    const groups = await fetchJSON('/admin/api/groups');
+    const groups = await fetchJSON('/hjxgl/api/groups');
     inviteGroupSelect.innerHTML = '<option value="">默认分组</option>' + groups.map(group => `<option value="${group.id}">${group.name}</option>`).join('');
     return groups;
   }
@@ -130,7 +130,7 @@
   const inviteHint = document.getElementById('invite-hint');
 
   async function loadInvites() {
-    const invites = await fetchJSON('/admin/api/invites');
+    const invites = await fetchJSON('/hjxgl/api/invites');
     inviteTable.innerHTML = invites.map(invite => {
       const limit = invite.max_uses ? `${invite.used_count}/${invite.max_uses}` : `${invite.used_count}`;
       const adminFlag = invite.allow_admin ? '是' : '否';
@@ -140,7 +140,7 @@
     inviteTable.querySelectorAll('button[data-invite]').forEach(btn => {
       btn.addEventListener('click', async () => {
         if (!confirm('确认删除该邀请码？')) return;
-        await fetchJSON(`/admin/api/invites/${btn.dataset.invite}`, { method: 'DELETE' });
+        await fetchJSON(`/hjxgl/api/invites/${btn.dataset.invite}`, { method: 'DELETE' });
         loadInvites();
       });
     });
@@ -156,7 +156,7 @@
     if (!payload.max_uses) delete payload.max_uses;
     if (!payload.expires_in_minutes) delete payload.expires_in_minutes;
     try {
-      const res = await fetchJSON('/admin/api/invites', {
+      const res = await fetchJSON('/hjxgl/api/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -183,7 +183,7 @@
   }
 
   async function loadUsers() {
-    const users = await fetchJSON('/admin/api/users');
+    const users = await fetchJSON('/hjxgl/api/users');
     userTable.innerHTML = users.map(user => {
       const invited = user.invited_by || '-';
       return `<tr>
@@ -213,7 +213,7 @@
         const is_active = row.querySelector('input[data-field="is_active"]').checked;
         const payload = { role, group_id, is_active };
         try {
-          await fetchJSON(`/admin/api/users/${id}`, {
+          await fetchJSON(`/hjxgl/api/users/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -244,3 +244,5 @@
 })();
 </script>
 {% endblock %}
+
+

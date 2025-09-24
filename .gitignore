@@ -1,23 +1,12 @@
-# Python
-__pycache__/
-*.pyc
-.pytest_cache/
-.mypy_cache/
-
-# Envs
-.venv/
+node_modules/
 .env
+data/*.db-journal
+data/*.sqlite-journal
+data/*.log
+.DS_Store
+Thumbs.db
 
-# IDE
-.idea/
-.vscode/
+**/__pycache__/
 
+data/*
 logs/*
-
-# uv
-# uv.lock
-
-# Data
-data/
-
-gorai.md

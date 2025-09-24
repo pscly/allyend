@@ -1,0 +1,49 @@
+<h1>数据库管理（假）</h1>
+<p class="hint">此区域为诱捕模块，所有操作均会被记录；不会执行真实数据库操作，仅返回示例结果。</p>
+<a href="/admin">返回假后台首页</a>
+
+<form id="sqlForm" class="card" style="margin-top:12px;">
+  <label>SQL：<textarea name="sql" id="sql" rows="6" placeholder="SELECT * FROM users;"></textarea></label>
+  <button type="submit">执行查询</button>
+  <span id="msg" class="muted" style="margin-left:8px"></span>
+  <div class="muted small">提示：关键字包含 FROM users 时，返回模拟用户表，否则返回通用结果。</div>
+</form>
+
+<div id="result" class="card" style="margin-top:12px;">
+  <div class="table-wrap" id="tableWrap" style="display:none">
+    <table>
+      <thead><tr id="thead"></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div id="empty" class="muted">无结果</div>
+  <pre id="raw" class="mono small" style="white-space:pre-wrap"></pre>
+  
+  <script>
+    const tableWrap = document.getElementById('tableWrap');
+    const thead = document.getElementById('thead');
+    const tbody = document.getElementById('tbody');
+    const empty = document.getElementById('empty');
+    const raw = document.getElementById('raw');
+    const msg = document.getElementById('msg');
+    document.getElementById('sqlForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.textContent = '执行中...';
+      const fd = new FormData(e.currentTarget);
+      const r = await fetch('/admin/fake/db_query', { method:'POST', body: fd });
+      const j = await r.json();
+      msg.textContent = '';
+      if (j && j.columns && j.rows) {
+        empty.style.display = 'none';
+        tableWrap.style.display = '';
+        thead.innerHTML = j.columns.map(c => `<th>${c}</th>`).join('');
+        tbody.innerHTML = j.rows.map(row => `<tr>${row.map(v => `<td>${String(v)}</td>`).join('')}</tr>`).join('');
+        raw.textContent = '';
+      } else {
+        tableWrap.style.display = 'none';
+        empty.style.display = '';
+        raw.textContent = JSON.stringify(j, null, 2);
+      }
+    });
+  </script>
+</div>

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title || '管理后台' %></title>
+  <link rel="stylesheet" href="/public/css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">管理后台</div>
+    <nav class="nav">
+      <a href="/admin">后台首页</a>
+      <a href="/aaadmin" title="需要管理员登录">真后台</a>
+      <form method="post" action="/logout" style="display:inline">
+        <button type="submit">退出</button>
+      </form>
+    </nav>
+  </header>
+  <main class="container">
+    <%- body %>
+  </main>
+  <footer class="footer">© 诱捕演示系统</footer>
+</body>
+</html>

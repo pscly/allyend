@@ -1,0 +1,13 @@
+<h1>管理员登录</h1>
+<form method="post" action="/login" class="card">
+  <label>密码：<input type="password" name="password" autofocus required /></label>
+  <button type="submit">登录</button>
+  <% if (error) { %>
+    <div class="error"><%= error %></div>
+  <% } %>
+  <p class="muted">默认密码为 admin123，请务必在生产环境通过环境变量 ADMIN_PASSWORD 修改。</p>
+  <p class="muted">未登录访问 /admin 会进入诱捕假后台；管理员访问 /admin 将跳转至 /aaadmin。</p>
+  <p><a href="/admin">前往假后台</a></p>
+  <p><a href="/aaadmin">进入真后台（需登录）</a></p>
+  
+</form>

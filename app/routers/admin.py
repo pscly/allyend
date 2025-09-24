@@ -27,7 +27,8 @@ from ..schemas import (
 )
 
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+# 将原 /admin 路由整体迁移到 /hjxgl，避免与前端 /admin 冲突
+router = APIRouter(prefix="/hjxgl", tags=["admin"])
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))

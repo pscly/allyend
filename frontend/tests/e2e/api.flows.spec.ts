@@ -25,7 +25,7 @@ test.describe("后端 API 冒烟", () => {
     expect(Array.isArray(keys) && keys.length > 0).toBeTruthy();
 
     // 4) 管理员用户列表，应包含 root（根管理员）
-    const usersRes = await ctx.get("/admin/api/users");
+    const usersRes = await ctx.get("/hjxgl/api/users");
     expect(usersRes.ok()).toBeTruthy();
     const users = (await usersRes.json()) as Array<any>;
     const hasRoot = users.some((u) => u.username === "root");

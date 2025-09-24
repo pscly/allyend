@@ -1,0 +1,72 @@
+<h1>广告管理（假）</h1>
+<p class="hint">此区域为诱捕模块，所有操作均会被记录，但仅影响本会话的“影子数据”。</p>
+<a href="/admin">返回假后台首页</a>
+
+<div class="toolbar">
+  <form id="adForm" class="card" style="margin:0">
+    <label>广告位：<input name="slot" placeholder="homepage_top" required /></label>
+    <label>链接：<input name="url" placeholder="https://..." /></label>
+    <button type="submit">新增广告</button>
+  </form>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>广告位</th>
+        <th>链接</th>
+        <th>状态</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody id="adsTbody"></tbody>
+  </table>
+  <div class="muted small">注：以上为会话内影子数据，刷新或新会话可能不同。</div>
+  <script>
+    const tbody = document.getElementById('adsTbody');
+    async function loadAds(){
+      const r = await fetch('/admin/fake/ads');
+      const j = await r.json();
+      const rows = j.ads || [];
+      tbody.innerHTML = rows.map(a => `
+        <tr>
+          <td>${a.id}</td>
+          <td>${a.slot}</td>
+          <td><a href="${a.url}" target="_blank">${a.url || ''}</a></td>
+          <td>${a.enabled ? '启用' : '停用'}</td>
+          <td>
+            <button data-act="toggle" data-id="${a.id}">${a.enabled ? '停用' : '启用'}</button>
+            <button data-act="del" data-id="${a.id}" style="margin-left:6px;background:#b91c1c">删除</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+    tbody.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-act]');
+      if (!btn) return;
+      const id = btn.getAttribute('data-id');
+      const act = btn.getAttribute('data-act');
+      if (act === 'toggle') {
+        await fetch(`/admin/fake/ads/${id}/toggle`, { method: 'POST' });
+        await loadAds();
+        return;
+      }
+      if (act === 'del') {
+        if (!confirm('确定要删除该广告吗？')) return;
+        await fetch(`/admin/fake/ads/${id}`, { method: 'DELETE' });
+        await loadAds();
+        return;
+      }
+    });
+    document.getElementById('adForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.currentTarget);
+      await fetch('/admin/fake/ads', { method: 'POST', body: fd });
+      e.currentTarget.reset();
+      await loadAds();
+    });
+    loadAds();
+  </script>
+</div>

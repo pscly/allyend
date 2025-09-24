@@ -1,0 +1,27 @@
+/* 简洁样式，便于演示 */
+:root { --fg:#1a1a1a; --bg:#fff; --muted:#6b7280; --border:#e5e7eb; --brand:#2563eb; }
+* { box-sizing: border-box; }
+body { margin:0; font-family: ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans", "PingFang SC", "Microsoft YaHei", sans-serif; color:var(--fg); background:var(--bg)}
+.topbar { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--border); position:sticky; top:0; background:#fff; z-index:10; }
+.brand { font-weight:700; }
+.nav a { margin-right:12px; text-decoration:none; color:var(--brand); }
+.container { max-width:1100px; margin:24px auto; padding:0 16px; }
+h1 { font-size:22px; margin:8px 0 16px; }
+h2 { font-size:18px; margin:8px 0; }
+.grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap:16px; }
+.card { border:1px solid var(--border); border-radius:8px; padding:12px; background:#fff; }
+label { display:block; margin:8px 0; }
+input, select, textarea { width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; font-size:14px; }
+button, .btn { background:var(--brand); color:#fff; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; text-decoration:none; display:inline-block; }
+button:hover, .btn:hover { filter:brightness(0.95); }
+.hint { color:var(--muted); }
+.muted { color:var(--muted); font-size:12px; }
+.error { color:#b91c1c; margin-top:8px; }
+.table-wrap { overflow:auto; border:1px solid var(--border); border-radius:8px; }
+table { width:100%; border-collapse:collapse; }
+th, td { border-bottom:1px solid var(--border); padding:8px; text-align:left; vertical-align:top; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+.small { font-size:12px; }
+.toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+.footer { text-align:center; color:var(--muted); font-size:12px; padding:24px 0; }
+

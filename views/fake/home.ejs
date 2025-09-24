@@ -1,0 +1,28 @@
+<h1>主页修改（假）</h1>
+<p class="hint">此区域为诱捕模块，所有操作均会被记录，但仅影响本会话的“影子数据”。</p>
+<a href="/admin">返回假后台首页</a>
+
+<form id="homeForm" class="card" style="max-width:560px;margin-top:12px;">
+  <label>站点标题：<input name="title" id="homeTitle" placeholder="我的网站" required /></label>
+  <button type="submit">保存</button>
+  <span id="msg" class="muted" style="margin-left:8px"></span>
+  <div class="muted small">注：仅更新会话影子状态，不会写入真实配置。</div>
+</form>
+
+<script>
+  const titleInput = document.getElementById('homeTitle');
+  const msg = document.getElementById('msg');
+  async function init(){
+    const r = await fetch('/admin/fake/home');
+    const j = await r.json();
+    titleInput.value = (j.home && j.home.title) || '';
+  }
+  document.getElementById('homeForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    await fetch('/admin/fake/home', { method:'POST', body: fd });
+    msg.textContent = '已保存（会话影子数据）';
+    setTimeout(()=> msg.textContent = '', 1500);
+  });
+  init();
+  </script>

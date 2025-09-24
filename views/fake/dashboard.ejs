@@ -1,0 +1,135 @@
+ 
+<h1>诱捕假后台</h1>
+<p class="hint">非管理员访问已被引导至假后台，所有操作均会被记录。</p>
+
+<div class="card" style="margin-bottom:12px;">
+  <div class="toolbar">
+    <a class="btn" href="/admin/users">账号管理</a>
+    <a class="btn" href="/admin/home">主页修改</a>
+    <a class="btn" href="/admin/theme">主页装修</a>
+    <a class="btn" href="/admin/ads">广告管理</a>
+    <a class="btn" href="/admin/db">数据库管理</a>
+  </div>
+  <div class="muted small">以上页面将展示更完整的“可操作但不生效”的会话影子数据体验。</div>
+  <div class="muted small">当前页面也提供若干快速操作入口，均会写入诱捕日志。</div>
+  
+</div>
+
+<div class="grid">
+  <section>
+    <h2>账号管理</h2>
+    <form class="card" method="post" action="/admin/action">
+      <input type="hidden" name="action" value="user_create" />
+      <label>用户名：<input name="username" placeholder="new_user" required /></label>
+      <label>角色：
+        <select name="role">
+          <option>user</option>
+          <option>editor</option>
+          <option>admin</option>
+        </select>
+      </label>
+      <button type="submit">创建账号</button>
+    </form>
+    <form class="card" method="post" action="/admin/action">
+      <input type="hidden" name="action" value="user_delete" />
+      <label>用户名：<input name="username" placeholder="target_user" required /></label>
+      <button type="submit">删除账号</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>主页修改</h2>
+    <form class="card" method="post" action="/admin/action">
+      <input type="hidden" name="action" value="home_update_title" />
+      <label>站点标题：<input name="title" placeholder="我的网站" required /></label>
+      <button type="submit">保存</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>主页装修</h2>
+    <form class="card" method="post" action="/admin/action">
+      <input type="hidden" name="action" value="theme_apply" />
+      <label>主题：
+        <select name="theme">
+          <option value="light">简洁亮色</option>
+          <option value="dark">专业暗色</option>
+          <option value="retro">复古像素</option>
+        </select>
+      </label>
+      <button type="submit">应用主题</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>广告管理</h2>
+    <form class="card" method="post" action="/admin/action">
+      <input type="hidden" name="action" value="ad_create" />
+      <label>广告位：<input name="slot" placeholder="homepage_top" required /></label>
+      <label>链接：<input name="url" placeholder="https://..." /></label>
+      <button type="submit">新增广告</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>数据库管理</h2>
+    <form class="card" method="post" action="/admin/action">
+      <input type="hidden" name="action" value="db_query" />
+      <label>SQL：
+        <textarea name="sql" rows="4" placeholder="SELECT * FROM users;"></textarea>
+      </label>
+      <button type="submit">执行查询</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>打包与下载</h2>
+    <form class="card" id="buildForm">
+      <label>构建目标：<input name="target" placeholder="web-app" /></label>
+      <button type="submit">开始构建</button>
+      <div id="buildStatus" class="muted"></div>
+    </form>
+  </section>
+</div>
+
+<script>
+  // 统一表单异步提交，展示“成功”反馈（后端已记录操作）
+  document.querySelectorAll('form[method="post"][action="/admin/action"]').forEach(f => {
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(f);
+      const res = await fetch(f.action, { method: 'POST', body: fd });
+      const json = await res.json();
+      alert(json.message || '已提交');
+    });
+  });
+
+  // 构建 + 轮询 + 下载
+  const buildForm = document.getElementById('buildForm');
+  const buildStatus = document.getElementById('buildStatus');
+  buildForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    buildStatus.textContent = '已提交构建任务...';
+    const res = await fetch('/admin/build', { method: 'POST' });
+    const json = await res.json();
+    const jobId = json.jobId;
+    let done = false;
+    while (!done) {
+      const r = await fetch(`/admin/build/${jobId}/status`);
+      const s = await r.json();
+      if (s.status === 'completed') {
+        buildStatus.textContent = `构建完成，压缩包约 ${s.sizeHint}（解压后约 ${s.unpackedHint}）`;
+        const a = document.createElement('a');
+        a.href = `/admin/build/${jobId}/download`;
+        a.textContent = '点击下载';
+        a.className = 'btn';
+        buildStatus.appendChild(document.createElement('br'));
+        buildStatus.appendChild(a);
+        done = true;
+      } else {
+        buildStatus.textContent = '构建中...';
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+  });
+</script>
