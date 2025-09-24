@@ -5,6 +5,11 @@
 - 本示例展示如何在独立线程中循环获取远程指令，并在收到指令时执行自定义处理逻辑；
 - 线程化的好处：不会阻塞主业务（如爬虫抓取循环），同时可随时停止；
 - 请根据你的后端服务地址与 API Key 替换 base_url 与 api_key。
+- 默认内置指令（无需自定义 handler）：
+  - restart：客户端先回执 accepted，然后跨平台可靠重启进程（Windows 会新起进程后退出当前进程）；
+  - shutdown / graceful_shutdown：回执 accepted 后平滑退出；
+  - run_shell：在客户端执行 payload 指定的命令，例如 payload={"cmd":"echo hello"} 或 {"args":["python","-V"]}；
+  - hot_update_config / switch_task / pause / resume：默认仅回执，具体业务可在自定义 handler 中实现。
 """
 from __future__ import annotations
 

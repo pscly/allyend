@@ -75,6 +75,7 @@ import {
   useUpdateQuickLinkMutation,
   useDeleteQuickLinkMutation,
   useUpdateCrawlerMutation,
+  useCreateCrawlerCommandMutation,
 } from "@/features/crawlers/mutations";
 import {
   createApiKeySchema,
@@ -1221,6 +1222,7 @@ interface CrawlerCardProps {
 
 function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
   const updateCrawlerMutation = useUpdateCrawlerMutation(crawler.id);
+  const createCommandMutation = useCreateCrawlerCommandMutation(crawler.id);
 
   const metrics = useMemo(() => extractPayloadMetrics(crawler.heartbeat_payload), [crawler.heartbeat_payload]);
   const publicLink = crawler.public_slug ? buildPublicUrl(crawler.public_slug) : null;
@@ -1248,6 +1250,36 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
         }
       })
       .catch(() => toast({ title: "复制失败", variant: "destructive" }));
+  };
+
+  const handleRestart = async () => {
+    try {
+      await createCommandMutation.mutateAsync({ command: "restart" });
+      toast({ title: "重启指令已下发", description: crawler.name });
+    } catch (error) {
+      toast({ title: "下发失败", description: getErrorMessage(error, "发送重启失败"), variant: "destructive" });
+    }
+  };
+
+  const handleShutdown = async () => {
+    try {
+      await createCommandMutation.mutateAsync({ command: "shutdown" });
+      toast({ title: "停机指令已下发", description: crawler.name });
+    } catch (error) {
+      toast({ title: "下发失败", description: getErrorMessage(error, "发送停机失败"), variant: "destructive" });
+    }
+  };
+
+  const handleRunShell = async () => {
+    const cmd = window.prompt("请输入要在客户端执行的命令", "echo hello");
+    const text = cmd?.trim();
+    if (!text) return;
+    try {
+      await createCommandMutation.mutateAsync({ command: "run_shell", payload: { cmd: text }, expires_in_seconds: 300 });
+      toast({ title: "执行命令已下发", description: text });
+    } catch (error) {
+      toast({ title: "下发失败", description: getErrorMessage(error, "发送执行命令失败"), variant: "destructive" });
+    }
   };
 
   const statusStyle = crawler.status && STATUS_CARD_STYLE[crawler.status as StatusFilter];
@@ -1281,7 +1313,11 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon">
-                {updateCrawlerMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
+                {updateCrawlerMutation.isPending || createCommandMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MoreVertical className="h-4 w-4" />
+                )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
@@ -1304,6 +1340,32 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
                   <Copy className="mr-2 h-4 w-4" /> 复制公开地址
                 </DropdownMenuItem>
               ) : null}
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>远程控制</DropdownMenuLabel>
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.preventDefault();
+                  handleRestart();
+                }}
+              >
+                <RefreshCcw className="mr-2 h-4 w-4" /> 远程重启
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.preventDefault();
+                  handleShutdown();
+                }}
+              >
+                <SlidersHorizontal className="mr-2 h-4 w-4" /> 平滑停机
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.preventDefault();
+                  handleRunShell();
+                }}
+              >
+                <Edit className="mr-2 h-4 w-4" /> 执行命令...
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onSelect={(event) => {

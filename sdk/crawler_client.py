@@ -194,17 +194,37 @@ class CrawlerClient:
     # ---------------- 高级：远程控制辅助 ----------------
 
     def restart_self(self, delay_seconds: float = 0.0) -> None:
-        """让当前进程就地重启（需要由上层 Supervisor/容器保证存活）。
+        """让当前进程重启（跨平台可靠）。
 
-        实现原理：通过 os.execv 以相同参数替换当前进程镜像。
-        注意：调用该方法不会返回；调用前应完成必要回执。
+        实现说明：
+        - POSIX: 直接 os.execv 覆盖当前进程镜像；
+        - Windows: 以相同参数启动新进程，然后使用 os._exit(0) 退出当前进程，避免部分环境下 execv 不生效的问题。
+        - 注意：调用该方法不会返回；调用前应完成必要回执与清理。
         """
         if delay_seconds and delay_seconds > 0:
             try:
                 time.sleep(delay_seconds)
             except Exception:
                 pass
-        os.execv(sys.executable, [sys.executable, *sys.argv])
+        try:
+            if os.name == "nt":  # Windows 平台
+                import subprocess  # 延迟导入，避免无谓依赖
+                creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(
+                    subprocess, "DETACHED_PROCESS", 0
+                )
+                subprocess.Popen(
+                    [sys.executable, *sys.argv],
+                    close_fds=True,
+                    creationflags=creationflags,
+                )
+                # 立即退出当前进程，让外部监控/调用方感知重启
+                os._exit(0)
+            else:
+                # POSIX 平台：原地覆盖
+                os.execv(sys.executable, [sys.executable, *sys.argv])
+        except Exception:
+            # 兜底：无论如何终止当前进程，交给上游拉起
+            os._exit(0)
 
     def shutdown_self(self, delay_seconds: float = 0.0, exit_code: int = 0) -> None:
         """平滑停机：延迟后退出当前进程。
@@ -218,6 +238,57 @@ class CrawlerClient:
                 pass
         # 使用 sys.exit，留给 atexit/ finally 钩子处理清理逻辑
         sys.exit(int(exit_code or 0))
+
+    # ---------------- 本地命令执行（受控） ----------------
+    def run_shell(
+        self,
+        command: str | list[str],
+        *,
+        timeout: Optional[float] = None,
+        shell: Optional[bool] = None,
+        cwd: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
+        text: bool = True,
+        encoding: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """在本机受控执行命令，返回 {code, out, err, duration}。
+
+        安全提示：此为客户端行为，请仅在受信任环境启用相关远程指令。
+        """
+        import subprocess
+        start = time.time()
+        is_windows = os.name == "nt"
+        use_shell = bool(shell) if shell is not None else (is_windows and isinstance(command, str))
+        try:
+            completed = subprocess.run(
+                command,  # type: ignore[arg-type]
+                shell=use_shell,
+                check=False,
+                capture_output=True,
+                timeout=timeout,
+                cwd=cwd,
+                env=env,
+                text=text,
+                encoding=encoding,
+            )
+            duration = max(0.0, time.time() - start)
+            return {
+                "code": completed.returncode,
+                "out": completed.stdout,
+                "err": completed.stderr,
+                "duration": duration,
+            }
+        except subprocess.TimeoutExpired as exc:
+            duration = max(0.0, time.time() - start)
+            return {
+                "code": None,
+                "out": (exc.stdout or "") if text else None,
+                "err": (exc.stderr or "") + f"\n<timeout after {duration:.2f}s>",
+                "duration": duration,
+            }
+        except Exception as exc:
+            duration = max(0.0, time.time() - start)
+            return {"code": None, "out": "", "err": str(exc), "duration": duration}
 
     def run_command_loop(
         self,
@@ -266,6 +337,39 @@ class CrawlerClient:
                         elif name == "hot_update_config":
                             # 默认仅回执，推荐通过自定义 handler 完成落地
                             result = {"action": name, "note": "ack-only"}
+                        elif name == "run_shell":
+                            # 远程命令执行：payload 约定 {cmd?: str, args?: list[str], timeout?: number, shell?: bool, cwd?: str, env?: dict}
+                            payload = payload or {}
+                            cmd = payload.get("cmd")
+                            args = payload.get("args")
+                            timeout_val = payload.get("timeout")
+                            shell_flag = payload.get("shell")
+                            cwd_val = payload.get("cwd")
+                            env_val = payload.get("env")
+                            if isinstance(args, list) and not cmd:
+                                exec_cmd: Any = [str(x) for x in args]
+                            else:
+                                exec_cmd = str(cmd or "")
+                            exec_res = self.run_shell(
+                                exec_cmd,
+                                timeout=float(timeout_val) if timeout_val is not None else None,
+                                shell=bool(shell_flag) if shell_flag is not None else None,
+                                cwd=str(cwd_val) if cwd_val else None,
+                                env=env_val if isinstance(env_val, dict) else None,
+                            )
+                            # 简化输出，避免日志过大：截断到 16KB
+                            def _truncate(s: Optional[str], limit: int = 16 * 1024) -> Optional[str]:
+                                if s is None:
+                                    return None
+                                return s if len(s) <= limit else (s[: limit] + f"\n<trimmed {len(s)-limit} bytes>")
+
+                            result = {
+                                "action": name,
+                                "code": exec_res.get("code"),
+                                "out": _truncate(exec_res.get("out")),
+                                "err": _truncate(exec_res.get("err")),
+                                "duration": exec_res.get("duration"),
+                            }
                         elif name.startswith("switch_task"):
                             task = None
                             # 支持指令文本附带参数
@@ -345,6 +449,37 @@ class CrawlerClient:
                                 continue
                             elif name == "hot_update_config":
                                 result = {"action": name, "note": "ack-only"}
+                            elif name == "run_shell":
+                                payload = payload or {}
+                                cmd_text = payload.get("cmd")
+                                args = payload.get("args")
+                                timeout_val = payload.get("timeout")
+                                shell_flag = payload.get("shell")
+                                cwd_val = payload.get("cwd")
+                                env_val = payload.get("env")
+                                if isinstance(args, list) and not cmd_text:
+                                    exec_cmd: Any = [str(x) for x in args]
+                                else:
+                                    exec_cmd = str(cmd_text or "")
+                                exec_res = self.run_shell(
+                                    exec_cmd,
+                                    timeout=float(timeout_val) if timeout_val is not None else None,
+                                    shell=bool(shell_flag) if shell_flag is not None else None,
+                                    cwd=str(cwd_val) if cwd_val else None,
+                                    env=env_val if isinstance(env_val, dict) else None,
+                                )
+                                def _truncate(s: Optional[str], limit: int = 16 * 1024) -> Optional[str]:
+                                    if s is None:
+                                        return None
+                                    return s if len(s) <= limit else (s[: limit] + f"\n<trimmed {len(s)-limit} bytes>")
+
+                                result = {
+                                    "action": name,
+                                    "code": exec_res.get("code"),
+                                    "out": _truncate(exec_res.get("out")),
+                                    "err": _truncate(exec_res.get("err")),
+                                    "duration": exec_res.get("duration"),
+                                }
                             elif name.startswith("switch_task"):
                                 task = None
                                 parts = str(cmd.get("command", "")).split()
