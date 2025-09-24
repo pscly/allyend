@@ -81,7 +81,9 @@ export function QuickLinkTable({
         </thead>
         <tbody>
           {links.map((link) => {
-            const linkUrl = baseUrl ? new URL(`/pa/${link.slug}`, baseUrl).toString() : `/pa/${link.slug}`;
+            // 优先使用浏览器当前访问的域名，服务端渲染时回退到传入的 baseUrl 或相对路径
+            const runtimeBase = typeof window !== 'undefined' ? window.location.origin : baseUrl;
+            const linkUrl = runtimeBase ? new URL(`/pa/${link.slug}`, runtimeBase).toString() : `/pa/${link.slug}`;
             const isBusy = busyLinkId === link.id;
             return (
               <tr key={link.id} className="border-b border-border/70 last:border-0">

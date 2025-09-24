@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { buildApiUrl, env } from "@/lib/env";
 import { cn } from "@/lib/utils";
+import { headers } from "next/headers";
 
 import { CopyTextButton } from "@/features/public/copy-button";
 import { PublicLogPanel } from "@/features/public/log-panel";
@@ -202,7 +203,12 @@ export default async function PublicLinkPage({ params }: PublicPageProps) {
   }
 
   const detailItems = buildDetailItems(summary);
-  const publicUrl = `${env.appBaseUrl.replace(/\/$/, "")}/public/${slug}`;
+  // 基于请求头推断当前访问域名，避免硬编码 localhost；回退到配置项
+  const h = headers();
+  const proto = h.get("x-forwarded-proto") || h.get("x-forwarded-protocol") || (process.env.NODE_ENV === 'production' ? 'https' : 'http');
+  const host = h.get("x-forwarded-host") || h.get("host") || "";
+  const origin = host ? `${proto}://${host}` : env.appBaseUrl;
+  const publicUrl = `${origin.replace(/\/$/, "")}/public/${slug}`;
 
   return (
     <AppShell className="space-y-6" user={null}>

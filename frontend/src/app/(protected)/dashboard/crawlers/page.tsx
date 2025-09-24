@@ -171,9 +171,11 @@ function extractPayloadMetrics(payload: Record<string, unknown> | null | undefin
 }
 
 function buildPublicUrl(slug: string): string {
+  // 基于当前前端访问域名生成公开地址；在无 window 环境时回退到配置的 appBaseUrl
   if (!slug) return "";
+  const base = typeof window !== "undefined" ? window.location.origin : env.appBaseUrl;
   try {
-    return new URL(`/pa/${slug}`, env.appBaseUrl).toString();
+    return new URL(`/pa/${slug}`, base).toString();
   } catch {
     return `/pa/${slug}`;
   }
@@ -884,7 +886,8 @@ export default function CrawlersPage() {
                   onToggleLogs={handleToggleLinkLogs}
                   onDelete={handleDeleteQuickLink}
                   onCopy={(link) => toast({ title: "已复制公开地址", description: buildPublicUrl(link.slug) })}
-                  baseUrl={env.appBaseUrl}
+                  // 使用当前页面的访问域名进行拼接，SSR 时退回配置
+                  baseUrl={typeof window !== 'undefined' ? window.location.origin : env.appBaseUrl}
                 />
               </div>
             </ScrollArea>
