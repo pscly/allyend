@@ -1,82 +1,65 @@
-import Link from "next/link";
-import { ArrowRight, ShieldCheck, Cloud, Network } from "lucide-react";
-
-import { LandingHeader, LandingAuthButton } from "@/components/layout/landing-header";
-import { buttonVariants } from "@/components/ui/button";
+import { LandingHeader } from "@/components/layout/landing-header";
 import { cn } from "@/lib/utils";
+import { getSolarTermContext } from "@/lib/solar-terms";
+import { WeatherCard } from "@/features/home/weather-card";
+import { QuoteBar } from "@/features/home/quote-bar";
 
 export default function HomePage() {
+  // 中文注释：计算当前与下一节气信息
+  const ctx = getSolarTermContext();
+  const term = { id: ctx.current.id, name: ctx.current.name, imagePath: ctx.current.imagePath };
+  const remainMs = ctx.msToNext;
+  const remainDays = Math.floor(remainMs / 86400000);
+  const remainHours = Math.floor((remainMs % 86400000) / 3600000);
+
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <LandingHeader />
+    <div className="relative flex min-h-screen flex-col bg-background overflow-hidden">
+      {/* 全页背景层：图片 + 轻暗化遮罩（确保在 body 渐变之上）*/}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center bg-no-repeat bg-fixed"
+        style={{ backgroundImage: `url(${term.imagePath})` }}
+      />
+      <div aria-hidden className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-black/40 via-black/20 to-transparent" />
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-16">
-        <section className="grid gap-12 lg:grid-cols-[3fr_2fr] lg:items-center">
-          <div className="space-y-6">
-            <span className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-              数据团队的一站式运营平台
-            </span>
-            <h1 className="text-4xl font-bold leading-tight text-foreground md:text-5xl">
-              采集、同步、分发，一套后端搞定
-            </h1>
-            <p className="max-w-xl text-base leading-relaxed text-muted-foreground">
-              AllYend 提供爬虫调度、文件中转、令牌审核、访问审计等核心能力，帮助数据团队快速落地前后端分离方案，同时兼顾安全、合规与可观测性。
-            </p>
-            <div className="flex flex-wrap gap-4">
-              <LandingAuthButton size="lg" className="gap-2" suffix={<ArrowRight className="h-4 w-4" />} />
-              <Link
-                href="/docs"
-                className={cn(buttonVariants({ variant: "outline", size: "lg" }))}
-              >
-                查看接入指南
-              </Link>
+      <div className="relative z-10">
+        <LandingHeader />
+
+        <main className="relative flex-1">
+          <section className="mx-auto w-full max-w-6xl px-4 py-14 md:py-20">
+            <div className="grid gap-8 lg:grid-cols-[3fr_2fr] lg:items-center">
+              {/* 左侧文案卡片（毛玻璃） */}
+              <div className="relative rounded-3xl ring-1 ring-inset ring-white/15 bg-white/10 p-6 text-white shadow-[0_12px_40px_rgba(2,6,23,0.18)] backdrop-blur-2xl backdrop-saturate-150 bg-clip-padding dark:bg-white/10">
+                <div className="pointer-events-none absolute inset-0 rounded-3xl bg-gradient-to-br from-white/10 to-white/5" />
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center rounded-full bg-white/12 px-3 py-1 text-xs text-white/90">
+                  当前节气：{ctx.current.name}
+                </span>
+                <span className="inline-flex items-center rounded-full bg-white/8 px-3 py-1 text-xs text-white/85">
+                  下个节气：{ctx.next.name} · 还有 {remainDays} 天 {remainHours} 小时
+                </span>
+              </div>
+              <h1 className="text-4xl font-bold leading-tight tracking-tight md:text-5xl">
+                {ctx.current.name}
+              </h1>
+              <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/85">
+                {ctx.current.desc || "节气更替，四时流转。"}
+              </p>
+              </div>
+
+              {/* 右侧天气卡片（毛玻璃） */}
+              <WeatherCard />
             </div>
-          </div>
-          <div className="grid gap-4 rounded-2xl border border-border bg-card p-6 shadow-surface">
-            <FeatureCard
-              icon={<ShieldCheck className="h-5 w-5 text-primary" />}
-              title="多重安全防护"
-              description="JWT、API Key、上传令牌、IP 白名单全覆盖，审计日志实时追踪。"
-            />
-            <FeatureCard
-              icon={<Cloud className="h-5 w-5 text-primary" />}
-              title="文件快传"
-              description="令牌上传、分组授权、公开资源一体化，支持对象存储对接。"
-            />
-            <FeatureCard
-              icon={<Network className="h-5 w-5 text-primary" />}
-              title="爬虫调度"
-              description="心跳监测、运行日志、快捷分享链接，让爬虫状态一目了然。"
-            />
-          </div>
-        </section>
-      </main>
 
-      <footer className="border-t border-border py-6 text-center text-xs text-muted-foreground">
+            {/* 底部：每日一言（细行） */}
+            <QuoteBar className="mt-10" />
+          </section>
+        </main>
+      </div>
+
+      <footer className="relative z-10 border-t border-border/60 bg-background/70 py-6 text-center text-xs text-muted-foreground backdrop-blur">
         © {new Date().getFullYear()} AllYend • FastAPI + Next.js 全栈方案
       </footer>
-    </div>
-  );
-}
-
-interface FeatureCardProps {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}
-
-function FeatureCard({ icon, title, description }: FeatureCardProps) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-background/70 p-4">
-      <div className="flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-          {icon}
-        </span>
-        <div>
-          <p className="text-sm font-semibold text-foreground">{title}</p>
-          <p className="text-xs text-muted-foreground">{description}</p>
-        </div>
-      </div>
     </div>
   );
 }
