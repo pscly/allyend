@@ -6,6 +6,7 @@ import { LogOut, Menu } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { ThemePresets } from "@/components/layout/theme-presets";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -121,9 +122,9 @@ export function AppShell({ children, className, user }: AppShellProps) {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <header className="sticky top-0 z-30 border-b border-border/70 bg-card/80 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4">
-          <div className="flex items-center gap-2">
+      <header className="sticky top-0 z-30 bg-transparent">
+        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4">
+          <div className="flex items-center gap-3">
             <Sheet>
               <SheetTrigger asChild>
                 <button className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "md:hidden")}>
@@ -154,12 +155,17 @@ export function AppShell({ children, className, user }: AppShellProps) {
                 </nav>
               </SheetContent>
             </Sheet>
-            <Link href="/dashboard" className="font-semibold tracking-tight text-foreground">
-              AllYend
+            <Link href="/dashboard" className="font-semibold tracking-tight">
+              <span className="bg-gradient-to-r from-primary via-primary/80 to-secondary/90 bg-clip-text text-transparent">AllYend</span>
             </Link>
-            <div className="hidden items-center gap-2 md:flex">{desktopNav}</div>
+            <div className="hidden items-center md:flex">
+              <div className="flex items-center gap-1 rounded-full border border-border/70 bg-card/70 px-1 py-1 shadow-surface backdrop-blur">
+                {desktopNav}
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <ThemePresets />
             <ThemeToggle />
             <DropdownMenu>
               <DropdownMenuTrigger className="rounded-full">
