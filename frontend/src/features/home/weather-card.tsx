@@ -200,6 +200,12 @@ export function WeatherCard({ className }: { className?: string }) {
       )}
     >
       <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-white/10 to-white/5" />
+      {/* 主题染色：强度由 --home-glass-alpha 控制（0~0.6） */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-2xl"
+        style={{ background: "linear-gradient(135deg, hsl(var(--primary) / var(--home-glass-alpha, 0)) 0%, transparent 65%)" }}
+      />
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm text-white/90 dark:text-white/90">

@@ -47,11 +47,11 @@ function RegisterForm() {
 
   const redirectTo = useMemo(() => {
     const target = searchParams?.get("from");
-    if (!target) return "/dashboard";
+    if (!target) return "/";
     try {
       return decodeURIComponent(target);
     } catch {
-      return "/dashboard";
+      return "/";
     }
   }, [searchParams]);
 

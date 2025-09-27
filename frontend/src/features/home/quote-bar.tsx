@@ -39,6 +39,12 @@ export function QuoteBar({ className }: { className?: string }) {
       )}
     >
       <div className="pointer-events-none absolute inset-0 rounded-full bg-gradient-to-r from-white/10 to-white/5" />
+      {/* 主题染色：强度由 --home-glass-alpha 控制（0~0.6） */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-full"
+        style={{ background: "linear-gradient(90deg, hsl(var(--primary) / var(--home-glass-alpha, 0)) 0%, transparent 70%)" }}
+      />
       {loading ? "每日一言加载中…" : (
         <span>
           {q?.hitokoto}

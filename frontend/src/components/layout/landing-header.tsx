@@ -6,9 +6,13 @@ import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
+import { useApplyUserTheme } from "@/hooks/use-apply-theme";
 
-const NAV_ITEMS = [
-  { href: "/dashboard", label: "控制台" },
+// 登录后在首页展示的导航项（保持与受保护区一致）
+const AUTH_NAV_ITEMS = [
+  { href: "/dashboard", label: "概览" },
+  { href: "/dashboard/files", label: "文件" },
+  { href: "/dashboard/crawlers", label: "爬虫" },
   { href: "/public", label: "公开空间" },
   { href: "/docs", label: "文档" },
 ];
@@ -27,6 +31,8 @@ function useLandingAuthState(): LandingAuthState {
   }));
 
   const loggedIn = hydrated && Boolean(profile);
+  // 在首页也应用用户选择的主题
+  useApplyUserTheme(profile ?? null);
   return {
     loggedIn,
     ctaHref: loggedIn ? "/dashboard" : "/login",
@@ -75,6 +81,7 @@ export function LandingWelcome({ className }: LandingWelcomeProps) {
 }
 
 export function LandingHeader() {
+  const { loggedIn } = useLandingAuthState();
   return (
     <header className="border-b border-border bg-card/70 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4">
@@ -82,11 +89,12 @@ export function LandingHeader() {
           AllYend
         </Link>
         <nav className="flex items-center gap-4 text-sm text-muted-foreground">
-          {NAV_ITEMS.map((item) => (
-            <Link key={item.href} href={item.href} className="hover:text-foreground">
-              {item.label}
-            </Link>
-          ))}
+          {loggedIn &&
+            AUTH_NAV_ITEMS.map((item) => (
+              <Link key={item.href} href={item.href} className="hover:text-foreground">
+                {item.label}
+              </Link>
+            ))}
           <LandingWelcome />
           <LandingAuthButton className="h-9 px-4 text-sm" />
         </nav>

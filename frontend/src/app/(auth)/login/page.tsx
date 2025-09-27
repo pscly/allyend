@@ -38,11 +38,11 @@ function LoginForm() {
 
   const redirectTo = useMemo(() => {
     const target = searchParams?.get("from");
-    if (!target) return "/dashboard";
+    if (!target) return "/";
     try {
       return decodeURIComponent(target);
     } catch {
-      return "/dashboard";
+      return "/";
     }
   }, [searchParams]);
 
@@ -60,7 +60,7 @@ function LoginForm() {
         username: values.username.trim(),
         password: values.password,
       });
-      toast({ title: "登录成功", description: "正在跳转控制台" });
+      toast({ title: "登录成功", description: "正在跳转首页" });
       router.replace(redirectTo);
     } catch (error) {
       const message =

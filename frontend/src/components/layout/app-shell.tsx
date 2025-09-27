@@ -155,7 +155,7 @@ export function AppShell({ children, className, user }: AppShellProps) {
                 </nav>
               </SheetContent>
             </Sheet>
-            <Link href="/dashboard" className="font-semibold tracking-tight">
+            <Link href="/" className="font-semibold tracking-tight">
               <span className="bg-gradient-to-r from-primary via-primary/80 to-secondary/90 bg-clip-text text-transparent">AllYend</span>
             </Link>
             <div className="hidden items-center md:flex">

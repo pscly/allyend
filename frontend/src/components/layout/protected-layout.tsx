@@ -48,7 +48,7 @@ export function ProtectedLayout({ children }: ProtectedLayoutProps) {
     }
     if (error instanceof ApiError && error.status === 401) {
       logout();
-      const target = pathname && pathname.startsWith("/") ? pathname : "/dashboard";
+      const target = pathname && pathname.startsWith("/") ? pathname : "/";
       router.replace(`/login?from=${encodeURIComponent(target)}`);
     }
   }, [error, hydrated, isError, pathname, router]);

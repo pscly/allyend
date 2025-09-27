@@ -33,6 +33,8 @@
   --radius-sm: 0.75rem;
   --shadow-sm: 0 18px 40px rgb(79 70 229 / 12%);
   --shadow-md: 0 32px 64px rgb(30 64 175 / 14%);
+  /* 首页雾化玻璃染色强度（0~0.6），默认关闭 */
+  --home-glass-alpha: 0;
 }
 
 .dark {
@@ -63,6 +65,8 @@
   --ring: 267 92% 70%;
   --shadow-sm: 0 22px 70px rgb(8 11 29 / 55%);
   --shadow-md: 0 38px 90px rgb(8 11 29 / 65%);
+  /* 暗色模式下同样提供变量，默认关闭 */
+  --home-glass-alpha: 0;
 }
 
 @layer base {

@@ -22,7 +22,8 @@ export default function HomePage() {
       />
       <div aria-hidden className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-black/40 via-black/20 to-transparent" />
 
-      <div className="relative z-10">
+      {/* 将内容包裹层设置为 flex-1，使页脚始终贴底 */}
+      <div className="relative z-10 flex flex-1 flex-col">
         <LandingHeader />
 
         <main className="relative flex-1">
@@ -31,6 +32,12 @@ export default function HomePage() {
               {/* 左侧文案卡片（毛玻璃） */}
               <div className="relative rounded-3xl ring-1 ring-inset ring-white/15 bg-white/10 p-6 text-white shadow-[0_12px_40px_rgba(2,6,23,0.18)] backdrop-blur-2xl backdrop-saturate-150 bg-clip-padding dark:bg-white/10">
                 <div className="pointer-events-none absolute inset-0 rounded-3xl bg-gradient-to-br from-white/10 to-white/5" />
+                {/* 主题染色：强度由 --home-glass-alpha 控制（0~0.6） */}
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 rounded-3xl"
+                  style={{ background: "linear-gradient(135deg, hsl(var(--primary) / var(--home-glass-alpha, 0)) 0%, transparent 65%)" }}
+                />
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center rounded-full bg-white/12 px-3 py-1 text-xs text-white/90">
                   当前节气：{ctx.current.name}
@@ -57,7 +64,7 @@ export default function HomePage() {
         </main>
       </div>
 
-      <footer className="relative z-10 border-t border-border/60 bg-background/70 py-6 text-center text-xs text-muted-foreground backdrop-blur">
+      <footer className="relative z-10 mt-auto border-t border-border/60 bg-background/70 py-6 text-center text-xs text-muted-foreground backdrop-blur">
         © {new Date().getFullYear()} AllYend • FastAPI + Next.js 全栈方案
       </footer>
     </div>

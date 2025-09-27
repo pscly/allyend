@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Palette, Check } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -110,6 +110,9 @@ export function ThemePresets() {
   const { toast } = useToast();
   const updateTheme = useUpdateThemeMutation();
   const [open, setOpen] = useState(false);
+  // 主页雾化玻璃染色设置（本地持久化）
+  const [glassEnabled, setGlassEnabled] = useState<boolean>(false);
+  const [glassAlpha, setGlassAlpha] = useState<number>(0.18);
 
   const currentKey = useMemo(() => profile?.theme_name ?? null, [profile?.theme_name]);
 
@@ -149,6 +152,34 @@ export function ThemePresets() {
       setOpen(false);
     }
   };
+
+  // 应用/持久化雾化玻璃染色强度
+  const applyGlass = (enabled: boolean, alpha: number) => {
+    const clamped = Math.max(0, Math.min(0.6, alpha));
+    if (enabled) {
+      document.documentElement.style.setProperty("--home-glass-alpha", String(clamped));
+    } else {
+      document.documentElement.style.setProperty("--home-glass-alpha", "0");
+    }
+    try {
+      localStorage.setItem("home.glass.enabled", enabled ? "1" : "0");
+      localStorage.setItem("home.glass.alpha", String(clamped));
+    } catch {}
+  };
+
+  // 初始化本地设置
+  useEffect(() => {
+    try {
+      const enabled = localStorage.getItem("home.glass.enabled") === "1";
+      const alphaRaw = Number(localStorage.getItem("home.glass.alpha") ?? "0.18");
+      const alpha = Number.isFinite(alphaRaw) ? alphaRaw : 0.18;
+      setGlassEnabled(enabled);
+      setGlassAlpha(alpha);
+      applyGlass(enabled, alpha);
+    } catch {}
+    // 仅初始化一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -199,9 +230,43 @@ export function ThemePresets() {
               </button>
             ))}
           </div>
+          {/* 主页雾化玻璃染色设置 */}
+          <div className="mt-3 space-y-2 rounded-xl border bg-card p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">主页雾化玻璃受主题色影响</span>
+              <label className="inline-flex cursor-pointer items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={glassEnabled}
+                  onChange={(e) => {
+                    const v = e.target.checked;
+                    setGlassEnabled(v);
+                    applyGlass(v, glassAlpha);
+                  }}
+                />
+                <span>{glassEnabled ? "开启" : "关闭"}</span>
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min={0}
+                max={60}
+                step={2}
+                value={Math.round(glassAlpha * 100)}
+                onChange={(e) => {
+                  const v = Number(e.target.value) / 100;
+                  setGlassAlpha(v);
+                  applyGlass(glassEnabled, v);
+                }}
+                className="w-full"
+                disabled={!glassEnabled}
+              />
+              <span className="w-10 text-right text-[11px] text-muted-foreground">{Math.round(glassAlpha * 100)}%</span>
+            </div>
+          </div>
         </ScrollArea>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
-
