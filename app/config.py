@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     ALERT_WEBHOOK_TIMEOUT: float = 5.0
 
     FRONTEND_ORIGINS: list[str] = ["http://localhost:3000"]
+    # 反向代理可信地址（用于解析 X-Forwarded-*），逗号分隔
+    FORWARDED_TRUSTED_IPS: list[str] = ["127.0.0.1", "::1"]
 
     # 日志查询频控（每账号每秒最大请求数）
     LOG_QUERY_RATE_PER_SECOND: int = 5
@@ -76,6 +78,19 @@ class Settings(BaseSettings):
         if v not in {"lax", "strict", "none"}:
             return "lax"
         return v
+
+    @field_validator("FORWARDED_TRUSTED_IPS", mode="before")
+    @classmethod
+    def _normalize_trusted_ips(cls, value):
+        """支持逗号分隔或 JSON 数组形式的 IP/CIDR 列表"""
+        if value in (None, "", []):
+            return ["127.0.0.1", "::1"]
+        if isinstance(value, str):
+            items = [item.strip() for item in value.split(',') if item.strip()]
+            return items or ["127.0.0.1", "::1"]
+        if isinstance(value, (tuple, set)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return list(value)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

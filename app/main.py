@@ -13,6 +13,7 @@ import sys
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from .config import settings
 from .database import ensure_database_schema, bootstrap_defaults
@@ -20,6 +21,7 @@ from .routers import auth as auth_router
 from .routers import crawlers as crawlers_router
 from .routers import dashboard as dashboard_router
 from .routers import files as files_router
+from .routers import md as md_router
 from .routers import admin as admin_router
 
 
@@ -72,6 +74,10 @@ if "*" in cors_origins:
 else:
     configured_origins = cors_origins
 
+# 代理头中间件（从 X-Forwarded-* / Forwarded 恢复真实 client/scheme/host）
+# 注意：默认仅信任 127.0.0.1/::1，可在 .env 配置 FORWARDED_TRUSTED_IPS 追加反向代理地址
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=settings.FORWARDED_TRUSTED_IPS)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=configured_origins,
@@ -109,6 +115,7 @@ app.include_router(crawlers_router.public_router)
 app.include_router(files_router.router)
 app.include_router(admin_router.router)
 app.include_router(dashboard_router.router)
+app.include_router(md_router.router)
 
 
 # 便于 uv run 直接引用

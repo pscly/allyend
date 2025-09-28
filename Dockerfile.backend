@@ -36,5 +36,5 @@ RUN mkdir -p /app/data/files /app/logs
 EXPOSE 9093
 
 # 可通过环境变量 PORT 覆盖端口
-CMD ["sh", "-c", "python -c 'from app.database import ensure_database_schema; ensure_database_schema()' && uvicorn app.main:get_app --host 0.0.0.0 --port ${PORT:-9093}"]
+CMD ["sh", "-c", "python -c 'from app.database import ensure_database_schema; ensure_database_schema()' && uvicorn app.main:get_app --host 0.0.0.0 --port ${PORT:-9093} --proxy-headers --forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-127.0.0.1,::1}"]
 
