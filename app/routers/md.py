@@ -95,21 +95,30 @@ async def md(request: Request) -> Dict[str, Any]:
     now = aware_now()
 
     # 客户端 IP
-    # 在启用 ProxyHeadersMiddleware 后，request.client.host 已是“可信代理解析后”的结果
+    # 在启用 ProxyHeadersMiddleware 后，request.headers.get("X-Real-IP") 已是“可信代理解析后”的结果
     # 仍保留对常见头部的回退解析
-    ip = request.client.host if request.client else None
-    if not ip:
-        fwd = (
-            request.headers.get("CF-Connecting-IP")
-            or request.headers.get("X-Real-IP")
-            or request.headers.get("X-Forwarded-For")
-            or request.headers.get("x-forwarded-for")
-        )
-        if fwd:
-            ip = fwd.split(",")[0].strip()
+    # ip = request.headers.get("X-Real-IP") if request.client else None
+    # "test":{
+    #     "1":request.headers.get("CF-Connecting-IP"),  # None
+    #     "2":request.headers.get("X-Forwarded-For"),   # 140.xxxxx, 140.xxxxx
+    #     "3":request.headers.get("X-Real-IP"), # 140.xxxxx
+    #     "4":request.headers.get("X-Forwarded-For"),   # 140.xxxxx, 140.xxxxx
+    #     "5":request.headers.get("X-client_ip"),   # None
+    # },
+    ip = request.headers.get("X-Real-IP")
+    # if not ip:
+    fwd = (
+        request.headers.get("CF-Connecting-IP")
+        or request.headers.get("X-Real-IP")
+        or request.headers.get("X-client_ip")
+        or request.headers.get("x-forwarded-for")
+    )
+    if fwd:
+        ip = fwd.split(",")[0].strip()
 
     return {
         "data": params,
+
         "laizi": laizi,
         "time": now.strftime("%Y-%m-%d %H:%M:%S"),
         "time2": now.timestamp(),

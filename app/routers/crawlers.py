@@ -212,7 +212,7 @@ def _ensure_quick_slug(db: Session, slug: Optional[str] = None) -> str:
 
 def _get_client_ip(request: Request) -> Optional[str]:
     if request.client:
-        return request.client.host
+        return request.headers.get("X-Real-IP")
     return None
 
 
@@ -1197,7 +1197,7 @@ def create_group(
         before=None,
         after=summarize_group(group),
         actor=current_user,
-        actor_ip=request.client.host if request.client else None,
+        actor_ip=request.headers.get("X-Real-IP") if request.client else None,
     )
     db.commit()
     db.refresh(group)
@@ -1252,7 +1252,7 @@ def update_group(
         before=before,
         after=summarize_group(group),
         actor=current_user,
-        actor_ip=request.client.host if request.client else None,
+        actor_ip=request.headers.get("X-Real-IP") if request.client else None,
     )
     db.commit()
     db.refresh(group)
@@ -1291,7 +1291,7 @@ def delete_group(
         before=before,
         after=None,
         actor=current_user,
-        actor_ip=request.client.host if request.client else None,
+        actor_ip=request.headers.get("X-Real-IP") if request.client else None,
     )
     db.commit()
     return {"ok": True}

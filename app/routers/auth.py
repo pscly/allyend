@@ -247,7 +247,7 @@ def register_form(
             display_name,
             email.strip() if email else None,
             invite_code,
-            request.client.host if request.client else None,
+            request.headers.get("X-Real-IP"),
         )
     except HTTPException as exc:
         return templates.TemplateResponse(
@@ -304,7 +304,7 @@ def api_register(payload: UserCreate, request: Request, response: Response, db: 
         payload.display_name,
         payload.email.strip() if payload.email else None,
         payload.invite_code,
-        request.client.host if request.client else None,
+        request.headers.get("X-Real-IP") if request.client else None,
     )
     user = db.query(User).filter(User.username == payload.username.strip()).first()
     token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -413,7 +413,7 @@ def create_key(
         before=None,
         after=summarize_api_key(rec),
         actor=current_user,
-        actor_ip=request.client.host if request.client else None,
+        actor_ip=request.headers.get("X-Real-IP") if request.client else None,
     )
     db.commit()
     db.refresh(rec)
@@ -472,7 +472,7 @@ def update_key(
         before=before,
         after=summarize_api_key(rec),
         actor=current_user,
-        actor_ip=request.client.host if request.client else None,
+        actor_ip=request.headers.get("X-Real-IP") if request.client else None,
     )
     db.commit()
     db.refresh(rec)
@@ -503,7 +503,7 @@ def rotate_key(
         before=before,
         after=summarize_api_key(rec),
         actor=current_user,
-        actor_ip=request.client.host if request.client else None,
+        actor_ip=request.headers.get("X-Real-IP") if request.client else None,
     )
     db.commit()
     db.refresh(rec)
@@ -532,7 +532,7 @@ def delete_key(
         before=before,
         after=None,
         actor=current_user,
-        actor_ip=request.client.host if request.client else None,
+        actor_ip=request.headers.get("X-Real-IP") if request.client else None,
     )
     db.commit()
     return {"ok": True}

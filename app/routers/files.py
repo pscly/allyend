@@ -94,8 +94,8 @@ def _ensure_storage_dir(subdir: Optional[str] = None) -> Path:
 
 
 def _get_client_ip(request: Request) -> Optional[str]:
-    if request.client and request.client.host:
-        return request.client.host
+    if request.client and request.headers.get("X-Real-IP"):
+        return request.headers.get("X-Real-IP")
     return None
 
 
