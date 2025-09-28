@@ -1,4 +1,6 @@
-const FALLBACK_API = "http://localhost:9093";
+// 本地开发默认走同源代理（见 next.config.mjs 的 rewrites 到后端），
+// 避免跨域导致 Cookie（SameSite/Secure）在本地环境不生效的问题
+const FALLBACK_API = "/api";
 const FALLBACK_APP = "http://localhost:3000";
 
 /**

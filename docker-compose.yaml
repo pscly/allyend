@@ -24,10 +24,12 @@ services:
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
         NEXT_PUBLIC_APP_BASE_URL: ${NEXT_PUBLIC_APP_BASE_URL:-http://localhost:8080}
+        BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://allyend-backend:9093}
     image: allyend/frontend:latest
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
       NEXT_PUBLIC_APP_BASE_URL: ${NEXT_PUBLIC_APP_BASE_URL:-http://localhost:8080}
+      BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://allyend-backend:9093}
     expose:
       - "3000"
     depends_on:

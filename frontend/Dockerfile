@@ -28,9 +28,11 @@ RUN corepack enable && corepack prepare pnpm@9.12.1 --activate
 
 ARG NEXT_PUBLIC_API_BASE_URL="/api"
 ARG NEXT_PUBLIC_APP_BASE_URL="http://localhost:8080"
+ARG BACKEND_ORIGIN="http://allyend-backend:9093"
 
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
-    NEXT_PUBLIC_APP_BASE_URL=$NEXT_PUBLIC_APP_BASE_URL
+    NEXT_PUBLIC_APP_BASE_URL=$NEXT_PUBLIC_APP_BASE_URL \
+    BACKEND_ORIGIN=$BACKEND_ORIGIN
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
