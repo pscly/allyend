@@ -30,12 +30,12 @@ type Preset = {
 
 // 预置主题，偏向干净的 Dashboard 风格
 const PRESETS: Preset[] = [
-  { key: "aurora", name: "极光", primary: "#7C3AED", secondary: "#22D3EE", background: "#F3F4F6" },
-  { key: "ocean", name: "海洋", primary: "#2563EB", secondary: "#06B6D4", background: "#EFF6FF" },
-  { key: "sunset", name: "暮光", primary: "#F97316", secondary: "#EF4444", background: "#FFF7ED" },
-  { key: "forest", name: "森林", primary: "#16A34A", secondary: "#65A30D", background: "#F0FDF4" },
-  { key: "sakura", name: "樱花", primary: "#EC4899", secondary: "#8B5CF6", background: "#FFF1F2" },
-  { key: "graphite", name: "石墨", primary: "#111827", secondary: "#374151", background: "#F9FAFB" },
+  { key: "aurora", name: "极光", primary: "#7C3AED", secondary: "#22D3EE", background: "#F3F4F6", dark: false },
+  { key: "ocean", name: "海洋", primary: "#2563EB", secondary: "#06B6D4", background: "#EFF6FF", dark: false },
+  { key: "sunset", name: "暮光", primary: "#F97316", secondary: "#EF4444", background: "#FFF7ED", dark: false },
+  { key: "forest", name: "森林", primary: "#16A34A", secondary: "#65A30D", background: "#F0FDF4", dark: false },
+  { key: "sakura", name: "樱花", primary: "#EC4899", secondary: "#8B5CF6", background: "#FFF1F2", dark: false },
+  { key: "graphite", name: "石墨", primary: "#111827", secondary: "#374151", background: "#F9FAFB", dark: false },
   { key: "night", name: "夜空", primary: "#60A5FA", secondary: "#22D3EE", background: "#0B1220", dark: true },
 ];
 
@@ -129,7 +129,8 @@ export function ThemePresets() {
     applyVariable("--popover", background);
     applyVariable("--card-foreground", deriveForeground(background, "225 35% 12%"));
     applyVariable("--popover-foreground", deriveForeground(background, "225 35% 12%"));
-    setTheme(preset.dark ? "dark" : "light");
+    // 中文注释：主题强绑定明暗模式
+    setTheme(Boolean(preset.dark) ? "dark" : "light");
   };
 
   const handlePick = async (preset: Preset) => {
@@ -143,7 +144,8 @@ export function ThemePresets() {
         themePrimary: preset.primary,
         themeSecondary: preset.secondary,
         themeBackground: preset.background,
-        isDarkMode: preset.dark ?? profile?.is_dark_mode ?? false,
+        // 中文注释：保存时由主题预设决定明暗，不再回退到用户之前的明暗偏好
+        isDarkMode: Boolean(preset.dark),
       });
     } catch (error) {
       const message = error instanceof ApiError ? error.payload?.detail ?? "保存主题失败" : "保存主题失败";

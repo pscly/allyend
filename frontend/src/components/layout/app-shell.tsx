@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { ThemePresets } from "@/components/layout/theme-presets";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { buttonVariants } from "@/components/ui/button";
@@ -166,7 +165,6 @@ export function AppShell({ children, className, user }: AppShellProps) {
           </div>
           <div className="flex items-center gap-1">
             <ThemePresets />
-            <ThemeToggle />
             <DropdownMenu>
               <DropdownMenuTrigger className="rounded-full">
                 <Avatar className="h-9 w-9">
