@@ -75,8 +75,10 @@ else:
     configured_origins = cors_origins
 
 # 代理头中间件（从 X-Forwarded-* / Forwarded 恢复真实 client/scheme/host）
-# 注意：默认仅信任 127.0.0.1/::1，可在 .env 配置 FORWARDED_TRUSTED_IPS 追加反向代理地址
-app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=settings.FORWARDED_TRUSTED_IPS)
+# 注意：默认仅信任 127.0.0.1/::1；若 .env 配置包含 "*"，则信任所有上游（适合仅内网可达的后端）。
+_trusted = settings.FORWARDED_TRUSTED_IPS
+_trusted_value = "*" if (isinstance(_trusted, (list, tuple, set)) and "*" in _trusted) else _trusted
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=_trusted_value)
 
 app.add_middleware(
     CORSMiddleware,
