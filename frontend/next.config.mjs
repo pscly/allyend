@@ -8,6 +8,8 @@ const nextConfig = {
       { source: "/api/:path*", destination: `${backend}/api/:path*` },
       { source: "/pa/:path*", destination: `${backend}/pa/:path*` },
       { source: "/files/:path*", destination: `${backend}/files/:path*` },
+      // 静态资源由 FastAPI 提供，开发模式下通过 Next 代理到后端，修复 3000 端口访问 /static 404
+      { source: "/static/:path*", destination: `${backend}/static/:path*` },
     ];
   },
 };
