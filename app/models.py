@@ -177,14 +177,14 @@ class APIKey(Base):
     group: Mapped[Optional["CrawlerGroup"]] = relationship("CrawlerGroup", back_populates="api_keys")
     quick_links: Mapped[List["CrawlerAccessLink"]] = relationship("CrawlerAccessLink", back_populates="api_key")
     logs: Mapped[List["LogEntry"]] = relationship("LogEntry", back_populates="api_key")
-    crawler: Mapped[Optional["Crawler"]] = relationship("Crawler", back_populates="api_key", uselist=False)
+    # 一个 API Key 可以被多个爬虫（工程）使用
+    crawlers: Mapped[List["Crawler"]] = relationship("Crawler", back_populates="api_key")
 
 
 class Crawler(Base):
     __tablename__ = "crawlers"
     __table_args__ = (
         UniqueConstraint("user_id", "local_id", name="uq_crawlers_user_local_id"),
-        UniqueConstraint("api_key_id", name="uq_crawlers_api_key_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -194,6 +194,9 @@ class Crawler(Base):
     last_heartbeat: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_source_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     last_device_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    # 隐藏状态（从列表中隐藏但不删除）
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    hidden_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="offline")
     status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     uptime_ratio: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -210,8 +213,9 @@ class Crawler(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     user: Mapped[User] = relationship("User", back_populates="crawlers")
 
-    api_key_id: Mapped[int] = mapped_column(ForeignKey("api_keys.id"), unique=True)
-    api_key: Mapped["APIKey"] = relationship("APIKey", back_populates="crawler")
+    # 允许多个爬虫共享同一个 API Key
+    api_key_id: Mapped[int] = mapped_column(ForeignKey("api_keys.id"), index=True)
+    api_key: Mapped["APIKey"] = relationship("APIKey", back_populates="crawlers")
 
     group_id: Mapped[Optional[int]] = mapped_column(ForeignKey("crawler_groups.id"), nullable=True)
     group: Mapped[Optional["CrawlerGroup"]] = relationship("CrawlerGroup", back_populates="crawlers")

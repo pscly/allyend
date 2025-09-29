@@ -210,9 +210,16 @@ class CrawlerOut(BaseModel):
     heartbeat_payload: Optional[dict] = None
     is_public: bool
     public_slug: Optional[str] = None
-    # 置顶状态
+    # 隐藏状态
+    is_hidden: bool
     pinned_at: Optional[datetime] = None
     pinned: Optional[bool] = None
+    # 隐藏时间（可选）
+    # 注意：为兼容老数据，允许 None
+    # 由后端在隐藏/取消隐藏时维护
+    # 前端一般无需直接显示
+    # 这里保持为 Optional
+    hidden_at: Optional[datetime] = None
     # 某些历史数据可能未绑定 API Key，这里允许为可空以避免 500
     api_key_id: Optional[int] = None
     api_key_local_id: Optional[int] = None
@@ -236,6 +243,8 @@ class CrawlerUpdate(BaseModel):
     is_public: Optional[bool] = None
     # 置顶/取消置顶
     pinned: Optional[bool] = None
+    # 隐藏/取消隐藏
+    is_hidden: Optional[bool] = None
     # 日志上限设置（可在前端修改）；None 表示保持不变
     log_max_lines: Optional[int] = None
     log_max_bytes: Optional[int] = None

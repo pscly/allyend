@@ -175,14 +175,13 @@ class APIKey(Base):
     group: Mapped[Optional["CrawlerGroup"]] = relationship("CrawlerGroup", back_populates="api_keys")
     quick_links: Mapped[List["CrawlerAccessLink"]] = relationship("CrawlerAccessLink", back_populates="api_key")
     logs: Mapped[List["LogEntry"]] = relationship("LogEntry", back_populates="api_key")
-    crawler: Mapped[Optional["Crawler"]] = relationship("Crawler", back_populates="api_key", uselist=False)
+    crawlers: Mapped[List["Crawler"]] = relationship("Crawler", back_populates="api_key")
 
 
 class Crawler(Base):
     __tablename__ = "crawlers"
     __table_args__ = (
         UniqueConstraint("user_id", "local_id", name="uq_crawlers_user_local_id"),
-        UniqueConstraint("api_key_id", name="uq_crawlers_api_key_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -198,12 +197,15 @@ class Crawler(Base):
     heartbeat_payload: Mapped[Optional[dict]] = mapped_column(MutableDict.as_mutable(JSON), nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     public_slug: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True)
+    # 隐藏状态
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    hidden_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     user: Mapped[User] = relationship("User", back_populates="crawlers")
 
-    api_key_id: Mapped[int] = mapped_column(ForeignKey("api_keys.id"), unique=True)
-    api_key: Mapped["APIKey"] = relationship("APIKey", back_populates="crawler")
+    api_key_id: Mapped[int] = mapped_column(ForeignKey("api_keys.id"), index=True)
+    api_key: Mapped["APIKey"] = relationship("APIKey", back_populates="crawlers")
 
     group_id: Mapped[Optional[int]] = mapped_column(ForeignKey("crawler_groups.id"), nullable=True)
     group: Mapped[Optional["CrawlerGroup"]] = relationship("CrawlerGroup", back_populates="crawlers")

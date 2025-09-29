@@ -87,6 +87,7 @@ export interface UpdateCrawlerInput {
   name?: string;
   is_public?: boolean;
   pinned?: boolean;
+  is_hidden?: boolean;
 }
 
 export function useUpdateCrawlerMutation(crawlerId: number | string) {
@@ -94,6 +95,16 @@ export function useUpdateCrawlerMutation(crawlerId: number | string) {
   return useMutation<CrawlerSummary, ApiError, UpdateCrawlerInput>({
     mutationFn: async (payload) =>
       apiClient.patch<CrawlerSummary>(endpoints.crawlers.detail(crawlerId), payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: crawlerKeys.all });
+    },
+  });
+}
+
+export function useDeleteCrawlerMutation(crawlerId: number | string) {
+  const queryClient = useQueryClient();
+  return useMutation<{ ok: boolean }, ApiError>({
+    mutationFn: async () => apiClient.delete(endpoints.crawlers.detail(crawlerId)),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: crawlerKeys.all });
     },

@@ -218,3 +218,30 @@ def _ensure_extra_columns() -> None:
     if not has_col('crawlers', 'log_max_bytes'):
         add_col('crawlers', 'log_max_bytes INTEGER')
 
+    # 新增工程隐藏相关列
+    if not has_col('crawlers', 'is_hidden'):
+        # SQLite/MySQL/PG 均兼容 BOOLEAN/TINYINT(1)
+        add_col('crawlers', 'is_hidden BOOLEAN')
+        # 默认值改由应用层维护；这里不回填
+    if not has_col('crawlers', 'hidden_at'):
+        add_col('crawlers', 'hidden_at DATETIME')
+
+    # 移除旧的唯一约束：uq_crawlers_api_key_id（允许一个 Key 绑定多个工程）
+    try:
+        idx_name = 'uq_crawlers_api_key_id'
+        with engine.begin() as conn:
+            if dialect == 'sqlite':
+                conn.execute(text(f"DROP INDEX IF EXISTS {idx_name}"))
+            elif dialect == 'postgresql':
+                conn.execute(text(f"DROP INDEX IF EXISTS {idx_name}"))
+            elif dialect in ('mysql', 'mariadb'):
+                # MySQL 需要指定表名
+                # 若不存在会报错，这里加 try/except 忽略
+                try:
+                    conn.execute(text(f"ALTER TABLE crawlers DROP INDEX {idx_name}"))
+                except Exception:
+                    pass
+    except Exception:
+        # 忽略失败，避免影响启动；建议生产使用迁移工具
+        pass
+

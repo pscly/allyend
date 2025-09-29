@@ -969,7 +969,6 @@ def _require_api_key(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="缺少 X-API-Key")
     key = (
         db.query(APIKey)
-        .options(joinedload(APIKey.crawler).joinedload(Crawler.group))
         .filter(APIKey.key == x_api_key, APIKey.active == True)
         .first()
     )
@@ -988,8 +987,26 @@ def _require_api_key(
 
 
 def _get_or_bind_crawler(db: Session, api_key: APIKey, default_name: str) -> Crawler:
-    if api_key.crawler:
-        return api_key.crawler
+    """按名称为当前用户获取或创建工程（Crawler）。
+
+    - 同一用户下名称唯一；存在则复用并更新其 api_key_id 与分组信息；
+    - 不存在则创建新工程，local_id 按用户内自增；
+    - 新建/复用均会取消隐藏状态（is_hidden=False）。
+    """
+    name = (default_name or "").strip() or f"crawler-{api_key.local_id}"
+    crawler = (
+        db.query(Crawler)
+        .filter(Crawler.user_id == api_key.user_id, Crawler.name == name)
+        .first()
+    )
+    if crawler:
+        crawler.api_key_id = api_key.id
+        crawler.group_id = api_key.group_id
+        crawler.is_hidden = False
+        crawler.hidden_at = None
+        db.commit()
+        db.refresh(crawler)
+        return crawler
     max_local = (
         db.query(func.max(Crawler.local_id))
         .filter(Crawler.user_id == api_key.user_id)
@@ -997,13 +1014,14 @@ def _get_or_bind_crawler(db: Session, api_key: APIKey, default_name: str) -> Cra
         or 0
     )
     crawler = Crawler(
-        name=default_name,
+        name=name,
         user_id=api_key.user_id,
         local_id=max_local + 1,
-        api_key=api_key,
+        api_key_id=api_key.id,
         group_id=api_key.group_id,
         status="offline",
         status_changed_at=now(),
+        is_hidden=False,
     )
     db.add(crawler)
     db.commit()
@@ -1481,6 +1499,8 @@ def my_crawlers(
     api_key_id: Optional[int] = Query(None, description="API Key ID 或本地编号"),
     api_key_ids: Optional[str] = Query(None, description="逗号分隔的 API Key ID 或本地编号"),
     keyword: Optional[str] = Query(None, description="名称或本地编号模糊搜索"),
+    include_hidden: bool = Query(False, description="是否包含隐藏工程"),
+    hidden_only: bool = Query(False, description="仅返回隐藏工程"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1492,6 +1512,12 @@ def my_crawlers(
         # 仅返回绑定了 API Key 的爬虫，清理掉历史脏数据的影响
         .filter(Crawler.api_key_id != None)
     )
+
+    # 隐藏过滤：默认只看未隐藏；支持 include_hidden 或 hidden_only
+    if hidden_only:
+        query = query.filter(Crawler.is_hidden == True)
+    elif not include_hidden:
+        query = query.filter(Crawler.is_hidden == False)
 
     status_whitelist: set[str] = set()
     if status_filter:
@@ -1703,6 +1729,14 @@ def update_my_crawler(
     # 置顶/取消置顶
     if payload.pinned is not None:
         crawler.pinned_at = now() if payload.pinned else None
+    # 隐藏/取消隐藏
+    if getattr(payload, "is_hidden", None) is not None:
+        if bool(payload.is_hidden):
+            crawler.is_hidden = True
+            crawler.hidden_at = now()
+        else:
+            crawler.is_hidden = False
+            crawler.hidden_at = None
     # 更新日志上限设置
     if payload.log_max_lines is not None:
         crawler.log_max_lines = int(payload.log_max_lines)
@@ -1715,6 +1749,26 @@ def update_my_crawler(
     assignment = _get_effective_assignment(db, current_user.id, crawler)
     _apply_assignment_metadata(crawler, assignment)
     return crawler
+
+
+@api_router.delete("/me/{crawler_id}")
+def delete_my_crawler(
+    crawler_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """删除工程：连带运行、心跳、日志与命令一并删除。"""
+    _ensure_crawler_feature(current_user)
+    crawler = (
+        db.query(Crawler)
+        .filter(Crawler.id == crawler_id, Crawler.user_id == current_user.id)
+        .first()
+    )
+    if not crawler:
+        raise HTTPException(status_code=404, detail="爬虫不存在")
+    db.delete(crawler)
+    db.commit()
+    return {"ok": True}
 
 
 @api_router.get("/me/{crawler_id}/runs", response_model=list[RunOut])
@@ -1933,6 +1987,10 @@ def my_crawler_logs(
     limit: int = Query(100, ge=1, le=500),
     order: str = Query("asc", description="返回顺序 asc/desc"),
     before_id: Optional[int] = Query(None, ge=1),
+    start: Optional[datetime] = Query(None, description="起始时间（ISO8601）"),
+    end: Optional[datetime] = Query(None, description="结束时间（ISO8601）"),
+    min_level: int = Query(0, ge=0, le=50),
+    max_level: int = Query(50, ge=0, le=50),
     q: Optional[str] = Query(None, description="消息关键字或正则"),
     regex: bool = Query(False, description="将 q 作为正则表达式进行匹配"),
     device: Optional[str] = Query(None, description="按设备名包含筛选"),
@@ -1953,12 +2011,17 @@ def my_crawler_logs(
     if normalized_order not in {"asc", "desc"}:
         normalized_order = "asc"
     descending = normalized_order == "desc"
+    min_level = _normalize_level_code(min_level)
+    max_level = _normalize_level_code(max_level)
     query = (
         db.query(LogEntry)
         .filter(LogEntry.crawler_id == crawler_id)
-        .order_by(LogEntry.ts.desc(), LogEntry.id.desc())
         .options(joinedload(LogEntry.crawler), joinedload(LogEntry.api_key))
     )
+    # 时间/级别过滤
+    query = _apply_log_filters(query, start, end, min_level, max_level)
+    # 排序与游标
+    query = query.order_by(LogEntry.ts.desc(), LogEntry.id.desc())
     if before_id:
         query = query.filter(LogEntry.id < before_id)
     if device and device.strip():

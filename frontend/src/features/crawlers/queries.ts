@@ -66,6 +66,8 @@ export interface CrawlerListFilters {
   apiKeyId?: number | "none";
   apiKeyIds?: Array<number>;
   keyword?: string;
+  includeHidden?: boolean;
+  hiddenOnly?: boolean;
 }
 
 export interface HeartbeatQueryOptions {
@@ -134,6 +136,8 @@ export function useCrawlersQuery(filters: CrawlerListFilters = {}) {
     if (groupKey) params.group_ids = groupKey;
     if (apiKeyKey) params.api_key_ids = apiKeyKey;
     if (keywordKey) params.keyword = keywordKey;
+    if (filters.includeHidden) params.include_hidden = "1";
+    if (filters.hiddenOnly) params.hidden_only = "1";
     return params;
   }, [statusKey, groupKey, apiKeyKey, keywordKey]);
 

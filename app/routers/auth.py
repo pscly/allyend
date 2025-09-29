@@ -49,22 +49,17 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 templates.env.globals.update(site_icp=settings.SITE_ICP, theme_presets=THEME_PRESETS, log_levels=LOG_LEVEL_OPTIONS, site_name=settings.SITE_NAME)
 
 def _hydrate_api_key(key: APIKey) -> APIKey:
-    crawler = getattr(key, "crawler", None)
-    if crawler:
-        status = _derive_status(crawler.last_heartbeat)
-        key.crawler_id = crawler.id
-        key.crawler_local_id = crawler.local_id
-        key.crawler_name = crawler.name
-        key.crawler_status = status
-        key.crawler_last_heartbeat = crawler.last_heartbeat
-        key.crawler_public_slug = crawler.public_slug
-    else:
-        key.crawler_id = None
-        key.crawler_local_id = None
-        key.crawler_name = None
-        key.crawler_status = None
-        key.crawler_last_heartbeat = None
-        key.crawler_public_slug = None
+    """为保持兼容，API Key 输出携带爬虫字段但默认为空。
+
+    由于一个 Key 现在可以对应多个工程，这里不再返回单一爬虫信息，
+    前端如需工程列表，请调用 /pa/api/me。
+    """
+    key.crawler_id = None
+    key.crawler_local_id = None
+    key.crawler_name = None
+    key.crawler_status = None
+    key.crawler_last_heartbeat = None
+    key.crawler_public_slug = None
     return key
 
 
@@ -351,7 +346,6 @@ def list_keys(current_user: User = Depends(get_current_user), db: Session = Depe
     keys = (
         db.query(APIKey)
         .options(joinedload(APIKey.group))
-        .options(joinedload(APIKey.crawler))
         .filter(APIKey.user_id == current_user.id)
         .order_by(APIKey.local_id.asc())
         .all()
@@ -390,19 +384,7 @@ def create_key(
     db.add(rec)
     db.flush()
 
-    crawler_local = db.query(func.max(Crawler.local_id)).filter(Crawler.user_id == current_user.id).scalar() or 0
-    crawler_name = payload.name or f"crawler-{crawler_local + 1}"
-    crawler = Crawler(
-        name=crawler_name,
-        user_id=current_user.id,
-        local_id=crawler_local + 1,
-        api_key=rec,
-        group_id=rec.group_id,
-        is_public=payload.is_public,
-        status="offline",
-        status_changed_at=now(),
-    )
-    db.add(crawler)
+    # 说明：API Key 与工程（Crawler）解绑为一对多关系，不再在创建 Key 时自动生成工程。
     # 审计：Key 创建（注意不记录明文 key）
     record_operation(
         db,
@@ -434,23 +416,17 @@ def update_key(
     before = summarize_api_key(rec)
     if payload.name is not None:
         rec.name = payload.name
-        if rec.crawler:
-            rec.crawler.name = payload.name or rec.crawler.name
     if payload.description is not None:
         rec.description = payload.description
     if payload.active is not None:
         rec.active = payload.active
     if payload.is_public is not None:
         rec.is_public = payload.is_public
-        if rec.crawler:
-            rec.crawler.is_public = payload.is_public
     if payload.allowed_ips is not None:
         rec.allowed_ips = payload.allowed_ips
     if payload.group_id is not None:
         if payload.group_id == 0:
             rec.group = None
-            if rec.crawler:
-                rec.crawler.group = None
         else:
             group = (
                 db.query(CrawlerGroup)
@@ -460,8 +436,6 @@ def update_key(
             if not group:
                 raise HTTPException(status_code=404, detail="分组不存在或无权访问")
             rec.group = group
-            if rec.crawler:
-                rec.crawler.group = group
     # 审计：Key 更新
     record_operation(
         db,

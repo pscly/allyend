@@ -137,7 +137,7 @@ export default function AdminEntryPage() {
             ))}
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">演示数据，操作已禁用。</p>
+        <p className="text-xs text-muted-foreground">别看了，你没有管理员权限……</p>
       </section>
     </section>
   );
