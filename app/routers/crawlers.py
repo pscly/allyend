@@ -82,6 +82,8 @@ from ..schemas import (
     HeartbeatPayload,
     LogCreate,
     LogOut,
+    LogUsageOut,
+    UserLogUsageOut,
     QuickLinkCreate,
     QuickLinkUpdate,
     QuickLinkOut,
@@ -111,6 +113,10 @@ HEARTBEAT_ONLINE_SECONDS = 5 * 60
 HEARTBEAT_WARN_SECONDS = 15 * 60
 COMMAND_FETCH_BATCH = 5
 MAX_REGEX_SCAN = 5000  # 后端正则筛选的最大扫描条数（保护数据库与内存）
+TRIM_CHUNK = max(1000, int(getattr(settings, "LOG_TRIM_CHUNK_LINES", 10_000) or 10_000))
+STATS_CACHE_TTL = max(0, int(getattr(settings, "STATS_CACHE_TTL_SECONDS", 60) or 60))
+_PUBLIC_STATS_CACHE: dict[tuple, tuple[float, dict]] = {}
+_PRIVATE_STATS_CACHE: dict[tuple, tuple[float, dict]] = {}
 
 # 简易内存频控：每账号每秒最大查询次数（多实例部署建议换成 Redis 实现）
 _LOG_RATE_BUCKETS: dict[int, list[float]] = {}
@@ -145,6 +151,157 @@ def _resolve_log_level(payload: LogCreate) -> tuple[str, int]:
     if canonical in LOG_LEVEL_NAME_TO_CODE:
         return canonical, LOG_LEVEL_NAME_TO_CODE[canonical]
     return "INFO", LOG_LEVEL_NAME_TO_CODE["INFO"]
+
+
+# ---------- 日志配额与清理辅助 ----------
+
+def _effective_crawler_limits(crawler: Crawler) -> tuple[int | None, int | None]:
+    """返回爬虫的有效日志上限（行/字节）。
+
+    - None 表示不限制对应维度
+    - 读取 crawler.log_max_*，若为空或 <=0 则回退为系统默认；为负值表示不限制
+    """
+    max_lines: int | None
+    max_bytes: int | None
+    if crawler.log_max_lines is None:
+        max_lines = int(getattr(settings, "DEFAULT_CRAWLER_LOG_MAX_LINES", 1_000_000) or 1_000_000)
+    else:
+        max_lines = None if int(crawler.log_max_lines) <= 0 else int(crawler.log_max_lines)
+    if crawler.log_max_bytes is None:
+        max_bytes = int(getattr(settings, "DEFAULT_CRAWLER_LOG_MAX_BYTES", 100 * 1024 * 1024) or (100 * 1024 * 1024))
+    else:
+        max_bytes = None if int(crawler.log_max_bytes) <= 0 else int(crawler.log_max_bytes)
+    return max_lines, max_bytes
+
+
+def _effective_user_quota(user: User) -> int | None:
+    """返回用户日志总配额（字节）。None 表示无限制。"""
+    if user.log_quota_bytes is None:
+        return int(getattr(settings, "DEFAULT_USER_LOG_QUOTA_BYTES", 300 * 1024 * 1024) or (300 * 1024 * 1024))
+    v = int(user.log_quota_bytes)
+    return None if v <= 0 else v
+
+
+def _measure_crawler_usage(db: Session, crawler_id: int) -> tuple[int, int]:
+    """统计某爬虫日志行数与字节数。"""
+    lines = db.query(func.count(LogEntry.id)).filter(LogEntry.crawler_id == crawler_id).scalar() or 0
+    # 以数据库 length(Text) 近似表示字节占用（SQLite 返回字符数，足够近似）
+    bytes_ = (
+        db.query(func.coalesce(func.sum(func.length(LogEntry.message)), 0))
+        .filter(LogEntry.crawler_id == crawler_id)
+        .scalar()
+        or 0
+    )
+    return int(lines), int(bytes_)
+
+
+def _measure_user_usage(db: Session, user_id: int) -> tuple[int, int]:
+    """统计用户所有爬虫的日志占用（行/字节）。"""
+    lines = (
+        db.query(func.count(LogEntry.id))
+        .join(Crawler)
+        .filter(Crawler.user_id == user_id)
+        .scalar()
+        or 0
+    )
+    bytes_ = (
+        db.query(func.coalesce(func.sum(func.length(LogEntry.message)), 0))
+        .join(Crawler)
+        .filter(Crawler.user_id == user_id)
+        .scalar()
+        or 0
+    )
+    return int(lines), int(bytes_)
+
+
+def _delete_oldest_crawler_logs(db: Session, crawler_id: int, n: int) -> int:
+    """删除指定爬虫最旧的 n 条日志，返回删除数量。"""
+    n = max(0, int(n or 0))
+    if n <= 0:
+        return 0
+    ids = [
+        r[0]
+        for r in (
+            db.query(LogEntry.id)
+            .filter(LogEntry.crawler_id == crawler_id)
+            .order_by(LogEntry.id.asc())
+            .limit(n)
+            .all()
+        )
+    ]
+    if not ids:
+        return 0
+    deleted = db.query(LogEntry).filter(LogEntry.id.in_(ids)).delete(synchronize_session=False)
+    db.commit()
+    return int(deleted or 0)
+
+
+def _delete_oldest_user_logs(db: Session, user_id: int, n: int) -> int:
+    """删除某用户最旧的 n 条日志（跨所有爬虫），返回删除数量。"""
+    n = max(0, int(n or 0))
+    if n <= 0:
+        return 0
+    ids = [
+        r[0]
+        for r in (
+            db.query(LogEntry.id)
+            .join(Crawler)
+            .filter(Crawler.user_id == user_id)
+            .order_by(LogEntry.id.asc())
+            .limit(n)
+            .all()
+        )
+    ]
+    if not ids:
+        return 0
+    deleted = db.query(LogEntry).filter(LogEntry.id.in_(ids)).delete(synchronize_session=False)
+    db.commit()
+    return int(deleted or 0)
+
+
+def _enforce_crawler_limits(db: Session, crawler: Crawler) -> dict:
+    """在单爬虫范围内执行配额清理：超限则每次删除 TRIM_CHUNK 条最旧日志。"""
+    max_lines, max_bytes = _effective_crawler_limits(crawler)
+    lines, bytes_ = _measure_crawler_usage(db, crawler.id)
+    deleted_total = 0
+    loop_guard = 0
+    while True:
+        need_delete = 0
+        if max_lines is not None and lines > max_lines:
+            need_delete = max(need_delete, min(TRIM_CHUNK, lines - max_lines))
+        if max_bytes is not None and bytes_ > max_bytes:
+            # 无法准确估算条->字节的映射，采用固定批量删除并循环校正
+            need_delete = max(need_delete, TRIM_CHUNK)
+        if need_delete <= 0:
+            break
+        deleted = _delete_oldest_crawler_logs(db, crawler.id, need_delete)
+        deleted_total += deleted
+        # 重新测量，避免长时间占用事务
+        lines, bytes_ = _measure_crawler_usage(db, crawler.id)
+        loop_guard += 1
+        if loop_guard >= 20:  # 安全阈值，避免极端情况下循环过久
+            break
+    return {"deleted": deleted_total, "lines": lines, "bytes": bytes_}
+
+
+def _enforce_user_quota(db: Session, user: User) -> dict:
+    """在用户总量范围内执行配额清理。"""
+    quota = _effective_user_quota(user)
+    lines, bytes_ = _measure_user_usage(db, user.id)
+    deleted_total = 0
+    if quota is None:
+        return {"deleted": 0, "lines": lines, "bytes": bytes_, "quota": None}
+    loop_guard = 0
+    while bytes_ > quota:
+        deleted = _delete_oldest_user_logs(db, user.id, TRIM_CHUNK)
+        if deleted <= 0:
+            break
+        deleted_total += deleted
+        lines, bytes_ = _measure_user_usage(db, user.id)
+        loop_guard += 1
+        if loop_guard >= 50:
+            break
+    return {"deleted": deleted_total, "lines": lines, "bytes": bytes_, "quota": quota}
 
 
 def _parse_id_list(raw: Optional[str]) -> List[int]:
@@ -1097,6 +1254,15 @@ def create_log(
     db.add(log)
     db.commit()
     db.refresh(log)
+    # 强制执行项目级与用户级配额（滚动清理）
+    try:
+        _enforce_crawler_limits(db, crawler)
+    except Exception:
+        pass
+    try:
+        _enforce_user_quota(db, api_key.user)
+    except Exception:
+        pass
     return log
 
 
@@ -1537,6 +1703,11 @@ def update_my_crawler(
     # 置顶/取消置顶
     if payload.pinned is not None:
         crawler.pinned_at = now() if payload.pinned else None
+    # 更新日志上限设置
+    if payload.log_max_lines is not None:
+        crawler.log_max_lines = int(payload.log_max_lines)
+    if payload.log_max_bytes is not None:
+        crawler.log_max_bytes = int(payload.log_max_bytes)
     db.commit()
     db.refresh(crawler)
     crawler.status = _compute_status(crawler.last_heartbeat)
@@ -1809,6 +1980,143 @@ def my_crawler_logs(
         if not descending:
             records = list(reversed(records))
         return _serialise_logs(records)
+
+
+@api_router.get("/me/{crawler_id}/logs/stats")
+def my_crawler_logs_stats(
+    crawler_id: int,
+    hours: int = Query(24, ge=1, le=168, description="统计窗口（小时）"),
+    buckets: int = Query(24, ge=2, le=240, description="分桶数量"),
+    min_level: int = Query(0, ge=0, le=50),
+    max_level: int = Query(50, ge=0, le=50),
+    q: Optional[str] = Query(None, description="消息关键字或正则"),
+    regex: bool = Query(False, description="q 是否为正则"),
+    granularity: Optional[str] = Query(None, description="聚合粒度：auto/day/week"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_crawler_feature(current_user)
+    c = (
+        db.query(Crawler)
+        .filter(Crawler.id == crawler_id, Crawler.user_id == current_user.id)
+        .first()
+    )
+    if not c:
+        raise HTTPException(status_code=404, detail="爬虫不存在")
+    from_dt = now() - timedelta(hours=int(hours or 24))
+    min_level = _normalize_level_code(min_level)
+    max_level = _normalize_level_code(max_level)
+    base = (
+        db.query(LogEntry.id, LogEntry.ts, LogEntry.message)
+        .filter(LogEntry.crawler_id == crawler_id)
+        .filter(LogEntry.ts >= from_dt)
+        .filter(LogEntry.level_code >= min_level)
+        .filter(LogEntry.level_code <= max_level)
+        .order_by(LogEntry.ts.asc())
+    )
+    text = (q or "").strip()
+    use_regex = bool(regex)
+    if text and not use_regex:
+        base = base.filter(LogEntry.message.ilike(f"%{text}%"))
+    rows = base.limit(20000).all()
+    if text and use_regex:
+        try:
+            pattern = re.compile(text)
+            rows = [r for r in rows if pattern.search(r[2] or "")]
+        except re.error:
+            pass
+    scanned = len(rows)
+    if not rows:
+        end_dt = now()
+        return {"start": from_dt.isoformat(), "end": end_dt.isoformat(), "buckets": [], "total": 0, "scanned": 0}
+    start_dt = rows[0][1]
+    end_dt = rows[-1][1]
+    b = max(2, int(buckets or 24))
+    edges = _make_edges(start_dt, end_dt, b, granularity)
+    counts = [0] * (len(edges) - 1)
+    j = 0
+    for _id, ts, _msg in rows:
+        while j < len(edges) - 2 and ts >= edges[j + 1]:
+            j += 1
+        counts[j] += 1
+    bucket_list = [{"t": edges[i].isoformat(), "count": counts[i]} for i in range(len(edges) - 1)]
+    result = {"start": start_dt.isoformat(), "end": end_dt.isoformat(), "buckets": bucket_list, "total": sum(counts), "scanned": scanned}
+    key = (current_user.id, crawler_id, hours, b, min_level, max_level, text, bool(regex), (granularity or "auto").lower())
+    cached = _stats_cache_get(_PRIVATE_STATS_CACHE, key)
+    if cached is not None:
+        return cached
+    _stats_cache_set(_PRIVATE_STATS_CACHE, key, result)
+    return result
+
+
+@api_router.get("/me/{crawler_id}/logs/usage", response_model=LogUsageOut)
+def my_crawler_logs_usage(
+    crawler_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_crawler_feature(current_user)
+    crawler = (
+        db.query(Crawler)
+        .filter(Crawler.id == crawler_id, Crawler.user_id == current_user.id)
+        .first()
+    )
+    if not crawler:
+        raise HTTPException(status_code=404, detail="爬虫不存在")
+    lines, bytes_ = _measure_crawler_usage(db, crawler.id)
+    max_lines, max_bytes = _effective_crawler_limits(crawler)
+    return {
+        "lines": lines,
+        "bytes": bytes_,
+        "max_lines": max_lines,
+        "max_bytes": max_bytes,
+    }
+
+
+@api_router.delete("/me/{crawler_id}/logs")
+def clear_my_crawler_logs(
+    crawler_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_crawler_feature(current_user)
+    crawler = (
+        db.query(Crawler)
+        .filter(Crawler.id == crawler_id, Crawler.user_id == current_user.id)
+        .first()
+    )
+    if not crawler:
+        raise HTTPException(status_code=404, detail="爬虫不存在")
+    # 统计现有
+    before_lines, before_bytes = _measure_crawler_usage(db, crawler.id)
+    # 全量删除该爬虫日志
+    deleted = (
+        db.query(LogEntry)
+        .filter(LogEntry.crawler_id == crawler.id)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "deleted": int(deleted or 0),
+        "before": {"lines": before_lines, "bytes": before_bytes},
+        "after": {"lines": 0, "bytes": 0},
+    }
+
+
+@api_router.get("/me/logs/usage", response_model=UserLogUsageOut)
+def my_logs_usage(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_crawler_feature(current_user)
+    lines, bytes_ = _measure_user_usage(db, current_user.id)
+    quota = _effective_user_quota(current_user)
+    return {
+        "total_lines": lines,
+        "total_bytes": bytes_,
+        "quota_bytes": quota,
+    }
 
 
 # ------- 快捷链接管理 -------
@@ -2485,6 +2793,8 @@ def _build_link_summary(link: CrawlerAccessLink, slug: str) -> dict[str, object]
             "is_public": crawler.is_public,
             "owner_id": crawler.user_id,
             "owner_name": owner_name,
+            "log_max_lines": crawler.log_max_lines,
+            "log_max_bytes": crawler.log_max_bytes,
             "link_description": link.description,
             "link_created_at": link.created_at,
             "allow_logs": link.allow_logs,
@@ -2573,6 +2883,125 @@ def public_crawler_summary_api(slug: str, db: Session = Depends(get_db)):
     return _build_link_summary(link, slug)
 
 
+@public_router.get("/{slug}/api/logs/usage")
+def public_logs_usage(slug: str, db: Session = Depends(get_db)):
+    link = _resolve_link(db, slug)
+    # 计算目标日志用量
+    if link.target_type == "crawler" and link.crawler:
+        lines, bytes_ = _measure_crawler_usage(db, link.crawler.id)
+        max_lines, max_bytes = _effective_crawler_limits(link.crawler)
+        return {"lines": lines, "bytes": bytes_, "max_lines": max_lines, "max_bytes": max_bytes}
+    elif link.target_type == "api_key" and link.api_key:
+        lines = db.query(func.count(LogEntry.id)).filter(LogEntry.api_key_id == link.api_key.id).scalar() or 0
+        bytes_ = (
+            db.query(func.coalesce(func.sum(func.length(LogEntry.message)), 0))
+            .filter(LogEntry.api_key_id == link.api_key.id)
+            .scalar()
+            or 0
+        )
+        return {"lines": int(lines), "bytes": int(bytes_), "max_lines": None, "max_bytes": None}
+    elif link.target_type == "group" and link.group:
+        gid = link.group.id
+        lines = (
+            db.query(func.count(LogEntry.id))
+            .filter(
+                or_(
+                    LogEntry.crawler.has(Crawler.group_id == gid),
+                    LogEntry.api_key.has(APIKey.group_id == gid),
+                )
+            )
+            .scalar()
+            or 0
+        )
+        bytes_ = (
+            db.query(func.coalesce(func.sum(func.length(LogEntry.message)), 0))
+            .filter(
+                or_(
+                    LogEntry.crawler.has(Crawler.group_id == gid),
+                    LogEntry.api_key.has(APIKey.group_id == gid),
+                )
+            )
+            .scalar()
+            or 0
+        )
+        return {"lines": int(lines), "bytes": int(bytes_), "max_lines": None, "max_bytes": None}
+    else:
+        raise HTTPException(status_code=400, detail="链接目标不存在")
+
+
+@public_router.get("/{slug}/api/logs/stats")
+def public_logs_stats(
+    slug: str,
+    hours: int = Query(24, ge=1, le=168, description="统计窗口（小时）"),
+    buckets: int = Query(24, ge=2, le=240, description="分桶数量"),
+    min_level: int = Query(0, ge=0, le=50),
+    max_level: int = Query(50, ge=0, le=50),
+    q: Optional[str] = Query(None, description="消息关键字或正则"),
+    regex: bool = Query(False, description="q 是否为正则"),
+    granularity: Optional[str] = Query(None, description="聚合粒度：auto/day/week"),
+    db: Session = Depends(get_db),
+):
+    link = _resolve_link(db, slug)
+    if not link.allow_logs:
+        raise HTTPException(status_code=403, detail="该链接未开放日志访问")
+    from_dt = now() - timedelta(hours=int(hours or 24))
+
+    min_level = _normalize_level_code(min_level)
+    max_level = _normalize_level_code(max_level)
+    base = db.query(LogEntry.id, LogEntry.ts, LogEntry.message)
+    if link.target_type == "crawler" and link.crawler:
+        base = base.filter(LogEntry.crawler_id == link.crawler.id)
+    elif link.target_type == "api_key" and link.api_key:
+        base = base.filter(LogEntry.api_key_id == link.api_key.id)
+    elif link.target_type == "group" and link.group:
+        base = base.filter(
+            or_(
+                LogEntry.crawler.has(Crawler.group_id == link.group.id),
+                LogEntry.api_key.has(APIKey.group_id == link.group.id),
+            )
+        )
+    else:
+        raise HTTPException(status_code=400, detail="链接目标不存在")
+
+    qy = base.filter(LogEntry.ts >= from_dt).filter(LogEntry.level_code >= min_level).filter(LogEntry.level_code <= max_level)
+    # 关键字：数据库端过滤；正则：Python 端过滤
+    use_regex = bool(regex)
+    text = (q or "").strip() if q else ""
+    if text and not use_regex:
+        qy = qy.filter(LogEntry.message.ilike(f"%{text}%"))
+    qy = qy.order_by(LogEntry.ts.asc())
+    rows = qy.limit(20000).all()  # 扫描上限
+    if text and use_regex:
+        try:
+            pattern = re.compile(text)
+            rows = [r for r in rows if pattern.search(r[2] or "")]
+        except re.error:
+            pass
+    scanned = len(rows)
+    if not rows:
+        end_dt = now()
+        return {"start": from_dt.isoformat(), "end": end_dt.isoformat(), "buckets": [], "total": 0, "scanned": 0}
+    start_dt = rows[0][1]
+    end_dt = rows[-1][1]
+    b = max(2, int(buckets or 24))
+    edges = _make_edges(start_dt, end_dt, b, granularity)
+    counts = [0] * (len(edges) - 1)
+    j = 0
+    for _id, ts, _msg in rows:
+        while j < len(edges) - 2 and ts >= edges[j + 1]:
+            j += 1
+        counts[j] += 1
+    bucket_list = [{"t": edges[i].isoformat(), "count": counts[i]} for i in range(len(edges) - 1)]
+    result = {"start": start_dt.isoformat(), "end": end_dt.isoformat(), "buckets": bucket_list, "total": sum(counts), "scanned": scanned}
+    # 缓存（公开页缓存以 slug+参数为 key）
+    key = (slug, hours, b, min_level, max_level, text, bool(regex), (granularity or "auto").lower())
+    cached = _stats_cache_get(_PUBLIC_STATS_CACHE, key)
+    if cached is not None:
+        return cached
+    _stats_cache_set(_PUBLIC_STATS_CACHE, key, result)
+    return result
+
+
 @public_router.get("/{slug}/api/logs", response_model=list[LogOut])
 def public_logs(
     slug: str,
@@ -2636,3 +3065,46 @@ router = api_router
 __all__ = ["router", "public_router"]
 
 
+# ---------- 统计与缓存辅助 ----------
+
+def _stats_cache_get(cache: dict, key: tuple) -> dict | None:
+    if STATS_CACHE_TTL <= 0:
+        return None
+    item = cache.get(key)
+    if not item:
+        return None
+    ts, data = item
+    if time.time() - ts > STATS_CACHE_TTL:
+        return None
+    return data
+
+
+def _stats_cache_set(cache: dict, key: tuple, data: dict) -> None:
+    if STATS_CACHE_TTL <= 0:
+        return
+    cache[key] = (time.time(), data)
+
+
+def _make_edges(start_dt: datetime, end_dt: datetime, buckets: int, granularity: str | None) -> list[datetime]:
+    b = max(2, int(buckets or 24))
+    gran = (granularity or "auto").lower()
+    if gran == "day":
+        step = timedelta(days=1)
+    elif gran == "week":
+        step = timedelta(days=7)
+    else:
+        total_seconds = max(1.0, (end_dt - start_dt).total_seconds())
+        step = timedelta(seconds=(total_seconds / b))
+    edges: list[datetime] = [start_dt]
+    while len(edges) < b:
+        edges.append(edges[-1] + step)
+        if edges[-1] >= end_dt:
+            break
+    if edges[-1] < end_dt:
+        edges.append(end_dt)
+    # 调整为恰好 b+1 个边界
+    while len(edges) < b + 1:
+        edges.append(edges[-1])
+    if len(edges) > b + 1:
+        edges = edges[: b + 1]
+    return edges

@@ -57,6 +57,13 @@
         <label>日志权限</label>
         <div class="hint">{{ '开放访问' if summary.allow_logs else '已关闭' }}</div>
       </div>
+      <div>
+        <label>日志用量</label>
+        <div class="hint"><span id="usage-bytes">-</span>{% if summary.type == 'crawler' %} / <span id="usage-max-bytes">-</span>{% endif %}</div>
+        <div id="usage-bar" style="margin-top:4px;width:220px;height:8px;background:var(--color-border);border-radius:4px;overflow:hidden;display:none;">
+          <div id="usage-bar-inner" style="height:100%;width:0;background:var(--color-primary);"></div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -114,10 +121,170 @@
     <div class="empty-hint">该链接未开放日志访问。</div>
     {% endif %}
   </section>
+
+  {% if summary.allow_logs %}
+  <section class="card">
+    <div class="card-header">
+      <h3>近期统计</h3>
+      <div class="table-actions">
+        <button class="text" type="button" id="stats-export-csv">导出 CSV</button>
+        <button class="text" type="button" id="stats-export-png">导出 PNG</button>
+        <button class="text" type="button" id="stats-refresh">刷新</button>
+      </div>
+    </div>
+    <div class="filters" style="margin-bottom:0;align-items:flex-end;grid-template-columns: 140px 140px 160px 160px 220px auto;">
+      <div>
+        <label for="stats-hours">窗口（小时）</label>
+        <input type="number" id="stats-hours" min="1" max="168" value="24" />
+      </div>
+      <div>
+        <label for="stats-buckets">分桶数量</label>
+        <input type="number" id="stats-buckets" min="2" max="240" value="24" />
+      </div>
+      <div>
+        <label for="stats-min-level">最小等级</label>
+        <select id="stats-min-level"></select>
+      </div>
+      <div>
+        <label for="stats-max-level">最大等级</label>
+        <select id="stats-max-level"></select>
+      </div>
+      <div>
+        <label for="stats-granularity">粒度</label>
+        <select id="stats-granularity">
+          <option value="auto" selected>自动</option>
+          <option value="day">按天</option>
+          <option value="week">按周</option>
+        </select>
+      </div>
+      <div class="hint">显示近时段内每个时间桶的日志条数</div>
+    </div>
+    <div id="stats-chart" style="margin:12px 8px 4px 8px;display:flex;gap:4px;align-items:flex-end;height:140px;">
+      <div class="empty-hint" id="stats-empty">暂无数据</div>
+    </div>
+    <div class="hint" id="stats-meta" style="margin:0 8px 8px 8px;">&nbsp;</div>
+  </section>
+  {% endif %}
 {% endblock %}
 
 {% block scripts %}
   {% if link_summary.allow_logs %}
   <script src="/static/public_link.js" defer></script>
   {% endif %}
+  <script>
+  (function() {
+    function renderLevelOptions(select, selected) {
+      const opts = (window.LOG_LEVEL_OPTIONS || []).slice().sort((a,b)=>a.code-b.code);
+      select.innerHTML = opts.map(o => `<option value="${o.code}" ${Number(selected)===Number(o.code)?'selected':''}>${o.code} - ${o.name}</option>`).join('');
+    }
+    function formatBytes(n) {
+      const num = Number(n || 0);
+      if (!isFinite(num)) return String(n);
+      const units = ['B','KB','MB','GB','TB'];
+      let v = num, i = 0;
+      while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+      return `${v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2)} ${units[i]}`;
+    }
+    async function loadUsage() {
+      try {
+        const res = await fetch(`/pa/{{ slug }}/api/logs/usage`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const used = formatBytes(data.bytes || 0);
+        document.getElementById('usage-bytes').textContent = used;
+        if ('max_bytes' in data && data.max_bytes !== null && data.max_bytes !== undefined) {
+          document.getElementById('usage-max-bytes').textContent = formatBytes(data.max_bytes);
+          const bar = document.getElementById('usage-bar');
+          const inner = document.getElementById('usage-bar-inner');
+          const usedNum = Number(data.bytes || 0);
+          const maxNum = Number(data.max_bytes || 0);
+          if (maxNum > 0) {
+            const ratio = Math.max(0, Math.min(1, usedNum / maxNum));
+            inner.style.width = `${(ratio * 100).toFixed(1)}%`;
+            inner.style.background = ratio >= 0.95 ? '#b91c1c' : 'var(--color-primary)';
+            bar.style.display = '';
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+    loadUsage();
+
+    if ({{ 'true' if link_summary.allow_logs else 'false' }}) {
+      renderLevelOptions(document.getElementById('stats-min-level'), 0);
+      renderLevelOptions(document.getElementById('stats-max-level'), 50);
+      let __pstats = null;
+      async function loadStats() {
+        const h = Math.max(1, Math.min(168, Number(document.getElementById('stats-hours').value || 24)));
+        const k = Math.max(2, Math.min(240, Number(document.getElementById('stats-buckets').value || 24)));
+        const min = Number(document.getElementById('stats-min-level').value || 0);
+        const max = Number(document.getElementById('stats-max-level').value || 50);
+        const gran = document.getElementById('stats-granularity').value || 'auto';
+        const qEl = document.getElementById('link-query');
+        const rxEl = document.getElementById('link-regex-mode');
+        const q = qEl && qEl.value ? `&q=${encodeURIComponent(qEl.value.trim())}` : '';
+        const rx = rxEl && rxEl.checked ? '&regex=1' : '';
+        const url = `/pa/{{ slug }}/api/logs/stats?hours=${h}&buckets=${k}&min_level=${min}&max_level=${max}&granularity=${encodeURIComponent(gran)}${q}${rx}`;
+        try {
+          const res = await fetch(url);
+          if (!res.ok) return;
+          const data = await res.json();
+          __pstats = data;
+          const chart = document.getElementById('stats-chart');
+          const empty = document.getElementById('stats-empty');
+          const meta = document.getElementById('stats-meta');
+          chart.innerHTML = '';
+          if (!data.buckets || !data.buckets.length) {
+            empty.style.display = '';
+            meta.textContent = '';
+            return;
+          }
+          empty.style.display = 'none';
+          const maxv = Math.max(1, ...data.buckets.map(b => b.count || 0));
+          let peakIdx = 0; let peakVal = 0;
+          data.buckets.forEach((b, idx) => { if ((b.count || 0) > peakVal) { peakVal = b.count || 0; peakIdx = idx; } });
+          const barWidth = Math.max(2, Math.floor(260 / data.buckets.length));
+          data.buckets.forEach(b => {
+            const v = Number(b.count || 0);
+            const bar = document.createElement('div');
+            bar.title = `${new Date(b.t).toLocaleString()}\n${v} 条`;
+            bar.style.cssText = `width:${barWidth}px;height:${Math.max(2, Math.floor(v / maxv * 100))}%;background:${v===peakVal?'#b91c1c':'var(--color-primary)'};opacity:${v ? 1 : 0.25};`;
+            chart.appendChild(bar);
+          });
+          meta.textContent = `总计 ${data.total} 条，峰值 ${peakVal} | 时间范围：${new Date(data.start).toLocaleString()} ~ ${new Date(data.end).toLocaleString()}（采样 ${data.scanned} 条）`;
+        } catch (_) {}
+      }
+      document.getElementById('stats-refresh').addEventListener('click', loadStats);
+      document.getElementById('stats-export-csv').addEventListener('click', () => {
+        if (!__pstats || !__pstats.buckets) return;
+        const rows = [['time','count']].concat(__pstats.buckets.map(b => [b.t, String(b.count||0)]));
+        const csv = rows.map(r => r.map(x => (/[,\"]/.test(x) ? '"'+String(x).replace(/\"/g,'""')+'"' : x)).join(',')).join('\r\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `public-{{ slug }}-stats.csv`; a.click();
+      });
+      document.getElementById('stats-export-png').addEventListener('click', () => {
+        if (!__pstats || !__pstats.buckets) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = 800; canvas.height = 240; const ctx = canvas.getContext('2d');
+        const W=canvas.width,H=canvas.height; const margin=32; const chartW=W-margin*2, chartH=H-margin*2;
+        ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--color-background') || '#fff'; ctx.fillRect(0,0,W,H);
+        const primary = getComputedStyle(document.body).getPropertyValue('--color-primary') || '#4f46e5';
+        const maxv = Math.max(1, ...(__pstats.buckets||[]).map(b=>b.count||0));
+        const n = __pstats.buckets.length; const bw = Math.max(1, Math.floor(chartW / n * 0.8)); const gap = Math.max(1, Math.floor(chartW / n * 0.2));
+        let peakIdx=0, peakVal=0; __pstats.buckets.forEach((b,i)=>{ if ((b.count||0)>peakVal) { peakVal=b.count||0; peakIdx=i; } });
+        for (let i=0;i<n;i++) {
+          const v = Number(__pstats.buckets[i].count||0);
+          const x = margin + i*(bw+gap);
+          const h = Math.max(1, Math.floor(v/maxv*chartH));
+          ctx.fillStyle = (i===peakIdx ? '#b91c1c' : primary);
+          ctx.globalAlpha = v ? 1 : 0.25;
+          ctx.fillRect(x, margin + chartH - h, bw, h);
+        }
+        ctx.globalAlpha = 1; ctx.fillStyle = '#333'; ctx.font = '12px sans-serif';
+        ctx.fillText(`Total: ${__pstats.total}  Peak: ${peakVal}`, margin, margin-8);
+        const a = document.createElement('a'); a.href = canvas.toDataURL('image/png'); a.download = `public-{{ slug }}-stats.png`; a.click();
+      });
+      loadStats();
+    }
+  })();
+  </script>
 {% endblock %}

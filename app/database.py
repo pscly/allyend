@@ -210,4 +210,11 @@ def _ensure_extra_columns() -> None:
     # 新增爬虫置顶时间列
     if not has_col('crawlers', 'pinned_at'):
         add_col('crawlers', 'pinned_at DATETIME')
+    # 日志相关配额列（轻量补齐）
+    if not has_col('users', 'log_quota_bytes'):
+        add_col('users', 'log_quota_bytes INTEGER')
+    if not has_col('crawlers', 'log_max_lines'):
+        add_col('crawlers', 'log_max_lines INTEGER')
+    if not has_col('crawlers', 'log_max_bytes'):
+        add_col('crawlers', 'log_max_bytes INTEGER')
 

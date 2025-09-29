@@ -24,6 +24,8 @@ class UserProfileOut(BaseModel):
     theme_background: str
     is_dark_mode: bool
     created_at: datetime
+    # 日志配额（字节）：None 表示使用系统默认（前端可调用 /me/logs/usage 获取实际配额）
+    log_quota_bytes: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -178,6 +180,21 @@ class LogCreate(BaseModel):
     device_name: Optional[str] = None
 
 
+class LogUsageOut(BaseModel):
+    """单个爬虫日志用量信息"""
+    lines: int
+    bytes: int
+    max_lines: Optional[int] = None
+    max_bytes: Optional[int] = None
+
+
+class UserLogUsageOut(BaseModel):
+    """用户维度日志用量信息"""
+    total_lines: int
+    total_bytes: int
+    quota_bytes: Optional[int] = None
+
+
 class CrawlerOut(BaseModel):
     id: int
     local_id: Optional[int] = None
@@ -206,6 +223,9 @@ class CrawlerOut(BaseModel):
     config_assignment_name: Optional[str] = None
     config_assignment_version: Optional[int] = None
     config_assignment_format: Optional[str] = None
+    # 日志上限设置（None 表示使用系统默认）
+    log_max_lines: Optional[int] = None
+    log_max_bytes: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -216,6 +236,9 @@ class CrawlerUpdate(BaseModel):
     is_public: Optional[bool] = None
     # 置顶/取消置顶
     pinned: Optional[bool] = None
+    # 日志上限设置（可在前端修改）；None 表示保持不变
+    log_max_lines: Optional[int] = None
+    log_max_bytes: Optional[int] = None
 
 
 class RunOut(BaseModel):
@@ -608,12 +631,16 @@ class AdminUserOut(BaseModel):
     group: Optional[UserGroupOut] = None
     invited_by: Optional[str] = None
     created_at: datetime
+    # 日志配额（字节）：None 表示使用系统默认
+    log_quota_bytes: Optional[int] = None
 
 
 class AdminUserUpdate(BaseModel):
     role: Optional[str] = None
     group_id: Optional[int] = None
     is_active: Optional[bool] = None
+    # 设置用户日志配额（字节）；传 -1 或 0 表示无限制；None 不修改
+    log_quota_bytes: Optional[int] = None
 
 
 class RegistrationSettingUpdate(BaseModel):

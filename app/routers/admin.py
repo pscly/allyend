@@ -9,12 +9,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from ..config import settings
 from ..constants import ROLE_USER, ROLE_ADMIN, ROLE_SUPERADMIN, THEME_PRESETS, LOG_LEVEL_OPTIONS
 from ..dependencies import get_current_user, get_db
-from ..models import InviteCode, SystemSetting, User, UserGroup
+from ..models import InviteCode, SystemSetting, User, UserGroup, Crawler, LogEntry
 from ..utils.time_utils import now
 from ..schemas import (
     AdminUserOut,
@@ -64,6 +65,7 @@ def _serialize_user(user: User) -> AdminUserOut:
         group=group,
         invited_by=invited_by,
         created_at=user.created_at,
+        log_quota_bytes=user.log_quota_bytes,
     )
 
 
@@ -136,9 +138,42 @@ def admin_update_user(
         target.group = group
     if payload.is_active is not None:
         target.is_active = payload.is_active
+    if payload.log_quota_bytes is not None:
+        # -1 或 0 代表无限制，存储为 None
+        v = int(payload.log_quota_bytes)
+        target.log_quota_bytes = None if v <= 0 else v
     db.commit()
     db.refresh(target)
     return _serialize_user(target)
+
+
+def _measure_user_usage(db: Session, user_id: int) -> tuple[int, int]:
+    """统计用户日志用量（行/字节）。"""
+    lines = (
+        db.query(func.count(LogEntry.id))
+        .join(Crawler)
+        .filter(Crawler.user_id == user_id)
+        .scalar()
+        or 0
+    )
+    bytes_ = (
+        db.query(func.coalesce(func.sum(func.length(LogEntry.message)), 0))
+        .join(Crawler)
+        .filter(Crawler.user_id == user_id)
+        .scalar()
+        or 0
+    )
+    return int(lines), int(bytes_)
+
+
+@router.get("/api/users/{user_id}/logs/usage")
+def admin_user_log_usage(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _require_admin(current_user)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    lines, bytes_ = _measure_user_usage(db, user_id)
+    return {"total_lines": lines, "total_bytes": bytes_, "quota_bytes": user.log_quota_bytes}
 
 
 @router.get("/api/groups", response_model=list[UserGroupOut])

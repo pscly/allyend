@@ -50,6 +50,18 @@ class Settings(BaseSettings):
     # 日志查询频控（每账号每秒最大请求数）
     LOG_QUERY_RATE_PER_SECOND: int = 5
 
+    # 日志配额与清理策略（可在 .env 覆盖）
+    # 每个用户的日志总配额（字节），默认 300MB；设为 -1 表示无限制
+    DEFAULT_USER_LOG_QUOTA_BYTES: int = 300 * 1024 * 1024
+    # 单个爬虫的日志上限：行数与字节（默认 100 万行或 100MB）；设为 <=0 则采用默认
+    DEFAULT_CRAWLER_LOG_MAX_LINES: int = 1_000_000
+    DEFAULT_CRAWLER_LOG_MAX_BYTES: int = 100 * 1024 * 1024
+    # 超限时滚动清理的批次（每次删除的行数）
+    LOG_TRIM_CHUNK_LINES: int = 10_000
+
+    # 趋势统计缓存 TTL（秒）
+    STATS_CACHE_TTL_SECONDS: int = 60
+
     # Cookie 会话配置
     COOKIE_SECURE: bool = False
     COOKIE_SAMESITE: str = "lax"  # 可选："lax" | "strict" | "none"

@@ -60,7 +60,7 @@
     </div>
     <div class="table-scroll">
       <table class="data-table" id="user-table">
-        <thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>分组</th><th>状态</th><th>邀请人</th><th>创建时间</th><th>操作</th></tr></thead>
+        <thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>分组</th><th>状态</th><th>日志用量</th><th>配额(字节)</th><th>邀请人</th><th>创建时间</th><th>操作</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -83,6 +83,15 @@
       throw new Error(data.detail || `请求失败: ${res.status}`);
     }
     return res.json();
+  }
+
+  function formatBytes(n) {
+    const num = Number(n || 0);
+    if (!isFinite(num)) return String(n);
+    const units = ['B','KB','MB','GB','TB'];
+    let v = num, i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2)} ${units[i]}`;
   }
 
   const registrationForm = document.getElementById('registration-form');
@@ -197,6 +206,8 @@
             <span></span>
           </label>
         </td>
+        <td><div class="usage" data-uid="${user.id}"><span class="hint">载入中...</span></div></td>
+        <td><input type="number" data-uid="${user.id}" data-field="log_quota_bytes" placeholder="默认 314572800" value="${user.log_quota_bytes ?? ''}" /></td>
         <td>${invited}</td>
         <td>${new Date(user.created_at).toLocaleString()}</td>
         <td><button class="text" data-save="${user.id}">保存</button></td>
@@ -211,7 +222,10 @@
         const groupIdValue = row.querySelector('select[data-field="group_id"]').value;
         const group_id = groupIdValue ? Number(groupIdValue) : null;
         const is_active = row.querySelector('input[data-field="is_active"]').checked;
+        const quotaInput = row.querySelector('input[data-field="log_quota_bytes"]');
+        const quotaVal = quotaInput ? quotaInput.value : '';
         const payload = { role, group_id, is_active };
+        if (quotaVal !== '') payload.log_quota_bytes = Number(quotaVal);
         try {
           await fetchJSON(`/hjxgl/api/users/${id}`, {
             method: 'PATCH',
@@ -229,6 +243,32 @@
           }, 2000);
         }
       });
+    });
+
+    // 拉取每个用户的日志用量并以进度条方式展示
+    const usageCells = userTable.querySelectorAll('#user-table .usage[data-uid]');
+    usageCells.forEach(async (el) => {
+      const uid = el.getAttribute('data-uid');
+      try {
+        const data = await fetchJSON(`/hjxgl/api/users/${uid}/logs/usage`);
+        const used = Number(data.total_bytes || 0);
+        const quota = (data.quota_bytes !== null && data.quota_bytes !== undefined) ? Number(data.quota_bytes) : null;
+        if (!quota || quota <= 0) {
+          el.innerHTML = `<span class="hint">${formatBytes(used)}</span>`;
+        } else {
+          const ratio = Math.max(0, Math.min(1, used / quota));
+          const percent = (ratio * 100).toFixed(1);
+          const color = ratio >= 0.95 ? '#b91c1c' : 'var(--color-primary)';
+          el.innerHTML = `
+            <div class="progress" title="${formatBytes(used)} / ${formatBytes(quota)}" style="width:200px;height:8px;background:var(--color-border);border-radius:4px;overflow:hidden;">
+              <div class="bar" style="height:100%;width:${percent}%;background:${color};"></div>
+            </div>
+            <div class="hint" style="margin-top:4px;">${formatBytes(used)} / ${formatBytes(quota)}</div>
+          `;
+        }
+      } catch (e) {
+        el.innerHTML = '<span class="hint">-</span>';
+      }
     });
   }
 

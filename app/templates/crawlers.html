@@ -27,7 +27,7 @@
     </div>
     <div class="table-scroll">
       <table class="data-table" id="crawlers-table">
-        <thead><tr><th>ID（本账号）</th><th>名称</th><th>最近心跳</th><th>来源 IP</th><th>公开</th><th>快捷链接</th><th>操作</th></tr></thead>
+        <thead><tr><th>ID（本账号）</th><th>名称</th><th>最近心跳</th><th>来源 IP</th><th>公开</th><th>快捷链接</th><th>日志用量</th><th>操作</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -140,6 +140,74 @@
         <div class="log-list" id="logs-list"></div>
       </div>
     </div>
+    <div class="card" style="margin-top:12px;">
+      <div class="card-header">
+        <h3>日志用量与上限</h3>
+        <div class="table-actions">
+          <button type="button" id="usage-refresh">刷新</button>
+          <button type="button" id="usage-save">保存上限</button>
+          <button type="button" id="usage-clear" class="text" style="color:#b91c1c;">清空日志</button>
+        </div>
+      </div>
+      <div class="form-grid" id="usage-panel">
+        <div class="hint">上限为 0 或负数表示不限制；留空表示保持不变（使用默认）。</div>
+        <label>当前行数</label>
+        <input id="usage-lines" type="text" readonly />
+        <label>当前字节</label>
+        <input id="usage-bytes" type="text" readonly />
+        <label>上限 - 行数</label>
+        <input id="limit-lines" type="number" placeholder="默认 1000000（<=0 不限）" />
+        <label>上限 - 字节</label>
+        <input id="limit-bytes" type="number" placeholder="默认 104857600（<=0 不限）" />
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px;">
+      <div class="card-header">
+        <h3>近期统计</h3>
+        <div class="table-actions">
+          <button class="text" type="button" id="dstats-export-csv">导出 CSV</button>
+          <button class="text" type="button" id="dstats-export-png">导出 PNG</button>
+          <button type="button" id="dstats-refresh">刷新</button>
+        </div>
+      </div>
+      <div class="filters" style="margin-bottom:0;align-items:flex-end;grid-template-columns: 140px 140px 160px 160px 1fr;">
+        <div>
+          <label for="dstats-hours">窗口（小时）</label>
+          <input type="number" id="dstats-hours" min="1" max="168" value="24" />
+        </div>
+        <div>
+          <label for="dstats-buckets">分桶数量</label>
+          <input type="number" id="dstats-buckets" min="2" max="240" value="24" />
+        </div>
+        <div>
+          <label for="dstats-min">最小等级</label>
+          <select id="dstats-min"></select>
+        </div>
+        <div>
+          <label for="dstats-max">最大等级</label>
+          <select id="dstats-max"></select>
+        </div>
+        <div>
+          <label for="dstats-query">关键字/正则</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="dstats-query" placeholder="例如：/失败/ 或 error" />
+            <label class="inline"><input type="checkbox" id="dstats-regex" /> 正则</label>
+            <label class="inline">粒度
+              <select id="dstats-granularity">
+                <option value="auto" selected>自动</option>
+                <option value="day">按天</option>
+                <option value="week">按周</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div id="dstats-chart" style="margin:12px 8px 4px 8px;display:flex;gap:4px;align-items:flex-end;height:140px;">
+        <div class="empty-hint" id="dstats-empty">暂无数据</div>
+      </div>
+      <div class="hint" id="dstats-meta" style="margin:0 8px 8px 8px;">&nbsp;</div>
+      <canvas id="dstats-canvas" width="800" height="240" style="display:none;"></canvas>
+    </div>
   </section>
 {% endblock %}
 
@@ -245,14 +313,62 @@
         <td>${ip}</td>
         <td>${crawler.is_public ? '是' : '否'}</td>
         <td>${slug}</td>
-        <td><button class="text" onclick="showDetail(${crawler.id}, '${safeName}')">详情</button></td>
-      </tr>`;
+        <td><div class="usage" data-cid="${crawler.id}"><span class="hint">载入中...</span></div></td>
+        <td><button class="text" onclick="showDetail(${crawler.id}, '${safeName}')">详情</button> <button class="text" style="color:#b91c1c; margin-left:8px;" onclick="quickClearLogs(${crawler.id})">清空日志</button></td>
+        </tr>`;
     }).join('');
+    // 渲染每个爬虫的日志用量（异步逐个拉取）
+    loadCrawlersUsage();
   }
+
+  function renderUsage(container, usage) {
+    const used = Number(usage?.bytes || 0);
+    const max = (usage && typeof usage.max_bytes === 'number') ? usage.max_bytes : null;
+    if (!max || max <= 0) {
+      container.innerHTML = `<span class="hint">${formatBytes(used)}</span>`;
+      return;
+    }
+    const ratio = Math.max(0, Math.min(1, used / max));
+    const percent = (ratio * 100).toFixed(1);
+    container.innerHTML = `
+      <div class="progress" title="${formatBytes(used)} / ${formatBytes(max)}" style="width:160px;height:8px;background:var(--color-border);border-radius:4px;overflow:hidden;">
+        <div class="bar" style="height:100%;width:${percent}%;background:var(--color-primary);"></div>
+      </div>
+      <div class="hint" style="margin-top:4px;">${formatBytes(used)} / ${formatBytes(max)}</div>
+    `;
+  }
+
+  async function loadCrawlersUsage() {
+    const cells = document.querySelectorAll('#crawlers-table .usage[data-cid]');
+    cells.forEach(async (el) => {
+      const cid = el.getAttribute('data-cid');
+      try {
+        const data = await fetchJSON(`/pa/api/me/${cid}/logs/usage`);
+        renderUsage(el, data);
+      } catch (e) {
+        el.innerHTML = '<span class="hint">-</span>';
+      }
+    });
+  }
+
+  window.quickClearLogs = async (id) => {
+    if (!confirm('确认清空该项目的所有日志？此操作不可恢复。')) return;
+    try {
+      await fetchJSON(`/pa/api/me/${id}/logs`, { method: 'DELETE' });
+      loadCrawlersUsage();
+      if (window.__currentCrawlerId === id) {
+        try { await loadUsage(); } catch (_) {}
+      }
+      alert('日志已清空');
+    } catch (error) {
+      alert(error.message);
+    }
+  };
 
   window.showDetail = async (id, name) => {
     document.getElementById('detail').style.display = '';
     document.getElementById('detail-title').textContent = `#${id} - ${name}`;
+    window.__currentCrawlerId = id;
     const runs = await fetchJSON(`/pa/api/me/${id}/runs`);
     const logs = await fetchJSON(`/pa/api/me/${id}/logs?limit=50`);
     const runsBody = document.getElementById('runs-body');
@@ -263,7 +379,156 @@
       const level = levelMap[item.level_code] || item.level;
       return `<div class="log-item"><div class="log-head"><span>${new Date(item.ts).toLocaleString()}</span><span class="badge level-${item.level_code}">${level}</span></div><div>${item.message}</div></div>`;
     }).join('');
+    await loadUsage();
   };
+
+  function formatBytes(n) {
+    const num = Number(n || 0);
+    if (!isFinite(num)) return String(n);
+    const units = ['B','KB','MB','GB','TB'];
+    let v = num, i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2)} ${units[i]}`;
+  }
+
+  async function loadUsage() {
+    const id = window.__currentCrawlerId;
+    if (!id) return;
+    try {
+      const data = await fetchJSON(`/pa/api/me/${id}/logs/usage`);
+      document.getElementById('usage-lines').value = `${data.lines}${data.max_lines ? ` / ${data.max_lines}` : ''}`;
+      document.getElementById('usage-bytes').value = `${formatBytes(data.bytes)}${data.max_bytes ? ` / ${formatBytes(data.max_bytes)}` : ''}`;
+      const ll = document.getElementById('limit-lines');
+      const lb = document.getElementById('limit-bytes');
+      ll.value = (data.max_lines ?? '');
+      lb.value = (data.max_bytes ?? '');
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function saveLimits() {
+    const id = window.__currentCrawlerId;
+    if (!id) return;
+    const ll = document.getElementById('limit-lines').value;
+    const lb = document.getElementById('limit-bytes').value;
+    const payload = {};
+    if (ll !== '') payload.log_max_lines = Number(ll);
+    if (lb !== '') payload.log_max_bytes = Number(lb);
+    try {
+      await fetchJSON(`/pa/api/me/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      await loadUsage();
+      alert('已保存上限设置');
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function clearLogs() {
+    const id = window.__currentCrawlerId;
+    if (!id) return;
+    if (!confirm('确认清空该项目的所有日志？此操作不可恢复。')) return;
+    try {
+      await fetchJSON(`/pa/api/me/${id}/logs`, { method: 'DELETE' });
+      await loadUsage();
+      alert('日志已清空');
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  document.getElementById('usage-refresh').addEventListener('click', loadUsage);
+  document.getElementById('usage-save').addEventListener('click', saveLimits);
+  document.getElementById('usage-clear').addEventListener('click', clearLogs);
+
+  // ---- 详情页统计 ----
+  function renderLevelOptions(select, selected) {
+    select.innerHTML = (window.LOG_LEVEL_OPTIONS || []).slice().sort((a, b) => a.code - b.code)
+      .map(opt => `<option value="${opt.code}" ${Number(selected) === Number(opt.code) ? 'selected' : ''}>${opt.code} - ${opt.name}</option>`).join('');
+  }
+  renderLevelOptions(document.getElementById('dstats-min'), 0);
+  renderLevelOptions(document.getElementById('dstats-max'), 50);
+
+  let __dstats = null;
+  async function loadDetailStats() {
+    const id = window.__currentCrawlerId; if (!id) return;
+    const h = Math.max(1, Math.min(168, Number(document.getElementById('dstats-hours').value || 24)));
+    const k = Math.max(2, Math.min(240, Number(document.getElementById('dstats-buckets').value || 24)));
+    const min = Number(document.getElementById('dstats-min').value || 0);
+    const max = Number(document.getElementById('dstats-max').value || 50);
+    const q = (document.getElementById('dstats-query').value || '').trim();
+    const regex = document.getElementById('dstats-regex').checked ? 1 : 0;
+    const gran = document.getElementById('dstats-granularity').value || 'auto';
+    const url = `/pa/api/me/${id}/logs/stats?hours=${h}&buckets=${k}&min_level=${min}&max_level=${max}&granularity=${encodeURIComponent(gran)}${q ? `&q=${encodeURIComponent(q)}` : ''}${regex ? '&regex=1' : ''}`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      __dstats = data;
+      const chart = document.getElementById('dstats-chart');
+      const empty = document.getElementById('dstats-empty');
+      const meta = document.getElementById('dstats-meta');
+      chart.innerHTML = '';
+      if (!data.buckets || !data.buckets.length) {
+        empty.style.display = '';
+        meta.textContent = '';
+        return;
+      }
+      empty.style.display = 'none';
+      const maxv = Math.max(1, ...data.buckets.map(b => b.count || 0));
+      let peakIdx = 0; let peakVal = 0;
+      data.buckets.forEach((b, idx) => { if ((b.count || 0) > peakVal) { peakVal = b.count || 0; peakIdx = idx; } });
+      const barWidth = Math.max(2, Math.floor(260 / data.buckets.length));
+      data.buckets.forEach((b, idx) => {
+        const v = Number(b.count || 0);
+        const bar = document.createElement('div');
+        bar.title = `${new Date(b.t).toLocaleString()}\n${v} 条`;
+        bar.style.cssText = `width:${barWidth}px;height:${Math.max(2, Math.floor(v / maxv * 100))}%;background:${idx===peakIdx?'#b91c1c':'var(--color-primary)'};opacity:${v ? 1 : 0.25};`;
+        chart.appendChild(bar);
+      });
+      meta.textContent = `总计 ${data.total} 条，峰值 ${peakVal}（${new Date(data.buckets[peakIdx].t).toLocaleString()}） | 时间范围：${new Date(data.start).toLocaleString()} ~ ${new Date(data.end).toLocaleString()}（采样 ${data.scanned} 条）`;
+    } catch (_) {}
+  }
+  document.getElementById('dstats-refresh').addEventListener('click', loadDetailStats);
+
+  function exportDetailCSV() {
+    if (!__dstats || !__dstats.buckets) return;
+    const rows = [['time','count']].concat(__dstats.buckets.map(b => [b.t, String(b.count||0)]));
+    const csv = rows.map(r => r.map(x => (/[,\"]/.test(x) ? '"'+String(x).replace(/\"/g,'""')+'"' : x)).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `crawler-${window.__currentCrawlerId}-stats.csv`; a.click();
+  }
+  function exportDetailPNG() {
+    if (!__dstats || !__dstats.buckets) return;
+    const canvas = document.getElementById('dstats-canvas');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height; ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--color-background') || '#fff'; ctx.fillRect(0,0,W,H);
+    const margin = 32; const chartW = W - margin*2; const chartH = H - margin*2;
+    const maxv = Math.max(1, ...__dstats.buckets.map(b => b.count || 0));
+    const n = __dstats.buckets.length; const bw = Math.max(1, Math.floor(chartW / n * 0.8)); const gap = Math.max(1, Math.floor(chartW / n * 0.2));
+    const primary = getComputedStyle(document.body).getPropertyValue('--color-primary') || '#4f46e5';
+    let peakIdx = 0; let peakVal = 0;
+    __dstats.buckets.forEach((b, i) => { if ((b.count||0) > peakVal) { peakVal = b.count||0; peakIdx = i; } });
+    for (let i=0;i<n;i++) {
+      const v = Number(__dstats.buckets[i].count || 0);
+      const x = margin + i*(bw+gap);
+      const h = Math.max(1, Math.floor(v/maxv*chartH));
+      ctx.fillStyle = (i===peakIdx ? '#b91c1c' : primary);
+      ctx.globalAlpha = v ? 1 : 0.25;
+      ctx.fillRect(x, margin + chartH - h, bw, h);
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#333'; ctx.font = '12px sans-serif';
+    ctx.fillText(`Total: ${__dstats.total}  Peak: ${peakVal}`, margin, margin-8);
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a'); a.href = url; a.download = `crawler-${window.__currentCrawlerId}-stats.png`; a.click();
+  }
+  document.getElementById('dstats-export-csv').addEventListener('click', exportDetailCSV);
+  document.getElementById('dstats-export-png').addEventListener('click', exportDetailPNG);
 
   const linkForm = document.getElementById('link-form');
   const linkHint = document.getElementById('link-hint');
