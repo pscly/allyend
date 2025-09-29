@@ -161,6 +161,7 @@ class CrawlerRegisterRequest(BaseModel):
 class HeartbeatPayload(BaseModel):
     status: Optional[str] = None
     payload: Optional[dict] = None
+    device_name: Optional[str] = None
 
 
 class RunStartResponse(BaseModel):
@@ -174,6 +175,7 @@ class LogCreate(BaseModel):
     level_code: Optional[int] = None
     message: str
     run_id: Optional[int] = None
+    device_name: Optional[str] = None
 
 
 class CrawlerOut(BaseModel):
@@ -183,6 +185,7 @@ class CrawlerOut(BaseModel):
     created_at: datetime
     last_heartbeat: Optional[datetime] = None
     last_source_ip: Optional[str] = None
+    last_device_name: Optional[str] = None
     status: str
     status_changed_at: Optional[datetime] = None
     uptime_ratio: Optional[float] = None
@@ -227,6 +230,7 @@ class CrawlerHeartbeatOut(BaseModel):
     status: str
     payload: Optional[dict] = None
     source_ip: Optional[str] = None
+    device_name: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -269,6 +273,7 @@ class LogOut(BaseModel):
     crawler_local_id: Optional[int] = None
     crawler_name: Optional[str] = None
     source_ip: Optional[str] = None
+    device_name: Optional[str] = None
     api_key_id: Optional[int] = None
     api_key_local_id: Optional[int] = None
 

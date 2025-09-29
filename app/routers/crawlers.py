@@ -879,6 +879,7 @@ def _record_heartbeat(
     status_value: str,
     payload: Optional[dict],
     client_ip: Optional[str],
+    device_name: Optional[str] = None,
 ) -> None:
     event = CrawlerHeartbeat(
         crawler_id=crawler.id,
@@ -886,6 +887,7 @@ def _record_heartbeat(
         status=status_value,
         payload=payload or {},
         source_ip=client_ip,
+        device_name=device_name,
         created_at=now(),
     )
     db.add(event)
@@ -942,7 +944,11 @@ def heartbeat(
     status_hint = payload.status if payload else None
     _update_crawler_status(crawler, current_time, client_ip, status_hint)
     crawler.heartbeat_payload = (payload.payload if payload else None) or {}
-    _record_heartbeat(db, crawler, api_key, crawler.status, crawler.heartbeat_payload, client_ip)
+    # 更新设备名
+    device_name = payload.device_name if payload else None
+    if device_name:
+        crawler.last_device_name = device_name
+    _record_heartbeat(db, crawler, api_key, crawler.status, crawler.heartbeat_payload, client_ip, device_name)
     run = (
         db.query(CrawlerRun)
         .filter(CrawlerRun.crawler_id == crawler_id, CrawlerRun.status == "running")
@@ -1083,7 +1089,11 @@ def create_log(
         message=payload.message,
         ts=now(),
         source_ip=client_ip,
+        device_name=payload.device_name,
     )
+    # 更新爬虫最近设备名
+    if payload.device_name:
+        crawler.last_device_name = payload.device_name
     db.add(log)
     db.commit()
     db.refresh(log)
@@ -1688,6 +1698,8 @@ def my_logs(
     limit: int = Query(200, ge=1, le=1000),
     q: Optional[str] = Query(None, description="消息关键字或正则"),
     regex: bool = Query(False, description="将 q 作为正则表达式进行匹配"),
+    device: Optional[str] = Query(None, description="按设备名包含筛选"),
+    ip: Optional[str] = Query(None, description="按来源 IP 包含筛选"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1707,6 +1719,10 @@ def my_logs(
     if ids:
         query = query.filter(LogEntry.crawler_id.in_(ids))
     query = _apply_log_filters(query, start, end, min_level, max_level)
+    if device and device.strip():
+        query = query.filter(LogEntry.device_name.ilike(f"%{device.strip()}%"))
+    if ip and ip.strip():
+        query = query.filter(LogEntry.source_ip.ilike(f"%{ip.strip()}%"))
     query, pattern = _maybe_apply_message_search(query, q, regex)
     query = query.order_by(LogEntry.ts.desc())
     if pattern is not None:
@@ -1732,6 +1748,8 @@ def my_crawler_logs(
     before_id: Optional[int] = Query(None, ge=1),
     q: Optional[str] = Query(None, description="消息关键字或正则"),
     regex: bool = Query(False, description="将 q 作为正则表达式进行匹配"),
+    device: Optional[str] = Query(None, description="按设备名包含筛选"),
+    ip: Optional[str] = Query(None, description="按来源 IP 包含筛选"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1756,6 +1774,10 @@ def my_crawler_logs(
     )
     if before_id:
         query = query.filter(LogEntry.id < before_id)
+    if device and device.strip():
+        query = query.filter(LogEntry.device_name.ilike(f"%{device.strip()}%"))
+    if ip and ip.strip():
+        query = query.filter(LogEntry.source_ip.ilike(f"%{ip.strip()}%"))
     query, pattern = _maybe_apply_message_search(query, q, regex)
     if pattern is not None:
         scan_limit = min(max(limit * 10, limit), MAX_REGEX_SCAN)
@@ -2545,6 +2567,8 @@ def public_logs(
     limit: int = Query(200, ge=1, le=1000),
     q: Optional[str] = Query(None, description="消息关键字或正则"),
     regex: bool = Query(False, description="将 q 作为正则表达式进行匹配"),
+    device: Optional[str] = Query(None, description="按设备名包含筛选"),
+    ip: Optional[str] = Query(None, description="按来源 IP 包含筛选"),
     db: Session = Depends(get_db),
 ):
     link = _resolve_link(db, slug)
@@ -2571,6 +2595,10 @@ def public_logs(
         raise HTTPException(status_code=400, detail="链接目标不存在")
 
     query = _apply_log_filters(query, start, end, min_level, max_level)
+    if device and device.strip():
+        query = query.filter(LogEntry.device_name.ilike(f"%{device.strip()}%"))
+    if ip and ip.strip():
+        query = query.filter(LogEntry.source_ip.ilike(f"%{ip.strip()}%"))
     query, pattern = _maybe_apply_message_search(query, q, regex)
     query = query.order_by(LogEntry.ts.desc())
     if pattern is not None:

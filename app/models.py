@@ -191,6 +191,7 @@ class Crawler(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     last_heartbeat: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_source_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    last_device_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="offline")
     status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     uptime_ratio: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -240,6 +241,7 @@ class LogEntry(Base):
     message: Mapped[str] = mapped_column(Text)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     source_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    device_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
 
     crawler_id: Mapped[int] = mapped_column(ForeignKey("crawlers.id"))
     crawler: Mapped[Crawler] = relationship("Crawler", back_populates="logs")
@@ -276,6 +278,7 @@ class CrawlerHeartbeat(Base):
     status: Mapped[str] = mapped_column(String(16))
     payload: Mapped[Optional[dict]] = mapped_column(MutableDict.as_mutable(JSON), nullable=True)
     source_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    device_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
 
     crawler_id: Mapped[int] = mapped_column(ForeignKey("crawlers.id"))

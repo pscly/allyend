@@ -61,6 +61,12 @@ def ensure_database_schema() -> None:
     except Exception:
         # 尽量不要阻断启动；将错误留给上层日志
         raise
+    # 轻量列升级：为现有库补齐新增列（设备名）
+    try:
+        _ensure_extra_columns()
+    except Exception:
+        # 忽略升级失败，避免影响启动；建议通过迁移工具修复
+        pass
 
 
 ## 兼容层 apply_schema_upgrades 已移除：初期不再使用 Alembic 迁移
@@ -169,4 +175,36 @@ __all__ = [
     "ensure_database_schema",
     "bootstrap_defaults",
 ]
+
+
+def _ensure_extra_columns() -> None:
+    """在无迁移场景下，按需补齐新增字段。
+
+    - log_entries.device_name VARCHAR(128)
+    - crawler_heartbeats.device_name VARCHAR(128)
+    - c r a w l e r s .last_device_name VARCHAR(128)
+    """
+    from sqlalchemy import inspect
+
+    insp = inspect(engine)
+    dialect = engine.dialect.name
+
+    def has_col(table: str, column: str) -> bool:
+        try:
+            cols = [c['name'] if isinstance(c, dict) else getattr(c, 'name', None) for c in insp.get_columns(table)]
+            return column in cols
+        except Exception:
+            return False
+
+    def add_col(table: str, ddl: str) -> None:
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
+
+    # SQLite/MySQL/PostgreSQL 统一使用简单 DDL（兼容性较好）
+    if not has_col('log_entries', 'device_name'):
+        add_col('log_entries', 'device_name VARCHAR(128)')
+    if not has_col('crawler_heartbeats', 'device_name'):
+        add_col('crawler_heartbeats', 'device_name VARCHAR(128)')
+    if not has_col('crawlers', 'last_device_name'):
+        add_col('crawlers', 'last_device_name VARCHAR(128)')
 
