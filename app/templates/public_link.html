@@ -93,6 +93,14 @@
         <input type="number" id="link-limit" min="1" max="1000" value="200" />
       </div>
       <div>
+        <label for="link-device">设备名包含</label>
+        <input type="text" id="link-device" placeholder="如：DESKTOP- 或 server-01" />
+      </div>
+      <div>
+        <label for="link-ip">来源 IP 包含</label>
+        <input type="text" id="link-ip" placeholder="如：10.0. 或 192.168." />
+      </div>
+      <div>
         <label for="link-query">关键字/正则</label>
         <input type="text" id="link-query" placeholder="例如：/招标计划/ 或 采集" />
         <label class="inline" style="margin-left:8px;">
@@ -138,6 +146,8 @@
       if (maxSelect) maxSelect.value = 50;
       const limit = document.getElementById('link-limit');
       if (limit) limit.value = 200;
+      const dev = document.getElementById('link-device'); if (dev) dev.value = '';
+      const ipf = document.getElementById('link-ip'); if (ipf) ipf.value = '';
       loadLinkLogs();
     }
 
@@ -154,6 +164,10 @@
       if (maxSelect) params.append('max_level', maxSelect.value);
       const limit = document.getElementById('link-limit');
       if (limit && limit.value) params.append('limit', limit.value);
+      const dev = document.getElementById('link-device')?.value;
+      const ipf = document.getElementById('link-ip')?.value;
+      if (dev) params.append('device', dev.trim());
+      if (ipf) params.append('ip', ipf.trim());
       // 将关键字/正则传给后端进行初筛
       const queryInput = document.getElementById('link-query');
       const regexMode = document.getElementById('link-regex-mode');
@@ -176,8 +190,7 @@
       empty.style.display = 'none';
       const levelMap = Object.fromEntries(levelOptions.map(item => [item.code, item.name]));
       // 关键字/正则二次过滤（前端）
-      const queryInput = document.getElementById('link-query');
-      const regexMode = document.getElementById('link-regex-mode');
+      // 注意：queryInput 与 regexMode 已在上文声明，避免重复 const 导致脚本报错
       let filtered = data;
       if (queryInput && queryInput.value && typeof queryInput.value === 'string') {
         const q = queryInput.value.trim();
@@ -208,13 +221,14 @@
           owner = `${linkSummary.name || 'API Key'}${suffix}`;
         }
         const ip = item.source_ip ? `<span class="hint">IP: ${item.source_ip}</span>` : '';
+        const device = item.device_name ? `<span class="hint">设备: ${item.device_name}</span>` : '';
         return `<div class="log-item">
           <div class="log-head">
             <span>${new Date(item.ts).toLocaleString()}</span>
             <div class="table-actions" style="gap:8px;">
               <span class="badge ${badgeClass}">${levelText}</span>
               <span class="hint">${owner}</span>
-              ${ip}
+              ${ip}${device}
             </div>
           </div>
           <div>${item.message}</div>

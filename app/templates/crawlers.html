@@ -102,6 +102,14 @@
         <input type="number" id="log-limit" min="1" max="500" value="200" />
       </div>
       <div>
+        <label for="log-device">设备名包含</label>
+        <input type="text" id="log-device" placeholder="如：DESKTOP- 或 server-01" />
+      </div>
+      <div>
+        <label for="log-ip">来源 IP 包含</label>
+        <input type="text" id="log-ip" placeholder="如：10.0. 或 192.168." />
+      </div>
+      <div>
         <label for="log-query">关键字/正则</label>
         <input type="text" id="log-query" placeholder="例如：/招标计划/ 或 采集" />
         <label class="inline" style="margin-left:8px;">
@@ -321,6 +329,8 @@
     minSelect.value = 0;
     maxSelect.value = 50;
     document.getElementById('log-limit').value = 200;
+    const dev = document.getElementById('log-device'); if (dev) dev.value = '';
+    const ipf = document.getElementById('log-ip'); if (ipf) ipf.value = '';
     loadLogs();
   }
 
@@ -335,6 +345,10 @@
     params.append('min_level', minSelect.value);
     params.append('max_level', maxSelect.value);
     params.append('limit', document.getElementById('log-limit').value || '200');
+    const dev = document.getElementById('log-device')?.value;
+    const ipf = document.getElementById('log-ip')?.value;
+    if (dev) params.append('device', dev.trim());
+    if (ipf) params.append('ip', ipf.trim());
     try {
       // 将关键字/正则传给后端进行初筛
       const queryInput = document.getElementById('log-query');
@@ -376,7 +390,8 @@
         const levelText = levelMap[code] || item.level;
         const crawler = item.crawler_name || `#${item.crawler_local_id}`;
         const ip = item.source_ip || '-';
-        return `<div class="log-item"><div class="log-head"><span>${new Date(item.ts).toLocaleString()}</span><div class="table-actions" style="gap:8px;"><span class="badge ${badgeClass}">${levelText}</span><span class="hint">${crawler}</span><span class="hint">IP: ${ip}</span></div></div><div>${item.message}</div></div>`;
+        const device = item.device_name ? `<span class=\"hint\">设备: ${item.device_name}</span>` : '';
+        return `<div class=\"log-item\"><div class=\"log-head\"><span>${new Date(item.ts).toLocaleString()}</span><div class=\"table-actions\" style=\"gap:8px;\"><span class=\"badge ${badgeClass}\">${levelText}</span><span class=\"hint\">${crawler}</span><span class=\"hint\">IP: ${ip}</span>${device}</div></div><div>${item.message}</div></div>`;
       }).join('');
     } catch (error) {
       alert(error.message);

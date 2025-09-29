@@ -1,26 +1,28 @@
 """
-Python SDK：便于在爬虫客户端中上报状态、心跳与远程指令回执
+Python SDK：便于在爬虫客户端中上报状态、心跳与远程指令回执。
 
-示例：
-    from sdk.crawler_client import CrawlerClient
-    client = CrawlerClient(base_url="http://localhost:9093", api_key="<你的APIKey>")
+重要更新（异步化）：
+- 新增 `AsyncCrawlerClient`，所有网络请求基于异步实现，避免阻塞主线程；
+- 后台远程指令轮询改为 `asyncio` 任务，不再使用阻塞线程；
+- 失败与超时在后台任务中被捕获并忽略，不影响主线程运行。
 
-    crawler = client.register_crawler("news_spider")    # 去服务端注册
-    run = client.start_run(crawler_id=crawler["id"])    # 启动一次 代表一次爬虫任务3
-    client.log(crawler_id=crawler["id"], level="INFO", message="启动")   # 上报一个info 信息
-    client.heartbeat(crawler_id=crawler["id"], payload={"tasks_completed": 12}) # 发送心跳包，和自定义状态(如 完成数量)
-    commands = client.fetch_commands(crawler_id=crawler["id"])
-    for cmd in commands:
-        # 执行远程指令
-        client.ack_command(crawler_id=crawler["id"], command_id=cmd["id"], status="success")
+同步版 `CrawlerClient` 仍保留（旧接口），建议迁移到 `AsyncCrawlerClient`。
 
+示例（异步）：
+    from sdk.crawler_client import AsyncCrawlerClient
+    import asyncio
 
-    from sdk.crawler_client import CrawlerClient
-    client = CrawlerClient(base_url="http://localhost:9093", api_key="<你的APIKey>")
+    async def main():
+        async with AsyncCrawlerClient(base_url="http://localhost:9093", api_key="<你的APIKey>") as client:
+            crawler = await client.register_crawler("news_spider")
+            run = await client.start_run(crawler_id=crawler["id"])
+            await client.log(crawler_id=crawler["id"], level="INFO", message="启动")
+            await client.heartbeat(crawler_id=crawler["id"], payload={"tasks_completed": 12})
+            cmds = await client.fetch_commands(crawler_id=crawler["id"])  # 失败返回 []
+            for cmd in cmds:
+                await client.ack_command(crawler_id=crawler["id"], command_id=cmd["id"], status="success")
 
-    
-
-
+    asyncio.run(main())
 """
 from __future__ import annotations
 
@@ -29,7 +31,7 @@ from __future__ import annotations
 
 import builtins
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, Iterator, Optional
+from typing import Any, Callable, Dict, Iterator, Optional, Awaitable
 import os
 import sys
 import time
@@ -42,6 +44,14 @@ try:  # 可选依赖：若可用则启用连接池重试与退避
     _HAS_RETRY = True
 except Exception:  # 运行环境不具备 urllib3 Retry 时自动降级为无重试
     _HAS_RETRY = False
+
+# 可选：异步 HTTP 客户端（httpx）
+try:
+    import asyncio
+    import httpx  # type: ignore
+    _HAS_HTTPX = True
+except Exception:
+    _HAS_HTTPX = False
 
 
 class CrawlerClient:
@@ -143,6 +153,12 @@ class CrawlerClient:
             body["status"] = status
         if payload:
             body["payload"] = payload
+        # 附带设备名
+        try:
+            import socket
+            body["device_name"] = socket.gethostname()
+        except Exception:
+            pass
         r = self.session.post(
             f"{self.api_base}/{crawler_id}/heartbeat",
             json=body if body else None,
@@ -532,6 +548,12 @@ class CrawlerClient:
         payload: Dict[str, Any] = {"level": level_value, "message": message}
         if run_id is not None:
             payload["run_id"] = run_id
+        # 附带设备名
+        try:
+            import socket
+            payload["device_name"] = socket.gethostname()
+        except Exception:
+            pass
         r = self.session.post(
             f"{self.api_base}/{crawler_id}/logs",
             json=payload,
@@ -597,3 +619,452 @@ class CrawlerClient:
             yield
         finally:
             builtins.print = original_print
+
+
+# -----------------------------
+# 异步版 SDK 客户端（推荐）
+# -----------------------------
+
+class AsyncCrawlerClient:
+    """异步 SDK 客户端：所有请求采用异步 httpx，避免阻塞主线程。
+
+    设计要点：
+    - 所有 API 方法均为 async；
+    - 后台指令轮询使用 asyncio.create_task 启动，不阻塞主流程；
+    - 后台失败/超时自动捕获与忽略（可通过回调监控）；
+    - 支持代理与 TLS 校验参数透传；
+    - 提供非阻塞的 print 捕获与日志上报（使用 create_task）。
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        timeout: float = 10.0,
+        retries: int = 2,
+        backoff_factor: float = 0.3,
+        *,
+        verify: bool | str | None = None,
+        proxies: Dict[str, str] | str | None = None,
+        max_connections: int = 20,
+        max_keepalive_connections: int = 10,
+    ) -> None:
+        if not _HAS_HTTPX:
+            raise RuntimeError("缺少 httpx 依赖，请先安装：pip install httpx")
+
+        self.base_url = base_url.rstrip("/")
+        self.api_base = self._normalize_api_base(self.base_url)
+        self.api_key = api_key
+        self.timeout = float(timeout)
+        self.retries = int(max(0, retries))
+        self.backoff_factor = float(max(0.0, backoff_factor))
+
+        self._client = httpx.AsyncClient(
+            headers={"X-API-Key": self.api_key},
+            timeout=self.timeout,
+            verify=verify if verify is not None else True,
+            proxies=proxies,
+            limits=httpx.Limits(
+                max_connections=max_connections,
+                max_keepalive_connections=max_keepalive_connections,
+            ),
+        )
+
+        # 后台任务控制
+        self._cmd_task: asyncio.Task | None = None
+        self._cmd_stop: asyncio.Event | None = None
+
+    @staticmethod
+    def _normalize_api_base(base_url: str) -> str:
+        base = base_url.rstrip("/")
+        return base if base.endswith("/pa/api") else f"{base}/pa/api"
+
+    # ---------- 生命周期 ----------
+    async def aclose(self) -> None:
+        try:
+            await self.stop_command_worker()
+        except Exception:
+            pass
+        try:
+            await self._client.aclose()
+        except Exception:
+            pass
+
+    async def __aenter__(self) -> "AsyncCrawlerClient":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.aclose()
+
+    # ---------- HTTP 基础 ----------
+    async def _request_json(self, method: str, url: str, **kwargs: Any) -> Any:
+        last_exc: Exception | None = None
+        attempts = self.retries + 1
+        for i in range(attempts):
+            try:
+                resp = await self._client.request(method, url, **kwargs)
+                resp.raise_for_status()
+                return resp.json()
+            except Exception as exc:
+                last_exc = exc
+                if i >= attempts - 1:
+                    break
+                await asyncio.sleep(self.backoff_factor * (2 ** i))
+        raise last_exc  # type: ignore[misc]
+
+    # ---------- API ----------
+    async def register_crawler(self, name: str) -> Dict[str, Any]:
+        return await self._request_json("POST", f"{self.api_base}/register", json={"name": name})
+
+    async def heartbeat(
+        self,
+        *,
+        crawler_id: int,
+        status: Optional[str] = None,
+        payload: Optional[Dict[str, Any]] = None,
+        suppress: bool = True,
+    ) -> Dict[str, Any] | Dict[str, str]:
+        body: Dict[str, Any] = {}
+        if status:
+            body["status"] = status
+        if payload:
+            body["payload"] = payload
+        # 附带设备名（非阻塞获取）
+        try:
+            import socket
+            body["device_name"] = socket.gethostname()
+        except Exception:
+            pass
+        try:
+            return await self._request_json(
+                "POST",
+                f"{self.api_base}/{crawler_id}/heartbeat",
+                json=body if body else None,
+            )
+        except Exception as exc:
+            if suppress:
+                return {"error": str(exc)}
+            raise
+
+    async def start_run(self, *, crawler_id: int) -> Dict[str, Any]:
+        return await self._request_json("POST", f"{self.api_base}/{crawler_id}/runs/start")
+
+    async def finish_run(self, *, crawler_id: int, run_id: int, status: str = "success") -> Dict[str, Any]:
+        return await self._request_json(
+            "POST",
+            f"{self.api_base}/{crawler_id}/runs/{run_id}/finish",
+            params={"status_": status},
+        )
+
+    async def fetch_commands(self, *, crawler_id: int, suppress: bool = True) -> list[Dict[str, Any]]:
+        try:
+            data = await self._request_json("POST", f"{self.api_base}/{crawler_id}/commands/next")
+            return list(data or [])
+        except Exception:
+            return [] if suppress else ([])
+
+    async def ack_command(
+        self,
+        *,
+        crawler_id: int,
+        command_id: int,
+        status: str = "success",
+        result: Optional[Dict[str, Any]] = None,
+        suppress: bool = True,
+    ) -> Dict[str, Any] | Dict[str, str]:
+        payload: Dict[str, Any] = {"status": status}
+        if result is not None:
+            payload["result"] = result
+        try:
+            return await self._request_json(
+                "POST",
+                f"{self.api_base}/{crawler_id}/commands/{command_id}/ack",
+                json=payload,
+            )
+        except Exception as exc:
+            if suppress:
+                return {"error": str(exc)}
+            raise
+
+    async def log(
+        self,
+        *,
+        crawler_id: int,
+        level: str | int,
+        message: str,
+        run_id: Optional[int] = None,
+        suppress: bool = True,
+    ) -> Dict[str, Any] | Dict[str, str]:
+        level_value = str(level).upper() if not isinstance(level, int) else str(level)
+        payload: Dict[str, Any] = {"level": level_value, "message": message}
+        if run_id is not None:
+            payload["run_id"] = run_id
+        # 附带设备名
+        try:
+            import socket
+            payload["device_name"] = socket.gethostname()
+        except Exception:
+            pass
+        try:
+            return await self._request_json(
+                "POST",
+                f"{self.api_base}/{crawler_id}/logs",
+                json=payload,
+            )
+        except Exception as exc:
+            if suppress:
+                return {"error": str(exc)}
+            raise
+
+    # ---------- 非阻塞打印/捕获 ----------
+    def printer(
+        self,
+        *,
+        crawler_id: int,
+        run_id: Optional[int] = None,
+        default_level: str | int = "INFO",
+        mirror: bool = True,
+        _mirror_func: Callable[..., None] | None = builtins.print,
+    ) -> Callable[..., None]:
+        """返回可替代 print 的函数：调用时异步上报日志，不阻塞当前线程。"""
+
+        def _printer(*args: Any, **kwargs: Any) -> None:
+            level_override = kwargs.pop("level", None)
+            mirror_override = kwargs.pop("mirror", mirror)
+            sep = kwargs.get("sep", " ")
+            end = kwargs.get("end", "")
+            text = sep.join(str(arg) for arg in args)
+            if end:
+                text += end
+            level_value = level_override if level_override is not None else default_level
+            try:
+                asyncio.get_running_loop().create_task(
+                    self.log(crawler_id=crawler_id, run_id=run_id, level=level_value, message=text)
+                )
+            except RuntimeError:
+                pass
+            if mirror_override and _mirror_func is not None:
+                _mirror_func(*args, **kwargs)
+
+        return _printer
+
+    @contextmanager
+    def capture_print(
+        self,
+        *,
+        crawler_id: int,
+        run_id: Optional[int] = None,
+        default_level: str | int = "INFO",
+        mirror: bool = True,
+    ) -> Iterator[None]:
+        """上下文管理器：在 with 块内把 print 输出异步同步到日志。"""
+
+        original_print = builtins.print
+        printer = self.printer(
+            crawler_id=crawler_id,
+            run_id=run_id,
+            default_level=default_level,
+            mirror=mirror,
+            _mirror_func=original_print,
+        )
+
+        def patched_print(*args: Any, **kwargs: Any) -> None:
+            printer(*args, **kwargs)
+
+        builtins.print = patched_print
+        try:
+            yield
+        finally:
+            builtins.print = original_print
+
+    # ---------- 本地命令执行（异步） ----------
+    async def run_shell(
+        self,
+        command: str | list[str],
+        *,
+        timeout: Optional[float] = None,
+        shell: Optional[bool] = None,
+        cwd: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
+        text: bool = True,
+        encoding: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """使用 asyncio 异步执行命令，返回 {code, out, err, duration}。"""
+        import asyncio as _aio
+        import shlex
+
+        start = time.time()
+        is_windows = os.name == "nt"
+        use_shell = bool(shell) if shell is not None else (is_windows and isinstance(command, str))
+
+        try:
+            if use_shell:
+                proc = await _aio.create_subprocess_shell(
+                    command if isinstance(command, str) else " ".join(shlex.quote(str(x)) for x in command),
+                    stdout=_aio.subprocess.PIPE,
+                    stderr=_aio.subprocess.PIPE,
+                    cwd=cwd,
+                    env=env,
+                )
+            else:
+                args = command if isinstance(command, list) else [command]
+                proc = await _aio.create_subprocess_exec(
+                    *[str(x) for x in args],
+                    stdout=_aio.subprocess.PIPE,
+                    stderr=_aio.subprocess.PIPE,
+                    cwd=cwd,
+                    env=env,
+                )
+
+            try:
+                if timeout is not None:
+                    out_b, err_b = await _aio.wait_for(proc.communicate(), timeout=timeout)
+                else:
+                    out_b, err_b = await proc.communicate()
+                code = proc.returncode
+            except _aio.TimeoutError:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                return {
+                    "code": 124,
+                    "out": None,
+                    "err": "timeout",
+                    "duration": max(0.0, time.time() - start),
+                }
+
+            duration = max(0.0, time.time() - start)
+            if text:
+                enc = encoding or "utf-8"
+                out = out_b.decode(enc, errors="replace") if out_b is not None else None
+                err = err_b.decode(enc, errors="replace") if err_b is not None else None
+            else:
+                out, err = out_b, err_b
+            return {"code": code, "out": out, "err": err, "duration": duration}
+        except Exception as exc:
+            return {"code": -1, "out": None, "err": str(exc), "duration": max(0.0, time.time() - start)}
+
+    # ---------- 远程控制循环（异步任务） ----------
+    def start_command_worker(
+        self,
+        *,
+        crawler_id: int,
+        interval_seconds: float = 5.0,
+        handler: Optional[Callable[[Dict[str, Any]], Optional[Dict[str, Any]] | Awaitable[Optional[Dict[str, Any]]]]] = None,
+        on_error: Optional[Callable[[Exception], None]] = None,
+    ) -> asyncio.Task:
+        """启动异步后台任务轮询指令并按需回执，失败不抛到主线程。
+
+        返回 asyncio.Task，可用于观测或调试；停止请调用 stop_command_worker()。
+        """
+        stop_evt = asyncio.Event()
+        self._cmd_stop = stop_evt
+
+        async def _maybe_call_handler(cmd: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+            if handler is None:
+                return None
+            try:
+                if asyncio.iscoroutinefunction(handler):
+                    return await handler(cmd)  # type: ignore[misc]
+                loop = asyncio.get_running_loop()
+                return await loop.run_in_executor(None, handler, cmd)
+            except Exception:
+                return None
+
+        async def _loop() -> None:
+            try:
+                while not stop_evt.is_set():
+                    try:
+                        cmds = await self.fetch_commands(crawler_id=crawler_id, suppress=True)
+                        for cmd in cmds:
+                            try:
+                                custom = await _maybe_call_handler(cmd)
+                                if custom is not None:
+                                    result = custom
+                                else:
+                                    name = str(cmd.get("command", "")).strip().lower()
+                                    payload = cmd.get("payload")
+                                    result: Dict[str, Any] | None
+                                    if name == "restart":
+                                        result = {"action": "restart"}
+                                    elif name in {"graceful_shutdown", "shutdown"}:
+                                        result = {"action": "shutdown"}
+                                    elif name.startswith("run_shell"):
+                                        args = None
+                                        if isinstance(payload, dict):
+                                            args = payload.get("args")
+                                        if not args:
+                                            args = ["echo", "no-args"]
+                                        exec_res = await self.run_shell(args if isinstance(args, list) else [str(args)])
+
+                                        def _truncate(s: Any, limit: int = 2000) -> Any:
+                                            if s is None:
+                                                return None
+                                            s = str(s)
+                                            return s if len(s) <= limit else (s[:limit] + f"\n<trimmed {len(s)-limit} bytes>")
+
+                                        result = {
+                                            "action": name,
+                                            "code": exec_res.get("code"),
+                                            "out": _truncate(exec_res.get("out")),
+                                            "err": _truncate(exec_res.get("err")),
+                                            "duration": exec_res.get("duration"),
+                                        }
+                                    elif name.startswith("switch_task"):
+                                        task = None
+                                        parts = str(cmd.get("command", "")).split()
+                                        if len(parts) >= 2:
+                                            task = parts[1]
+                                        if not task:
+                                            task = (payload or {}).get("task") if isinstance(payload, dict) else None
+                                        result = {"action": "switch_task", "task": task}
+                                    elif name in {"pause", "resume"}:
+                                        result = {"action": name}
+                                    else:
+                                        result = {"note": "no-op"}
+                                await self.ack_command(
+                                    crawler_id=crawler_id,
+                                    command_id=int(cmd.get("id", 0)),
+                                    status="success",
+                                    result=result,
+                                    suppress=True,
+                                )
+                            except Exception:
+                                pass
+                    except Exception as exc:
+                        if on_error:
+                            try:
+                                on_error(exc)
+                            except Exception:
+                                pass
+                    finally:
+                        try:
+                            await asyncio.wait_for(stop_evt.wait(), timeout=max(1.0, float(interval_seconds or 5.0)))
+                        except asyncio.TimeoutError:
+                            pass
+            finally:
+                self._cmd_task = None
+                self._cmd_stop = None
+
+        task = asyncio.create_task(_loop(), name=f"cmd-worker-{crawler_id}")
+        self._cmd_task = task
+        return task
+
+    async def stop_command_worker(self) -> None:
+        if self._cmd_task is None:
+            return
+        try:
+            if self._cmd_stop is not None:
+                self._cmd_stop.set()
+            try:
+                await asyncio.wait_for(self._cmd_task, timeout=2.0)
+            except asyncio.TimeoutError:
+                self._cmd_task.cancel()
+                try:
+                    await self._cmd_task
+                except Exception:
+                    pass
+        finally:
+            self._cmd_task = None
+            self._cmd_stop = None
