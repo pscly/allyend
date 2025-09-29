@@ -8,6 +8,18 @@ Python SDK：便于在爬虫客户端中上报状态、心跳与远程指令回�
 
 同步版 `CrawlerClient` 仍保留（旧接口），建议迁移到 `AsyncCrawlerClient`。
 
+示例（同步，按你期望的简单用法）：
+    from sdk.crawler_client import CrawlerClient
+
+    sdkclient = CrawlerClient(base_url="https://pscly.cc/api", api_key="<你的APIKey>")
+    crawler = sdkclient.register_crawler("四川人员住建厅_gs1")
+    run = sdkclient.start_run(crawler_id=crawler["id"])
+    sdkclient.log(crawler_id=crawler["id"], level="INFO", message="启动")
+    sdkclient.heartbeat(crawler_id=crawler["id"], payload={"tasks_completed": 1})
+    # 自动心跳（后台线程，非阻塞主线程）
+    sdkclient.start_auto_heartbeat(crawler_id=crawler["id"], interval_seconds=30,
+                                   payload_fn=lambda: {"tasks_completed": 1})
+
 示例（异步）：
     from sdk.crawler_client import AsyncCrawlerClient
     import asyncio
@@ -36,6 +48,7 @@ import os
 import sys
 import time
 import threading
+import queue
 
 import requests
 try:  # 可选依赖：若可用则启用连接池重试与退避
@@ -70,31 +83,60 @@ class CrawlerClient:
         timeout: float = 10.0,
         retries: int = 2,
         backoff_factor: float = 0.3,
+        background_send: bool = True,
+        queue_maxsize: int = 1000,
+        flush_on_close: bool = True,
+        suppress_errors: bool = True,
     ) -> None:
         # 基础配置
         self.base_url = base_url.rstrip("/")
         self.api_base = self._normalize_api_base(self.base_url)
         self.api_key = api_key
         self.timeout = float(timeout)
+        self.suppress_errors = bool(suppress_errors)
 
         # 会话与鉴权
         self.session = requests.Session()
         self.session.headers.update({"X-API-Key": self.api_key})
 
+        # 互斥：requests.Session 并非严格线程安全，串行化请求更稳妥
+        self._session_lock = threading.Lock()
+
         # 后台指令线程控制
         self._cmd_thread: threading.Thread | None = None
         self._cmd_stop: threading.Event | None = None
+        # 自动心跳线程控制
+        self._hb_thread: threading.Thread | None = None
+        self._hb_stop: threading.Event | None = None
 
         # 可选：启用简单重试（对 5xx/连接错误）
         if _HAS_RETRY and retries and retries > 0:
             self._enable_retries(retries=int(retries), backoff_factor=float(backoff_factor))
 
+        # 后台发送管线：让同步版的 log/heartbeat 默认非阻塞
+        self.background_send = bool(background_send)
+        self.flush_on_close = bool(flush_on_close)
+        self._bg_queue: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=max(1, int(queue_maxsize or 1000)))
+        self._bg_stop: threading.Event | None = None
+        self._bg_thread: threading.Thread | None = None
+        if self.background_send:
+            self._start_bg_worker()
+
     # -------------- 生命周期管理 --------------
     def close(self) -> None:
         """关闭底层 HTTP 连接池。"""
-        # 优先停止后台线程
+        # 优先停止自动心跳与后台线程
+        try:
+            self.stop_auto_heartbeat()
+        except Exception:
+            pass
         try:
             self.stop_command_worker()
+        except Exception:
+            pass
+        # 停止后台发送并按需 flush
+        try:
+            self._stop_bg_worker(flush=self.flush_on_close)
         except Exception:
             pass
         # 关闭 HTTP 连接池
@@ -108,6 +150,86 @@ class CrawlerClient:
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
+
+    # -------------- 后台发送（非阻塞主线程） --------------
+    def _start_bg_worker(self) -> None:
+        if self._bg_thread and self._bg_thread.is_alive():
+            return
+        stop_evt = threading.Event()
+        self._bg_stop = stop_evt
+
+        def _worker() -> None:
+            while not stop_evt.is_set():
+                try:
+                    task = self._bg_queue.get(timeout=0.25)
+                except queue.Empty:
+                    continue
+                try:
+                    method = task.get("method", "POST")
+                    url = task.get("url")
+                    kwargs = task.get("kwargs") or {}
+                    attempts_left = int(task.get("attempts_left", 0))
+                    backoff = float(task.get("backoff", 0.3))
+                    try:
+                        with self._session_lock:
+                            resp = self.session.request(method, url, timeout=self.timeout, **kwargs)
+                        resp.raise_for_status()
+                    except Exception:
+                        if attempts_left > 0 and not stop_evt.is_set():
+                            # 简单退避重试
+                            try:
+                                time.sleep(backoff)
+                            except Exception:
+                                pass
+                            task["attempts_left"] = attempts_left - 1
+                            task["backoff"] = backoff * 2.0
+                            try:
+                                self._bg_queue.put_nowait(task)
+                            except Exception:
+                                pass
+                    # 成功或放弃都会标记完成
+                finally:
+                    try:
+                        self._bg_queue.task_done()
+                    except Exception:
+                        pass
+
+        t = threading.Thread(target=_worker, name="crawler-sdk-bg", daemon=True)
+        t.start()
+        self._bg_thread = t
+
+    def _stop_bg_worker(self, *, flush: bool = True, timeout: float = 5.0) -> None:
+        if flush:
+            self.flush(timeout=timeout)
+        if self._bg_stop is not None:
+            try:
+                self._bg_stop.set()
+            except Exception:
+                pass
+        if self._bg_thread is not None:
+            try:
+                self._bg_thread.join(timeout=max(0.1, float(timeout)))
+            except Exception:
+                pass
+        self._bg_stop = None
+        self._bg_thread = None
+
+    def flush(self, timeout: float = 5.0) -> None:
+        """等待后台队列清空（最多等待 timeout 秒）。"""
+        deadline = time.time() + max(0.0, float(timeout))
+        while time.time() < deadline:
+            try:
+                if self._bg_queue.unfinished_tasks == 0 and self._bg_queue.empty():
+                    return
+            except Exception:
+                # 某些实现没有 unfinished_tasks 属性时的兜底
+                if self._bg_queue.empty():
+                    return
+            try:
+                time.sleep(0.05)
+            except Exception:
+                pass
+        # 超时直接返回（尽力而为）
 
     def _enable_retries(self, retries: int, backoff_factor: float) -> None:
         """为会话适配器启用重试策略（需要 urllib3 Retry）。"""
@@ -128,19 +250,39 @@ class CrawlerClient:
 
     @staticmethod
     def _normalize_api_base(base_url: str) -> str:
-        """最简化根路径规范化：仅支持 /pa/api。
+        """规范化 API 根路径，兼容以下常见传参：
 
-        - 若传入已以 /pa/api 结尾，则直接使用；
-        - 否则在末尾追加 /pa/api。
-        说明：移除历史兼容分支，保持 SDK 与后端当前设计一致。
+        - 传站点根，如 https://pscly.cc → 归一为 https://pscly.cc/pa/api
+        - 传反代前缀 /api，如 https://pscly.cc/api → 归一为 https://pscly.cc/api/pa/api
+          （配合 Nginx `location /api/ { proxy_pass .../; }` 生效，等价转发到 /pa/api）
+        - 传 /pa，如 https://pscly.cc/pa → 归一为 https://pscly.cc/pa/api
+        - 传 /pa/api 保持不变
         """
-        base = base_url.rstrip("/")
-        return base if base.endswith("/pa/api") else f"{base}/pa/api"
+        base = (base_url or "").rstrip("/")
+        if not base:
+            return "/pa/api"
+        if base.endswith("/pa/api"):
+            return base
+        if base.endswith("/pa"):
+            return f"{base}/api"
+        if base.endswith("/api"):
+            return f"{base}/pa/api"
+        return f"{base}/pa/api"
 
     def register_crawler(self, name: str) -> Dict[str, Any]:
-        r = self.session.post(f"{self.api_base}/register", json={"name": name}, timeout=self.timeout)
-        r.raise_for_status()
-        return r.json()
+        try:
+            with self._session_lock:
+                r = self.session.post(
+                    f"{self.api_base}/register", json={"name": name}, timeout=self.timeout
+                )
+            r.raise_for_status()
+            return r.json()
+        except Exception as exc:
+            if not self.suppress_errors:
+                raise
+            # 降级：返回一个本地占位对象，避免阻塞/抛错
+            pseudo_id = -abs(hash((self.api_key, name)) % 1_000_000_000) or -1
+            return {"id": pseudo_id, "name": name, "degraded": True, "error": str(exc)}
 
     def heartbeat(
         self,
@@ -159,35 +301,81 @@ class CrawlerClient:
             body["device_name"] = socket.gethostname()
         except Exception:
             pass
-        r = self.session.post(
-            f"{self.api_base}/{crawler_id}/heartbeat",
-            json=body if body else None,
-            timeout=self.timeout,
-        )
-        r.raise_for_status()
-        return r.json()
+        url = f"{self.api_base}/{crawler_id}/heartbeat"
+        if self.background_send:
+            # 入队，默认重试 2 次（不抛错，不阻塞）
+            task = {
+                "method": "POST",
+                "url": url,
+                "kwargs": {"json": (body if body else None)},
+                "attempts_left": 2,
+                "backoff": 0.3,
+            }
+            try:
+                self._bg_queue.put_nowait(task)
+                return {"queued": True}
+            except Exception:
+                # 队列满则降级为前台一次性发送（仍不抛错）
+                try:
+                    with self._session_lock:
+                        r = self.session.post(url, json=body if body else None, timeout=self.timeout)
+                    r.raise_for_status()
+                    return r.json()
+                except Exception as exc:
+                    if self.suppress_errors:
+                        return {"error": str(exc)}
+                    raise
+        else:
+            try:
+                with self._session_lock:
+                    r = self.session.post(url, json=body if body else None, timeout=self.timeout)
+                r.raise_for_status()
+                return r.json()
+            except Exception as exc:
+                if self.suppress_errors:
+                    return {"error": str(exc)}
+                raise
 
     def start_run(self, crawler_id: int) -> Dict[str, Any]:
-        r = self.session.post(f"{self.api_base}/{crawler_id}/runs/start", timeout=self.timeout)
-        r.raise_for_status()
-        return r.json()
+        try:
+            with self._session_lock:
+                r = self.session.post(
+                    f"{self.api_base}/{crawler_id}/runs/start", timeout=self.timeout
+                )
+            r.raise_for_status()
+            return r.json()
+        except Exception as exc:
+            if self.suppress_errors:
+                return {"id": None, "status": "degraded", "error": str(exc)}
+            raise
 
     def finish_run(self, crawler_id: int, run_id: int, status: str = "success") -> Dict[str, Any]:
-        r = self.session.post(
-            f"{self.api_base}/{crawler_id}/runs/{run_id}/finish",
-            params={"status_": status},
-            timeout=self.timeout,
-        )
-        r.raise_for_status()
-        return r.json()
+        try:
+            with self._session_lock:
+                r = self.session.post(
+                    f"{self.api_base}/{crawler_id}/runs/{run_id}/finish",
+                    params={"status_": status},
+                    timeout=self.timeout,
+                )
+            r.raise_for_status()
+            return r.json()
+        except Exception as exc:
+            if self.suppress_errors:
+                return {"ok": False, "degraded": True, "error": str(exc)}
+            raise
 
     def fetch_commands(self, crawler_id: int) -> list[Dict[str, Any]]:
-        r = self.session.post(
-            f"{self.api_base}/{crawler_id}/commands/next",
-            timeout=self.timeout,
-        )
-        r.raise_for_status()
-        return r.json()
+        try:
+            with self._session_lock:
+                r = self.session.post(
+                    f"{self.api_base}/{crawler_id}/commands/next",
+                    timeout=self.timeout,
+                )
+            r.raise_for_status()
+            data = r.json()
+            return list(data or [])
+        except Exception:
+            return []
 
     def ack_command(
         self,
@@ -199,13 +387,19 @@ class CrawlerClient:
         payload: Dict[str, Any] = {"status": status}
         if result is not None:
             payload["result"] = result
-        r = self.session.post(
-            f"{self.api_base}/{crawler_id}/commands/{command_id}/ack",
-            json=payload,
-            timeout=self.timeout,
-        )
-        r.raise_for_status()
-        return r.json()
+        try:
+            with self._session_lock:
+                r = self.session.post(
+                    f"{self.api_base}/{crawler_id}/commands/{command_id}/ack",
+                    json=payload,
+                    timeout=self.timeout,
+                )
+            r.raise_for_status()
+            return r.json()
+        except Exception as exc:
+            if self.suppress_errors:
+                return {"error": str(exc)}  # 避免主线程异常
+            raise
 
     # ---------------- 高级：远程控制辅助 ----------------
 
@@ -554,13 +748,38 @@ class CrawlerClient:
             payload["device_name"] = socket.gethostname()
         except Exception:
             pass
-        r = self.session.post(
-            f"{self.api_base}/{crawler_id}/logs",
-            json=payload,
-            timeout=self.timeout,
-        )
-        r.raise_for_status()
-        return r.json()
+        url = f"{self.api_base}/{crawler_id}/logs"
+        if self.background_send:
+            task = {
+                "method": "POST",
+                "url": url,
+                "kwargs": {"json": payload},
+                "attempts_left": 2,
+                "backoff": 0.3,
+            }
+            try:
+                self._bg_queue.put_nowait(task)
+                return {"queued": True}
+            except Exception:
+                try:
+                    with self._session_lock:
+                        r = self.session.post(url, json=payload, timeout=self.timeout)
+                    r.raise_for_status()
+                    return r.json()
+                except Exception as exc:
+                    if self.suppress_errors:
+                        return {"error": str(exc)}
+                    raise
+        else:
+            try:
+                with self._session_lock:
+                    r = self.session.post(url, json=payload, timeout=self.timeout)
+                r.raise_for_status()
+                return r.json()
+            except Exception as exc:
+                if self.suppress_errors:
+                    return {"error": str(exc)}
+                raise
 
     @staticmethod
     def _compose_message(args: tuple[Any, ...], kwargs: Dict[str, Any]) -> str:
@@ -621,6 +840,80 @@ class CrawlerClient:
             builtins.print = original_print
 
 
+    # ---------------- 自动心跳（同步后台线程） ----------------
+    def start_auto_heartbeat(
+        self,
+        crawler_id: int,
+        interval_seconds: float = 30.0,
+        *,
+        status: Optional[str] = None,
+        payload: Optional[Dict[str, Any]] = None,
+        payload_fn: Optional[Callable[[], Optional[Dict[str, Any]]]] = None,
+        jitter_ratio: float = 0.2,
+        daemon: bool = True,
+    ) -> None:
+        """启动自动心跳：固定间隔在后台线程上报。
+
+        - payload_fn：每次发送前调用（可返回 dict 覆盖/补充 payload），用于动态状态（如已完成数量）。
+        - jitter_ratio：抖动比例（0~1），减少同类客户端时间同步造成的尖峰。
+        """
+        # 若已有线程先停止
+        self.stop_auto_heartbeat()
+
+        stop_evt = threading.Event()
+        self._hb_stop = stop_evt
+
+        def _worker() -> None:
+            base_interval = max(1.0, float(interval_seconds or 30.0))
+            import random as _rand
+            while not stop_evt.is_set():
+                # 组装 payload
+                payload_data: Optional[Dict[str, Any]] = None
+                if payload:
+                    payload_data = dict(payload)
+                if payload_fn is not None:
+                    try:
+                        extra = payload_fn()
+                        if extra:
+                            payload_data = (payload_data or {})
+                            payload_data.update(extra)
+                    except Exception:
+                        pass
+                try:
+                    self.heartbeat(crawler_id=crawler_id, status=status, payload=payload_data)
+                except Exception:
+                    # 忽略上报异常，下一轮继续
+                    pass
+                # 等待下一次，带少量抖动
+                jitter = min(max(float(jitter_ratio or 0.0), 0.0), 1.0)
+                factor = 1.0 + _rand.uniform(-jitter, jitter)
+                wait = max(0.5, base_interval * factor)
+                try:
+                    stop_evt.wait(wait)
+                except Exception:
+                    pass
+
+        t = threading.Thread(target=_worker, name=f"hb-worker-{crawler_id}")
+        t.daemon = bool(daemon)
+        t.start()
+        self._hb_thread = t
+
+    def stop_auto_heartbeat(self, timeout: float = 2.0) -> None:
+        if not self._hb_thread:
+            return
+        if self._hb_stop is not None:
+            try:
+                self._hb_stop.set()
+            except Exception:
+                pass
+        try:
+            self._hb_thread.join(timeout=max(0.0, float(timeout)))
+        except Exception:
+            pass
+        finally:
+            self._hb_thread = None
+            self._hb_stop = None
+
 # -----------------------------
 # 异步版 SDK 客户端（推荐）
 # -----------------------------
@@ -645,6 +938,9 @@ class AsyncCrawlerClient:
         backoff_factor: float = 0.3,
         *,
         verify: bool | str | None = None,
+        # httpx 0.28+ 移除了 `proxies`，改为单一 `proxy` 参数；
+        # 这里同时兼容旧调用方式（传入 `proxies`），内部统一映射到 `proxy`。
+        proxy: str | None = None,
         proxies: Dict[str, str] | str | None = None,
         max_connections: int = 20,
         max_keepalive_connections: int = 10,
@@ -659,28 +955,71 @@ class AsyncCrawlerClient:
         self.retries = int(max(0, retries))
         self.backoff_factor = float(max(0.0, backoff_factor))
 
-        self._client = httpx.AsyncClient(
-            headers={"X-API-Key": self.api_key},
-            timeout=self.timeout,
-            verify=verify if verify is not None else True,
-            proxies=proxies,
-            limits=httpx.Limits(
+        # 兼容入参：优先使用 `proxy`，否则从 `proxies` 中选择一个可用的代理
+        _effective_proxy: str | None = None
+        if isinstance(proxy, str) and proxy.strip():
+            _effective_proxy = proxy.strip()
+        elif isinstance(proxies, str) and proxies.strip():
+            _effective_proxy = proxies.strip()
+        elif isinstance(proxies, dict) and proxies:
+            # 旧式映射：优先 https，其次 http
+            _effective_proxy = (
+                str(proxies.get("https") or "").strip()
+                or str(proxies.get("http") or "").strip()
+                or None
+            )
+
+        # 兼容 httpx 0.27 与 0.28+ 的差异：动态决定使用 `proxy` 或 `proxies`
+        try:
+            import inspect
+            _params = inspect.signature(httpx.AsyncClient.__init__).parameters
+            _use_proxy = "proxy" in _params
+        except Exception:
+            _use_proxy = True  # 保守：按 0.28+ 处理
+
+        _kwargs: Dict[str, Any] = {
+            "headers": {"X-API-Key": self.api_key},
+            "timeout": self.timeout,
+            "verify": (verify if verify is not None else True),
+            "limits": httpx.Limits(
                 max_connections=max_connections,
                 max_keepalive_connections=max_keepalive_connections,
             ),
-        )
+        }
+        if _effective_proxy:
+            if _use_proxy:
+                _kwargs["proxy"] = _effective_proxy
+            else:
+                _kwargs["proxies"] = _effective_proxy
+
+        self._client = httpx.AsyncClient(**_kwargs)
 
         # 后台任务控制
         self._cmd_task: asyncio.Task | None = None
         self._cmd_stop: asyncio.Event | None = None
+        # 自动心跳任务控制
+        self._hb_task: asyncio.Task | None = None
+        self._hb_stop: asyncio.Event | None = None
 
     @staticmethod
     def _normalize_api_base(base_url: str) -> str:
-        base = base_url.rstrip("/")
-        return base if base.endswith("/pa/api") else f"{base}/pa/api"
+        base = (base_url or "").rstrip("/")
+        if not base:
+            return "/pa/api"
+        if base.endswith("/pa/api"):
+            return base
+        if base.endswith("/pa"):
+            return f"{base}/api"
+        if base.endswith("/api"):
+            return f"{base}/pa/api"
+        return f"{base}/pa/api"
 
     # ---------- 生命周期 ----------
     async def aclose(self) -> None:
+        try:
+            await self.stop_auto_heartbeat()
+        except Exception:
+            pass
         try:
             await self.stop_command_worker()
         except Exception:
@@ -713,8 +1052,13 @@ class AsyncCrawlerClient:
         raise last_exc  # type: ignore[misc]
 
     # ---------- API ----------
-    async def register_crawler(self, name: str) -> Dict[str, Any]:
-        return await self._request_json("POST", f"{self.api_base}/register", json={"name": name})
+    async def register_crawler(self, name: str, *, suppress: bool = True) -> Dict[str, Any] | Dict[str, str]:
+        try:
+            return await self._request_json("POST", f"{self.api_base}/register", json={"name": name})
+        except Exception as exc:
+            if suppress:
+                return {"error": str(exc)}
+            raise
 
     async def heartbeat(
         self,
@@ -746,15 +1090,25 @@ class AsyncCrawlerClient:
                 return {"error": str(exc)}
             raise
 
-    async def start_run(self, *, crawler_id: int) -> Dict[str, Any]:
-        return await self._request_json("POST", f"{self.api_base}/{crawler_id}/runs/start")
+    async def start_run(self, *, crawler_id: int, suppress: bool = True) -> Dict[str, Any] | Dict[str, str]:
+        try:
+            return await self._request_json("POST", f"{self.api_base}/{crawler_id}/runs/start")
+        except Exception as exc:
+            if suppress:
+                return {"error": str(exc)}
+            raise
 
-    async def finish_run(self, *, crawler_id: int, run_id: int, status: str = "success") -> Dict[str, Any]:
-        return await self._request_json(
-            "POST",
-            f"{self.api_base}/{crawler_id}/runs/{run_id}/finish",
-            params={"status_": status},
-        )
+    async def finish_run(self, *, crawler_id: int, run_id: int, status: str = "success", suppress: bool = True) -> Dict[str, Any] | Dict[str, str]:
+        try:
+            return await self._request_json(
+                "POST",
+                f"{self.api_base}/{crawler_id}/runs/{run_id}/finish",
+                params={"status_": status},
+            )
+        except Exception as exc:
+            if suppress:
+                return {"error": str(exc)}
+            raise
 
     async def fetch_commands(self, *, crawler_id: int, suppress: bool = True) -> list[Dict[str, Any]]:
         try:
@@ -1068,3 +1422,79 @@ class AsyncCrawlerClient:
         finally:
             self._cmd_task = None
             self._cmd_stop = None
+
+    # ---------- 自动心跳（异步任务） ----------
+    def start_auto_heartbeat(
+        self,
+        *,
+        crawler_id: int,
+        interval_seconds: float = 30.0,
+        status: Optional[str] = None,
+        payload: Optional[Dict[str, Any]] = None,
+        payload_fn: Optional[Callable[[], Optional[Dict[str, Any]]]] = None,
+        jitter_ratio: float = 0.2,
+    ) -> asyncio.Task:
+        """启动自动心跳任务：固定间隔上报，返回 asyncio.Task。"""
+        stop_evt = asyncio.Event()
+        self._hb_stop = stop_evt
+
+        async def _maybe_payload() -> Optional[Dict[str, Any]]:
+            data: Optional[Dict[str, Any]] = None
+            if payload:
+                data = dict(payload)
+            if payload_fn is not None:
+                try:
+                    if asyncio.iscoroutinefunction(payload_fn):  # type: ignore[arg-type]
+                        extra = await payload_fn()  # type: ignore[misc]
+                    else:
+                        loop = asyncio.get_running_loop()
+                        extra = await loop.run_in_executor(None, payload_fn)
+                    if extra:
+                        data = (data or {})
+                        data.update(extra)
+                except Exception:
+                    pass
+            return data
+
+        async def _loop() -> None:
+            import random as _rand
+            base = max(1.0, float(interval_seconds or 30.0))
+            try:
+                while not stop_evt.is_set():
+                    try:
+                        data = await _maybe_payload()
+                        await self.heartbeat(crawler_id=crawler_id, status=status, payload=data, suppress=True)
+                    except Exception:
+                        pass
+                    jit = min(max(float(jitter_ratio or 0.0), 0.0), 1.0)
+                    factor = 1.0 + _rand.uniform(-jit, jit)
+                    delay = max(0.5, base * factor)
+                    try:
+                        await asyncio.wait_for(stop_evt.wait(), timeout=delay)
+                    except asyncio.TimeoutError:
+                        pass
+            finally:
+                self._hb_task = None
+                self._hb_stop = None
+
+        task = asyncio.create_task(_loop(), name=f"hb-worker-{crawler_id}")
+        self._hb_task = task
+        return task
+
+    async def stop_auto_heartbeat(self) -> None:
+        if self._hb_task is None:
+            return
+        try:
+            if self._hb_stop is not None:
+                self._hb_stop.set()
+            try:
+                await asyncio.wait_for(self._hb_task, timeout=2.0)
+            except asyncio.TimeoutError:
+                self._hb_task.cancel()
+                try:
+                    await self._hb_task
+                except Exception:
+                    pass
+        finally:
+            self._hb_task = None
+            self._hb_stop = None

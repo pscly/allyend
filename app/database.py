@@ -207,4 +207,7 @@ def _ensure_extra_columns() -> None:
         add_col('crawler_heartbeats', 'device_name VARCHAR(128)')
     if not has_col('crawlers', 'last_device_name'):
         add_col('crawlers', 'last_device_name VARCHAR(128)')
+    # 新增爬虫置顶时间列
+    if not has_col('crawlers', 'pinned_at'):
+        add_col('crawlers', 'pinned_at DATETIME')
 

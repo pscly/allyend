@@ -1409,6 +1409,8 @@ def my_crawlers(
         if status_whitelist and status_value not in status_whitelist:
             continue
         crawler.status = status_value
+        # 计算置顶布尔值，供前端展示
+        crawler.pinned = bool(crawler.pinned_at)
         if crawler.api_key:
             crawler.api_key_name = crawler.api_key.name or crawler.api_key.key
             crawler.api_key_local_id = crawler.api_key.local_id
@@ -1422,6 +1424,16 @@ def my_crawlers(
         assignment = _resolve_assignment_from_map(assignment_map, crawler)
         _apply_assignment_metadata(crawler, assignment)
         result.append(crawler)
+    # 排序规则：置顶优先（按置顶时间降序），其次按最后心跳降序（空值最后），最后按本地编号
+    def _sort_key(c: Crawler):
+        pinned_rank = 0 if c.pinned_at else 1
+        pinned_ts = -(c.pinned_at.timestamp()) if c.pinned_at else 0
+        hb_rank = 0 if c.last_heartbeat else 1
+        hb_ts = -(c.last_heartbeat.timestamp()) if c.last_heartbeat else 0
+        local_id = c.local_id or 0
+        return (pinned_rank, pinned_ts, hb_rank, hb_ts, local_id)
+
+    result.sort(key=_sort_key)
     return result
 
 @api_router.get("/me/{crawler_id}", response_model=CrawlerOut)
@@ -1522,9 +1534,13 @@ def update_my_crawler(
                 if link:
                     link.is_active = False
             crawler.public_slug = None
+    # 置顶/取消置顶
+    if payload.pinned is not None:
+        crawler.pinned_at = now() if payload.pinned else None
     db.commit()
     db.refresh(crawler)
     crawler.status = _compute_status(crawler.last_heartbeat)
+    crawler.pinned = bool(crawler.pinned_at)
     assignment = _get_effective_assignment(db, current_user.id, crawler)
     _apply_assignment_metadata(crawler, assignment)
     return crawler

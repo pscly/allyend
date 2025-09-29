@@ -65,8 +65,8 @@
       <h3>实时日志</h3>
       {% if summary.allow_logs %}
       <div class="table-actions">
-        <button class="text" type="button" onclick="resetLinkFilters()">重置</button>
-        <button type="button" onclick="loadLinkLogs()">查询</button>
+        <button class="text" type="button" id="link-btn-reset">重置</button>
+        <button type="button" id="link-btn-query">查询</button>
       </div>
       {% endif %}
     </div>
@@ -118,127 +118,6 @@
 
 {% block scripts %}
   {% if link_summary.allow_logs %}
-  <script>
-    const linkSummary = {{ link_summary | tojson }};
-    const logsEndpoint = "{{ logs_endpoint }}";
-    const levelOptions = (window.LOG_LEVEL_OPTIONS || []).slice().sort((a, b) => a.code - b.code);
-    const minSelect = document.getElementById('link-min-level');
-    const maxSelect = document.getElementById('link-max-level');
-
-    function fillLevel(select, defaultValue) {
-      select.innerHTML = levelOptions.map(item => {
-        const selected = Number(defaultValue) === Number(item.code) ? 'selected' : '';
-        return `<option value="${item.code}" ${selected}>${item.code} - ${item.name}</option>`;
-      }).join('');
-    }
-
-    if (minSelect && maxSelect) {
-      fillLevel(minSelect, 0);
-      fillLevel(maxSelect, 50);
-    }
-
-    function resetLinkFilters() {
-      const start = document.getElementById('link-start');
-      const end = document.getElementById('link-end');
-      if (start) start.value = '';
-      if (end) end.value = '';
-      if (minSelect) minSelect.value = 0;
-      if (maxSelect) maxSelect.value = 50;
-      const limit = document.getElementById('link-limit');
-      if (limit) limit.value = 200;
-      const dev = document.getElementById('link-device'); if (dev) dev.value = '';
-      const ipf = document.getElementById('link-ip'); if (ipf) ipf.value = '';
-      loadLinkLogs();
-    }
-
-    async function loadLinkLogs() {
-      const container = document.getElementById('link-log-list');
-      const empty = document.getElementById('link-log-empty');
-      if (!container || !empty) return;
-      const params = new URLSearchParams();
-      const start = document.getElementById('link-start');
-      const end = document.getElementById('link-end');
-      if (start && start.value) params.append('start', start.value);
-      if (end && end.value) params.append('end', end.value);
-      if (minSelect) params.append('min_level', minSelect.value);
-      if (maxSelect) params.append('max_level', maxSelect.value);
-      const limit = document.getElementById('link-limit');
-      if (limit && limit.value) params.append('limit', limit.value);
-      const dev = document.getElementById('link-device')?.value;
-      const ipf = document.getElementById('link-ip')?.value;
-      if (dev) params.append('device', dev.trim());
-      if (ipf) params.append('ip', ipf.trim());
-      // 将关键字/正则传给后端进行初筛
-      const queryInput = document.getElementById('link-query');
-      const regexMode = document.getElementById('link-regex-mode');
-      if (queryInput && queryInput.value) params.append('q', queryInput.value.trim());
-      if (regexMode && regexMode.checked) params.append('regex', '1');
-      const response = await fetch(`${logsEndpoint}?${params.toString()}`);
-      if (!response.ok) {
-        container.innerHTML = '';
-        empty.style.display = '';
-        empty.textContent = '日志加载失败，请稍后重试。';
-        return;
-      }
-      const data = await response.json();
-      if (!data.length) {
-        container.innerHTML = '';
-        empty.style.display = '';
-        empty.textContent = '暂无日志，可调整筛选后再次查询。';
-        return;
-      }
-      empty.style.display = 'none';
-      const levelMap = Object.fromEntries(levelOptions.map(item => [item.code, item.name]));
-      // 关键字/正则二次过滤（前端）
-      // 注意：queryInput 与 regexMode 已在上文声明，避免重复 const 导致脚本报错
-      let filtered = data;
-      if (queryInput && queryInput.value && typeof queryInput.value === 'string') {
-        const q = queryInput.value.trim();
-        try {
-          if (regexMode && regexMode.checked) {
-            const re = new RegExp(q);
-            filtered = filtered.filter(item => re.test(String(item.message || '')));
-          } else {
-            const needle = q.toLowerCase();
-            filtered = filtered.filter(item => String(item.message || '').toLowerCase().includes(needle));
-          }
-        } catch (_) {
-          const needle = q.toLowerCase();
-          filtered = filtered.filter(item => String(item.message || '').toLowerCase().includes(needle));
-        }
-      }
-      container.innerHTML = filtered.map(item => {
-        const code = Number(item.level_code || 20);
-        const badgeClass = `badge level-${code}`;
-        const levelText = levelMap[code] || item.level || 'INFO';
-        let owner = '';
-        if (linkSummary.type === 'crawler') {
-          const localId = item.crawler_local_id;
-          owner = item.crawler_name || `爬虫 #${localId}`;
-        } else {
-          const localId = item.api_key_local_id;
-          const suffix = localId ? ` #${localId}` : '';
-          owner = `${linkSummary.name || 'API Key'}${suffix}`;
-        }
-        const ip = item.source_ip ? `<span class="hint">IP: ${item.source_ip}</span>` : '';
-        const device = item.device_name ? `<span class="hint">设备: ${item.device_name}</span>` : '';
-        return `<div class="log-item">
-          <div class="log-head">
-            <span>${new Date(item.ts).toLocaleString()}</span>
-            <div class="table-actions" style="gap:8px;">
-              <span class="badge ${badgeClass}">${levelText}</span>
-              <span class="hint">${owner}</span>
-              ${ip}${device}
-            </div>
-          </div>
-          <div>${item.message}</div>
-        </div>`;
-      }).join('');
-    }
-
-    window.resetLinkFilters = resetLinkFilters;
-    window.loadLinkLogs = loadLinkLogs;
-    loadLinkLogs();
-  </script>
+  <script src="/static/public_link.js" defer></script>
   {% endif %}
 {% endblock %}

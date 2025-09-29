@@ -86,6 +86,7 @@ export function useRotateApiKeyMutation() {
 export interface UpdateCrawlerInput {
   name?: string;
   is_public?: boolean;
+  pinned?: boolean;
 }
 
 export function useUpdateCrawlerMutation(crawlerId: number | string) {

@@ -193,6 +193,9 @@ class CrawlerOut(BaseModel):
     heartbeat_payload: Optional[dict] = None
     is_public: bool
     public_slug: Optional[str] = None
+    # 置顶状态
+    pinned_at: Optional[datetime] = None
+    pinned: Optional[bool] = None
     # 某些历史数据可能未绑定 API Key，这里允许为可空以避免 500
     api_key_id: Optional[int] = None
     api_key_local_id: Optional[int] = None
@@ -211,6 +214,8 @@ class CrawlerOut(BaseModel):
 class CrawlerUpdate(BaseModel):
     name: Optional[str] = None
     is_public: Optional[bool] = None
+    # 置顶/取消置顶
+    pinned: Optional[bool] = None
 
 
 class RunOut(BaseModel):

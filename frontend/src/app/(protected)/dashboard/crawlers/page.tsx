@@ -19,6 +19,8 @@ import {
   MoreVertical,
   Plus,
   RefreshCcw,
+  Pin,
+  PinOff,
   Shield,
   ShieldOff,
   SlidersHorizontal,
@@ -1252,6 +1254,15 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
       .catch(() => toast({ title: "复制失败", variant: "destructive" }));
   };
 
+  const handleTogglePinned = async () => {
+    try {
+      await updateCrawlerMutation.mutateAsync({ pinned: !Boolean(crawler.pinned) });
+      toast({ title: crawler.pinned ? "已取消置顶" : "已置顶", description: crawler.name });
+    } catch (error) {
+      toast({ title: "操作失败", description: getErrorMessage(error, "更新置顶状态失败"), variant: "destructive" });
+    }
+  };
+
   const handleRestart = async () => {
     try {
       await createCommandMutation.mutateAsync({ command: "restart" });
@@ -1322,6 +1333,22 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuLabel>操作</DropdownMenuLabel>
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.preventDefault();
+                  handleTogglePinned();
+                }}
+              >
+                {crawler.pinned ? (
+                  <>
+                    <PinOff className="mr-2 h-4 w-4" /> 取消置顶
+                  </>
+                ) : (
+                  <>
+                    <Pin className="mr-2 h-4 w-4" /> 置顶
+                  </>
+                )}
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={(event) => {
                   event.preventDefault();

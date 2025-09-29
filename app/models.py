@@ -199,6 +199,8 @@ class Crawler(Base):
     heartbeat_payload: Mapped[Optional[dict]] = mapped_column(MutableDict.as_mutable(JSON), nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     public_slug: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True)
+    # 置顶时间（为空表示未置顶）
+    pinned_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     user: Mapped[User] = relationship("User", back_populates="crawlers")
