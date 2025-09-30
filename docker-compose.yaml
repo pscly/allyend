@@ -1,4 +1,20 @@
 services:
+  db:
+    container_name: allyend-db
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-allyend}
+      - POSTGRES_USER=${POSTGRES_USER:-allyend}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-allyend}
+    volumes:
+      - ${DOCKER_DB_DIR:-./data/pgdata}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-allyend} -d ${POSTGRES_DB:-allyend}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   backend:
     container_name: allyend-backend
     build:
@@ -14,6 +30,9 @@ services:
       - ${DOCKER_LOG_DIR:-./logs}:/app/logs  # 应用日志目录
     expose:
       - "${PORT:-9093}"
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:

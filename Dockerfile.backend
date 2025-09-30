@@ -26,6 +26,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY --from=deps /app/.venv /app/.venv
 COPY app ./app
 COPY sdk ./sdk
+COPY scripts ./scripts
 COPY README.md ./README.md
 COPY alembic.ini ./alembic.ini
 COPY migrations ./migrations
@@ -36,5 +37,6 @@ RUN mkdir -p /app/data/files /app/logs
 EXPOSE 9093
 
 # 可通过环境变量 PORT 覆盖端口
-CMD ["sh", "-c", "python -c 'from app.database import ensure_database_schema; ensure_database_schema()' && uvicorn app.main:get_app --host 0.0.0.0 --port ${PORT:-9093} --proxy-headers --forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-127.0.0.1,::1}"]
+# 启动前执行数据库等待与迁移（Alembic），随后再启动应用
+CMD ["sh", "-c", "python scripts/prestart.py && uvicorn app.main:get_app --host 0.0.0.0 --port ${PORT:-9093} --proxy-headers --forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-127.0.0.1,::1}"]
 

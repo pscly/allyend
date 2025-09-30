@@ -94,12 +94,35 @@ _STATIC_DIR = _BASE_DIR / "static"
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 
+def _run_alembic_upgrade_head() -> None:
+    """在本地/开发模式下自动执行 Alembic 升级。
+
+    - 优先使用应用配置中的 DATABASE_URL；
+    - 通过代码调用 Alembic，避免必须手动执行命令；
+    - 幂等：若已在 head，不会做任何变更。
+    """
+    try:
+        from alembic.config import Config  # type: ignore
+        from alembic import command  # type: ignore
+
+        root = Path(__file__).resolve().parent.parent
+        cfg = Config(str(root / "alembic.ini"))
+        # 使用 app 配置覆盖 alembic.ini，保证本地与容器一致
+        cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+        command.upgrade(cfg, "head")
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("alembic upgrade 失败：%s", exc)
+
+
 @app.on_event("startup")
 def on_startup():
-    # 启动时应用迁移并校验数据结构
+    # 1) 先确保基础结构（新装场景）
     ensure_database_schema()
+    # 2) 再执行 Alembic 迁移（已有库与结构差异统一在这里处理）
+    _run_alembic_upgrade_head()
+    # 3) 引导默认数据
     bootstrap_defaults()
-    # 迁移执行可能修改了 logging（alembic.ini），此处重新校准日志到控制台+文件
+    # 4) 迁移执行可能修改了 logging（alembic.ini），此处重新校准日志到控制台+文件
     _configure_logging()
 
 

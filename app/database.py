@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import create_engine, inspect, text
+from datetime import datetime
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
 
 from .config import settings
@@ -226,22 +227,108 @@ def _ensure_extra_columns() -> None:
     if not has_col('crawlers', 'hidden_at'):
         add_col('crawlers', 'hidden_at DATETIME')
 
-    # 移除旧的唯一约束：uq_crawlers_api_key_id（允许一个 Key 绑定多个工程）
+    # 移除旧的唯一约束（允许一个 Key 绑定多个工程）
+    # 历史上曾对 crawlers.api_key_id 施加唯一约束；不同数据库中索引/约束名称可能不同。
+    # 这里做“尽力清理”：
+    # - SQLite：遍历 PRAGMA index_list/PRAGMA index_info，删除唯一且仅包含 api_key_id 的索引；
+    # - PostgreSQL：尝试删除若干常见命名；
+    # - MySQL/MariaDB：尝试 DROP INDEX；
     try:
-        idx_name = 'uq_crawlers_api_key_id'
         with engine.begin() as conn:
             if dialect == 'sqlite':
-                conn.execute(text(f"DROP INDEX IF EXISTS {idx_name}"))
+                # 列出所有索引，筛选唯一索引
+                rows = conn.execute(text("PRAGMA index_list('crawlers')")).fetchall()
+                # PRAGMA index_list 返回：seq, name, unique, origin, partial
+                for row in rows:
+                    try:
+                        idx_name = row[1]
+                        is_unique = bool(row[2])
+                    except Exception:
+                        # 兼容不同方言返回结构
+                        idx_name = row['name'] if isinstance(row, dict) and 'name' in row else str(row[1])
+                        is_unique = bool(row['unique'] if isinstance(row, dict) and 'unique' in row else row[2])
+                    if not is_unique:
+                        continue
+                    cols = conn.execute(text(f"PRAGMA index_info('{idx_name}')")).fetchall()
+                    col_names = [c[2] if len(c) >= 3 else (c['name'] if isinstance(c, dict) else None) for c in cols]
+                    # 仅当唯一索引只覆盖 api_key_id 时才删除，避免误删 (user_id, local_id) 等正确唯一性
+                    if [c for c in col_names if c] == ['api_key_id']:
+                        conn.execute(text(f"DROP INDEX IF EXISTS '{idx_name}'"))
             elif dialect == 'postgresql':
-                conn.execute(text(f"DROP INDEX IF EXISTS {idx_name}"))
+                # 常见命名清理（若不存在则忽略）
+                for idx_name in [
+                    'uq_crawlers_api_key_id',
+                    'crawlers_api_key_id_key',
+                    'crawlers_api_key_id_idx',
+                ]:
+                    conn.execute(text(f"DROP INDEX IF EXISTS {idx_name}"))
             elif dialect in ('mysql', 'mariadb'):
-                # MySQL 需要指定表名
-                # 若不存在会报错，这里加 try/except 忽略
-                try:
-                    conn.execute(text(f"ALTER TABLE crawlers DROP INDEX {idx_name}"))
-                except Exception:
-                    pass
+                for idx_name in [
+                    'uq_crawlers_api_key_id',
+                    'crawlers_api_key_id_key',
+                    'crawlers_api_key_id_idx',
+                ]:
+                    try:
+                        conn.execute(text(f"ALTER TABLE crawlers DROP INDEX {idx_name}"))
+                    except Exception:
+                        pass
     except Exception:
         # 忽略失败，避免影响启动；建议生产使用迁移工具
+        pass
+
+    # 若 SQLite 仍然存在由表级 UNIQUE(api_key_id) 生成的自动索引（sqlite_autoindex_*），
+    # 则需要通过“重建表”方式移除该唯一约束（SQLite 无法直接 DROP 该约束）。
+    try:
+        if dialect == 'sqlite':
+            with engine.begin() as conn:
+                # 检查是否存在仅包含 api_key_id 的唯一自动索引
+                idx_rows = conn.execute(text("PRAGMA index_list('crawlers')")).fetchall()
+                has_unique_only_api_key = False
+                auto_idx_names: list[str] = []
+                for row in idx_rows:
+                    try:
+                        idx_name = row[1]
+                        is_unique = bool(row[2])
+                        origin = row[3]
+                    except Exception:
+                        idx_name = row['name'] if isinstance(row, dict) and 'name' in row else str(row[1])
+                        is_unique = bool(row['unique'] if isinstance(row, dict) and 'unique' in row else row[2])
+                        origin = row['origin'] if isinstance(row, dict) and 'origin' in row else row[3]
+                    if not is_unique:
+                        continue
+                    cols = conn.execute(text(f"PRAGMA index_info('{idx_name}')")).fetchall()
+                    col_names = [c[2] if len(c) >= 3 else (c['name'] if isinstance(c, dict) else None) for c in cols]
+                    if [c for c in col_names if c] == ['api_key_id']:
+                        has_unique_only_api_key = True
+                        if isinstance(idx_name, str) and idx_name.startswith('sqlite_autoindex_'):
+                            auto_idx_names.append(idx_name)
+                if has_unique_only_api_key:
+                    # 重建 crawlers 表：重命名旧表 -> 按 ORM 定义创建新表 -> 迁移数据 -> 删除旧表
+                    backup = f"crawlers_backup_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+                    conn.execute(text("PRAGMA foreign_keys=OFF"))
+                    conn.execute(text(f"ALTER TABLE crawlers RENAME TO {backup}"))
+                    # 重新创建新表（使用当前 ORM 定义，无 UNIQUE(api_key_id)）
+                    from .models import Base as ModelsBase  # 延迟导入避免循环
+                    ModelsBase.metadata.create_all(bind=engine)
+                    # 计算可迁移列交集
+                    def columns_of(tbl: str) -> list[str]:
+                        infos = conn.execute(text(f"PRAGMA table_info('{tbl}')")).fetchall()
+                        names: list[str] = []
+                        for info in infos:
+                            try:
+                                names.append(str(info[1]))
+                            except Exception:
+                                names.append(str(info['name']))
+                        return names
+                    new_cols = columns_of('crawlers')
+                    old_cols = columns_of(backup)
+                    common = [c for c in old_cols if c in new_cols]
+                    cols_csv = ", ".join(common)
+                    if cols_csv:
+                        conn.execute(text(f"INSERT INTO crawlers ({cols_csv}) SELECT {cols_csv} FROM {backup}"))
+                    conn.execute(text(f"DROP TABLE {backup}"))
+                    conn.execute(text("PRAGMA foreign_keys=ON"))
+    except Exception:
+        # 任何失败均忽略，避免影响启动；如需严格迁移请使用专门迁移工具
         pass
 
