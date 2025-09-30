@@ -12,13 +12,13 @@ import time
 def main():
     sdkclient = CrawlerClient(
         base_url="http://192.168.3.10:9093",
-        api_key="TmSzebusbwpRCYnYnxjn1bxwxTxoyHgDjNAHvDOB5YSw6pFWnc0TBy91FHqt7eLT",
+        api_key="9vpBAD7KcITFA1thnDH0ZzG_Fo2arLME8QuE8lCB3yolQbDuGgrVKlwCMa0oWLnD",
         suppress_errors=False,
     )
 
     print("[1] 注册...")
     try:
-        crawler = sdkclient.register_crawler("四川人员住建厅_gs1")
+        crawler = sdkclient.register_crawler("四川人员住建厅_test1")
         print("register =>", crawler)
     except Exception as e:
         print("register error:", repr(e))

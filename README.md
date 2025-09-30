@@ -138,6 +138,8 @@ uv sync
 # 启动开发服务（默认 9093）
 uvicorn app.main:get_app --reload --host 0.0.0.0 --port 9093
 # 健康检查：http://localhost:9093/health
+# 访问日志（可选，建议在 Uvicorn 0.30+ 显式开启）：
+# uvicorn app.main:get_app --reload --host 0.0.0.0 --port 9093 --access-log
 ```
 
 - 首次启动会自动：创建 `data/app.db`、建表、写入默认用户组与邀请码、创建超级管理员
@@ -168,6 +170,7 @@ pnpm dev
 - CORS 与代理：`FRONTEND_ORIGINS`、`FORWARDED_TRUSTED_IPS`（逗号或 JSON 数组）
 - 注册与管理员：`ALLOW_DIRECT_SIGNUP`、`ROOT_ADMIN_USERNAME`、`ROOT_ADMIN_PASSWORD`、`ROOT_ADMIN_INVITE_CODE`、`DEFAULT_ADMIN_INVITE_CODE`、`DEFAULT_USER_INVITE_CODE`
 - 文件与日志：`FILE_STORAGE_DIR`、`LOG_DIR`
+- 访问日志兜底：`APP_ACCESS_LOG`（默认 true；若已用 `--access-log` 可设为 false 以避免重复）
 - 日志限流/配额：`LOG_QUERY_RATE_PER_SECOND`、`DEFAULT_USER_LOG_QUOTA_BYTES`、`DEFAULT_CRAWLER_LOG_MAX_LINES`、`DEFAULT_CRAWLER_LOG_MAX_BYTES`
 - Cookie：`COOKIE_SECURE`、`COOKIE_SAMESITE`（lax/strict/none）、`COOKIE_DOMAIN`、`COOKIE_PATH`
 - 通知：`SMTP_*`、`ALERT_EMAIL_SENDER`、`ALERT_WEBHOOK_TIMEOUT`

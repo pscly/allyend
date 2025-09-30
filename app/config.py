@@ -34,6 +34,8 @@ class Settings(BaseSettings):
 
     FILE_STORAGE_DIR: str = "data/files"
     LOG_DIR: str = "logs"
+    # 是否启用应用层访问日志兜底（当 Uvicorn 未开启 --access-log 时仍记录访问日志）
+    APP_ACCESS_LOG: bool = True
 
     SMTP_HOST: str | None = None
     SMTP_PORT: int = 587

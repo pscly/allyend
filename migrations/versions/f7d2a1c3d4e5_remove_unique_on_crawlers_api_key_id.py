@@ -24,6 +24,7 @@ def upgrade() -> None:
 
     if dialect == "postgresql":
         # 删除唯一约束（未知名）与唯一索引（若存在）
+        # 采用 name[] 比较，避免 text[] 与 name[] 类型不匹配导致的错误
         op.execute(
             sa.text(
                 """
@@ -40,7 +41,7 @@ BEGIN
         SELECT array_agg(att.attname ORDER BY att.attnum)
         FROM unnest(c.conkey) AS colnum
         JOIN pg_attribute att ON att.attrelid = t.oid AND att.attnum = colnum
-      ) = ARRAY['api_key_id']::text[]
+      ) = ARRAY['api_key_id']::name[]
   ) LOOP
     EXECUTE format('ALTER TABLE crawlers DROP CONSTRAINT %I', r.name);
   END LOOP;
@@ -104,4 +105,3 @@ def downgrade() -> None:
         op.execute(sa.text("ALTER TABLE crawlers ADD UNIQUE KEY uq_crawlers_api_key_id (api_key_id)"))
     elif dialect == "sqlite":
         op.execute(sa.text("CREATE UNIQUE INDEX IF NOT EXISTS uq_crawlers_api_key_id ON crawlers(api_key_id)"))
-

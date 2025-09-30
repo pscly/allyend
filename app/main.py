@@ -47,11 +47,16 @@ def _configure_logging() -> None:
         file_handler.setFormatter(formatter)
         root.addHandler(file_handler)
 
-    # 将相同的文件处理器挂到 uvicorn.access（避免重复挂载）
+    # 统一接管 uvicorn.access：
+    # - 开启传播到 root（由 root 的控制台/文件处理器统一输出）
+    # - 清空其自带的处理器，避免与 root 重复输出
     ua_logger = logging.getLogger("uvicorn.access")
-    has_ua_file = any(isinstance(h, RotatingFileHandler) and getattr(h, "baseFilename", None) == str(log_file) for h in ua_logger.handlers)
-    if not has_ua_file:
-        ua_logger.addHandler(file_handler)
+    ua_logger.setLevel(logging.INFO)
+    ua_logger.disabled = False
+    ua_logger.propagate = True
+    # 清理已有处理器（保守处理：只在存在非 RotatingFileHandler 时清空，避免第三方重复挂载）
+    if any(not isinstance(h, RotatingFileHandler) for h in ua_logger.handlers):
+        ua_logger.handlers.clear()
 
     # 确保控制台处理器存在（幂等）
     has_console = any(isinstance(h, logging.StreamHandler) for h in root.handlers)
@@ -94,6 +99,65 @@ _STATIC_DIR = _BASE_DIR / "static"
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 
+class _AccessLogASGI:
+    """应用层访问日志兜底（ASGI 包裹器）。
+
+    - 不依赖 Starlette 的 BaseHTTPMiddleware，直接在 ASGI 层拦截 HTTP 请求，
+      稳定输出访问日志（即便 Uvicorn 未开启 --access-log）。
+    - 日志写入 logger `uvicorn.access`，并通过前面的 _configure_logging 传播到 root，
+      从而统一输出到控制台与文件。
+    """
+
+    def __init__(self, app):
+        self.app = app
+        self.logger = logging.getLogger("uvicorn.access")
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            return await self.app(scope, receive, send)
+
+        client = scope.get("client")
+        addr = f"{client[0]}:{client[1]}" if client else "-"
+        # 若有代理头，尽量恢复真实客户端地址（简化版）
+        try:
+            raw_headers = scope.get("headers") or []
+            hdrs = {k.decode("latin1").lower(): v.decode("latin1") for k, v in raw_headers}
+            xff = hdrs.get("x-forwarded-for")
+            xfp = hdrs.get("x-forwarded-port")
+            if xff:
+                real_ip = xff.split(",")[0].strip()
+                addr = f"{real_ip}:{xfp}" if xfp else real_ip
+        except Exception:  # noqa: BLE001
+            pass
+        method = scope.get("method", "-")
+        path = scope.get("path", "/")
+        qs = scope.get("query_string", b"")
+        if qs:
+            try:
+                qs_str = qs.decode("utf-8", errors="ignore")
+            except Exception:  # noqa: BLE001
+                qs_str = ""
+            if qs_str:
+                path = f"{path}?{qs_str}"
+        http_version = scope.get("http_version", "1.1")
+        status_code = 500
+
+        async def _send(message):
+            nonlocal status_code
+            if message.get("type") == "http.response.start":
+                status_code = int(message.get("status", 200))
+            return await send(message)
+
+        try:
+            return await self.app(scope, receive, _send)
+        finally:
+            self.logger.info('%s - "%s %s HTTP/%s" %s', addr, method, path, http_version, status_code)
+
+
+# 是否启用应用层访问日志兜底（仅记录，不改变 FastAPI 实例供路由/事件注册）
+_enable_app_access_log = str(getattr(settings, "APP_ACCESS_LOG", "true")).strip().lower()
+
+
 def _run_alembic_upgrade_head() -> None:
     """在本地/开发模式下自动执行 Alembic 升级。
 
@@ -124,6 +188,10 @@ def on_startup():
     bootstrap_defaults()
     # 4) 迁移执行可能修改了 logging（alembic.ini），此处重新校准日志到控制台+文件
     _configure_logging()
+    logging.getLogger("allyend.boot").info(
+        "应用启动完成，日志系统就绪（APP_ACCESS_LOG=%s）",
+        _enable_app_access_log,
+    )
 
 
 # 健康检查与就绪探针（便于排查“卡住”）
@@ -144,7 +212,10 @@ app.include_router(md_router.router)
 
 
 # 便于 uv run 直接引用
+# - 返回 ASGI 包裹器（若启用访问日志兜底），否则返回原生 FastAPI 实例
+_asgi_app = _AccessLogASGI(app) if _enable_app_access_log in {"1", "true", "yes", "on"} else app
+
 def get_app():
-    return app
+    return _asgi_app
 
 
