@@ -1,5 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  async redirects() {
+    return [
+      // 统一废弃受保护页 /dashboard/files，永久重定向到公开入口 /files
+      {
+        source: "/dashboard/files",
+        destination: "/files",
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     // 后端基础 Origin：开发环境默认 9093，本地可通过环境变量覆盖
     const backend = process.env.BACKEND_ORIGIN?.replace(/\/$/, "") || "http://localhost:9093";

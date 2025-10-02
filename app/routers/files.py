@@ -45,8 +45,15 @@ DUPLICATE_SUFFIX_RE = re.compile(r'^(?P<stem>.+?)-(?P<index>\d+)$')
 
 @router.get("/files", response_class=HTMLResponse)
 def files_list(request: Request, current_user: Optional[User] = Depends(get_optional_user), db: Session = Depends(get_db)):
+    """公开下载页：仅展示对外公开的文件。
+
+    - 路径为 `/files`，无需登录即可访问；
+    - 为防止信息泄露，这里只列出 visibility == "public" 的文件；
+    - 下载权限仍由下游下载接口基于可见性校验。
+    """
     files = (
         db.query(FileEntry)
+        .filter(FileEntry.visibility == "public")
         .order_by(FileEntry.created_at.desc())
         .all()
     )
