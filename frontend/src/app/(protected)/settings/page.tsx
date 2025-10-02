@@ -27,9 +27,8 @@ export default function SettingsPage() {
     mutationFn: async (file: File) => {
       const form = new FormData();
       form.append("file", file);
-      return apiClient.post<UserProfile, FormData>(endpoints.auth.avatar, form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      // 使用 FormData 时无需手动设置 Content-Type，fetch 会自动带上含 boundary 的 multipart/form-data
+      return apiClient.post<UserProfile, FormData>(endpoints.auth.avatar, form);
     },
     onSuccess: (res) => {
       useAuthStore.getState().setProfile(res as unknown as UserProfile);
