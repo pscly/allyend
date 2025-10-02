@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Optional
+from typing import Optional, Tuple, Dict, Any
 
 from fastapi import HTTPException, status, Request
 from jose import jwt, JWTError
@@ -31,20 +31,33 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
-def create_access_token(subject: str, expires_minutes: int) -> str:
-    """创建 JWT Token，subject 通常为用户ID"""
+def create_access_token(subject: str, expires_minutes: int, session_id: Optional[str] = None) -> str:
+    """创建 JWT Token，subject 通常为用户ID。
+
+    可选地携带会话ID（sid），用于多设备会话校验与注销。
+    """
     expire = aware_now() + timedelta(minutes=expires_minutes)
-    payload = {"sub": subject, "exp": expire}
+    payload: Dict[str, Any] = {"sub": subject, "exp": expire}
+    if session_id:
+        payload["sid"] = session_id
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def decode_access_token(token: str) -> Optional[str]:
-    """解码 JWT，返回 subject（用户ID）"""
+def decode_token(token: str) -> Optional[Dict[str, Any]]:
+    """解码 JWT，返回完整 payload。"""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        return payload.get("sub")
+        return payload
     except JWTError:
         return None
+
+
+def decode_access_token(token: str) -> Optional[str]:
+    """兼容旧用法：仅返回 subject（用户ID）"""
+    payload = decode_token(token)
+    if not payload:
+        return None
+    return payload.get("sub")
 
 
 def get_token_from_request(request: Request) -> Optional[str]:

@@ -115,6 +115,8 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255))
     display_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     email: Mapped[Optional[str]] = mapped_column(String(128), unique=True, nullable=True)
+    # 用户头像公开访问地址（例如 /avatars/{user_id}/avatar.png）
+    avatar_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # 日志总配额（字节）：None 使用系统默认，<=0 表示无限制
     log_quota_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -152,6 +154,26 @@ class User(Base):
     alert_events: Mapped[List["CrawlerAlertEvent"]] = relationship("CrawlerAlertEvent", back_populates="user", cascade="all, delete-orphan")
     file_tokens: Mapped[List["FileAPIToken"]] = relationship("FileAPIToken", back_populates="user", cascade="all, delete-orphan")
     files_owned: Mapped[List["FileEntry"]] = relationship("FileEntry", back_populates="owner", cascade="all, delete-orphan", foreign_keys="FileEntry.owner_id")
+    # 账号会话（多设备同时在线）
+    sessions: Mapped[List["UserSession"]] = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+
+
+class UserSession(Base):
+    """用户登录会话（支持多设备登录与设备管理）"""
+    __tablename__ = "user_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    remember_me: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    last_active_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    user: Mapped["User"] = relationship("User", back_populates="sessions")
 
 
 class APIKey(Base):

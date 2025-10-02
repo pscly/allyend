@@ -1,0 +1,420 @@
+     1: """
+     2: 认证/用户/Key 管理路由：
+     3: - /login, /register 页面
+     4: - /api/auth/login, /api/auth/register 接口
+     5: - /api/keys 管理 API Key
+     6: """
+     7: from __future__ import annotations
+     8: 
+     9: import secrets
+    10: from datetime import datetime, timedelta
+    11: from typing import Optional
+    12: 
+    13: from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
+    14: from fastapi.responses import HTMLResponse, RedirectResponse
+    15: from fastapi import UploadFile, File
+    16: from fastapi.templating import Jinja2Templates
+    17: from pathlib import Path
+    18: from sqlalchemy import func
+    19: from sqlalchemy.orm import Session, joinedload
+    20: 
+    21: from ..auth import create_access_token, get_password_hash, verify_password, get_token_from_request, decode_token
+    22: from ..config import settings
+    23: from ..constants import ROLE_ADMIN, ROLE_SUPERADMIN, ROLE_USER, THEME_PRESETS, LOG_LEVEL_OPTIONS
+    24: from ..dependencies import get_current_user, get_db
+    25: from ..models import APIKey, Crawler, CrawlerGroup, InviteCode, InviteUsage, SystemSetting, User, UserGroup, UserSession
+    26: from ..schemas import UserCreate, APIKeyOut, APIKeyCreate, APIKeyUpdate, PublicAPIKeyOut, UserProfileOut, LoginRequest, SessionOut
+    27: from ..utils.time_utils import now, aware_now
+    28: from ..utils.audit import record_operation, summarize_api_key, summarize_group
+    29: 
+    30: 
+    31: router = APIRouter()
+    32: 
+    33: HEARTBEAT_OK_SECONDS = 5 * 60
+    34: HEARTBEAT_WARN_SECONDS = 15 * 60
+    35: 
+    36: 
+    37: def _derive_status(last_heartbeat: Optional[datetime]) -> str:
+    38:     if not last_heartbeat:
+    39:         return "offline"
+    40:     delta = (now() - last_heartbeat).total_seconds()
+    41:     if delta <= HEARTBEAT_OK_SECONDS:
+    42:         return "online"
+    43:     if delta <= HEARTBEAT_WARN_SECONDS:
+    44:         return "warning"
+    45:     return "offline"
+    46: 
+    47: 
+    48: _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+    49: templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+    50: templates.env.globals.update(site_icp=settings.SITE_ICP, theme_presets=THEME_PRESETS, log_levels=LOG_LEVEL_OPTIONS, site_name=settings.SITE_NAME)
+    51: 
+    52: def _hydrate_api_key(key: APIKey) -> APIKey:
+    53:     """为保持兼容，API Key 输出携带爬虫字段但默认为空。
+    54: 
+    55:     由于一个 Key 现在可以对应多个工程，这里不再返回单一爬虫信息，
+    56:     前端如需工程列表，请调用 /pa/api/me。
+    57:     """
+    58:     key.crawler_id = None
+    59:     key.crawler_local_id = None
+    60:     key.crawler_name = None
+    61:     key.crawler_status = None
+    62:     key.crawler_last_heartbeat = None
+    63:     key.crawler_public_slug = None
+    64:     return key
+    65: 
+    66: 
+    67: 
+    68: REGISTRATION_MODE_KEY = "registration_mode"
+    69: DEFAULT_REGISTRATION_MODE = "open" if settings.ALLOW_DIRECT_SIGNUP else "invite"
+    70: 
+    71: 
+    72: def _get_registration_mode(db: Session) -> str:
+    73:     setting = db.query(SystemSetting).filter(SystemSetting.key == REGISTRATION_MODE_KEY).first()
+    74:     if setting:
+    75:         return setting.value
+    76:     return DEFAULT_REGISTRATION_MODE
+    77: 
+    78: 
+    79: def _get_default_group(db: Session) -> Optional[UserGroup]:
+    80:     group = db.query(UserGroup).filter(UserGroup.is_default == True).first()
+    81:     if group:
+    82:         return group
+    83:     return db.query(UserGroup).order_by(UserGroup.id).first()
+    84: 
+    85: 
+    86: def _validate_invite(db: Session, code: str) -> InviteCode:
+    87:     invite = db.query(InviteCode).filter(InviteCode.code == code).first()
+    88:     if not invite:
+    89:         raise HTTPException(status_code=400, detail="邀请码无效")
+    90:     if invite.expires_at and now() > invite.expires_at:
+    91:         raise HTTPException(status_code=400, detail="邀请码已过期")
+    92:     if invite.max_uses and invite.used_count >= invite.max_uses:
+    93:         raise HTTPException(status_code=400, detail="邀请码已用尽")
+    94:     return invite
+    95: 
+    96: 
+    97: def _assign_group_from_invite(invite: Optional[InviteCode], db: Session) -> Optional[UserGroup]:
+    98:     if invite and invite.target_group:
+    99:         return invite.target_group
+   100:     return _get_default_group(db)
+   101: 
+   102: 
+   103: def _compute_role(invite: Optional[InviteCode]) -> str:
+   104:     if invite:
+   105:         if invite.code == settings.ROOT_ADMIN_INVITE_CODE:
+   106:             return ROLE_SUPERADMIN
+   107:         if invite.allow_admin:
+   108:             return ROLE_ADMIN
+   109:     return ROLE_USER
+   110: 
+   111: 
+   112: def _perform_registration(
+   113:     db: Session,
+   114:     username: str,
+   115:     password: str,
+   116:     display_name: Optional[str],
+   117:     email: Optional[str],
+   118:     invite_code: Optional[str],
+   119:     request_ip: Optional[str] = None,
+   120: ) -> User:
+   121:     if db.query(User).filter(User.username == username).first():
+   122:         raise HTTPException(status_code=400, detail="用户名已存在")
+   123:     if email and db.query(User).filter(User.email == email).first():
+   124:         raise HTTPException(status_code=400, detail="邮箱已被占用")
+   125: 
+   126:     mode = _get_registration_mode(db)
+   127:     invite: Optional[InviteCode] = None
+   128: 
+   129:     if mode == "closed":
+   130:         raise HTTPException(status_code=403, detail="注册已关闭")
+   131: 
+   132:     if invite_code:
+   133:         invite = _validate_invite(db, invite_code.strip())
+   134:     elif mode == "invite":
+   135:         raise HTTPException(status_code=400, detail="当前注册需要邀请码")
+   136: 
+   137:     group = _assign_group_from_invite(invite, db)
+   138:     if not group:
+   139:         raise HTTPException(status_code=500, detail="缺少默认用户组，请联系管理员")
+   140: 
+   141:     role = _compute_role(invite)
+   142:     hashed_password = get_password_hash(password)
+   143: 
+   144:     user = User(
+   145:         username=username,
+   146:         hashed_password=hashed_password,
+   147:         role=role,
+   148:         is_root_admin=(role == ROLE_SUPERADMIN),
+   149:         group=group,
+   150:         invite_code=invite,
+   151:         invited_by=invite.creator if invite else None,
+   152:     )
+   153:     db.add(user)
+   154:     db.commit()
+   155:     db.refresh(user)
+   156: 
+   157:     if invite:
+   158:         invite.used_count += 1
+   159:         usage = InviteUsage(invite=invite, user=user, ip_address=request_ip)
+   160:         db.add(usage)
+   161:         db.commit()
+   162: 
+   163:     return user
+   164: 
+   165: 
+   166: @router.get("/login", response_class=HTMLResponse)
+   167: def login_page(request: Request, db: Session = Depends(get_db)):
+   168:     mode = _get_registration_mode(db)
+   169:     return templates.TemplateResponse(
+   170:         "login.html",
+   171:         {
+   172:             "request": request,
+   173:             "mode": "login",
+   174:             "registration_mode": mode,
+   175:         },
+   176:     )
+   177: 
+   178: 
+   179: @router.post("/login")
+   180: def login_form(
+   181:     request: Request,
+   182:     response: Response,
+   183:     username: str = Form(...),
+   184:     password: str = Form(...),
+   185:     remember_me: Optional[str] = Form(default=None),
+   186:     db: Session = Depends(get_db),
+   187: ):
+   188:     user = db.query(User).filter(User.username == username).first()
+   189:     if not user or not verify_password(password, user.hashed_password):
+   190:         return templates.TemplateResponse(
+   191:             "login.html",
+   192:             {
+   193:                 "request": request,
+   194:                 "mode": "login",
+   195:                 "registration_mode": _get_registration_mode(db),
+   196:                 "error": "用户名或密码错误",
+   197:             },
+   198:             status_code=400,
+   199:         )
+   200:     remember = bool(remember_me)
+   201:     session = _create_session(db, user, request, remember)
+   202:     expires_minutes = 30 * 24 * 60 if remember else settings.ACCESS_TOKEN_EXPIRE_MINUTES
+   203:     token = create_access_token(str(user.id), expires_minutes, session_id=session.session_id)
+   204:     resp = RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
+   205:     # 表单登录也使用同样的 Cookie 策略
+   206:     resp.set_cookie(
+   207:         key="access_token",
+   208:         value=token,
+   209:         httponly=True,
+   210:         samesite=settings.COOKIE_SAMESITE,
+   211:         path=settings.COOKIE_PATH or "/",
+   212:         secure=bool(settings.COOKIE_SECURE),
+   213:         domain=settings.COOKIE_DOMAIN or None,
+   214:         max_age=expires_minutes * 60,
+   215:     )
+   216:     return resp
+   217: 
+   218: 
+   219: @router.get("/register", response_class=HTMLResponse)
+   220: def register_page(request: Request, db: Session = Depends(get_db)):
+   221:     mode = _get_registration_mode(db)
+   222:     return templates.TemplateResponse(
+   223:         "login.html",
+   224:         {
+   225:             "request": request,
+   226:             "mode": "register",
+   227:             "registration_mode": mode,
+   228:         },
+   229:     )
+   230: 
+   231: 
+   232: @router.post("/register")
+   233: def register_form(
+   234:     request: Request,
+   235:     response: Response,
+   236:     username: str = Form(...),
+   237:     password: str = Form(...),
+   238:     display_name: Optional[str] = Form(default=None),
+   239:     email: Optional[str] = Form(default=None),
+   240:     invite_code: Optional[str] = Form(default=None),
+   241:     db: Session = Depends(get_db),
+   242: ):
+   243:     try:
+   244:         _perform_registration(
+   245:             db,
+   246:             username.strip(),
+   247:             password,
+   248:             display_name,
+   249:             email.strip() if email else None,
+   250:             invite_code,
+   251:             request.headers.get("X-Real-IP"),
+   252:         )
+   253:     except HTTPException as exc:
+   254:         return templates.TemplateResponse(
+   255:             "login.html",
+   256:             {
+   257:                 "request": request,
+   258:                 "mode": "register",
+   259:                 "registration_mode": _get_registration_mode(db),
+   260:                 "error": exc.detail,
+   261:                 "username": username,
+   262:                 "display_name": display_name,
+   263:                 "email": email,
+   264:                 "invite_code": invite_code,
+   265:             },
+   266:             status_code=exc.status_code if exc.status_code < 500 else 400,
+   267:         )
+   268:     # 注册成功后直接设置 Cookie 并跳转到控制台
+   269:     user = db.query(User).filter(User.username == username.strip()).first()
+   270:     token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+   271:     resp = RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
+   272:     resp.set_cookie(
+   273:         key="access_token",
+   274:         value=token,
+   275:         httponly=True,
+   276:         samesite=settings.COOKIE_SAMESITE,
+   277:         path=settings.COOKIE_PATH or "/",
+   278:         secure=bool(settings.COOKIE_SECURE),
+   279:         domain=settings.COOKIE_DOMAIN or None,
+   280:     )
+   281:     return resp
+   282: 
+   283: 
+   284: def _create_session(db: Session, user: User, request: Request, remember_me: bool) -> UserSession:
+   285:     sid = secrets.token_urlsafe(24)
+   286:     expires = aware_now() + (timedelta(days=30) if remember_me else timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
+   287:     session = UserSession(
+   288:         session_id=sid,
+   289:         user=user,
+   290:         user_agent=request.headers.get("User-Agent"),
+   291:         ip_address=request.headers.get("X-Real-IP") if request.client else None,
+   292:         remember_me=remember_me,
+   293:         created_at=aware_now(),
+   294:         last_active_at=aware_now(),
+   295:         expires_at=expires,
+   296:         revoked=False,
+   297:     )
+   298:     db.add(session)
+   299:     db.commit()
+   300:     db.refresh(session)
+   301:     return session
+   302: 
+   303: 
+   304: def _clear_cookie(resp: Response) -> None:
+   305:     resp.delete_cookie(
+   306:         key="access_token",
+   307:         path=settings.COOKIE_PATH or "/",
+   308:         domain=settings.COOKIE_DOMAIN or None,
+   309:     )
+   310: 
+   311: 
+   312: @router.get("/logout")
+   313: def logout(request: Request, db: Session = Depends(get_db)):
+   314:     # 尝试注销当前会话
+   315:     token = get_token_from_request(request)
+   316:     if token:
+   317:         payload = decode_token(token)
+   318:         if payload and payload.get("sid"):
+   319:             session = (
+   320:                 db.query(UserSession)
+   321:                 .filter(UserSession.session_id == payload["sid"])
+   322:                 .first()
+   323:             )
+   324:             if session:
+   325:                 session.revoked = True
+   326:                 db.add(session)
+   327:                 db.commit()
+   328:     resp = RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+   329:     _clear_cookie(resp)
+   330:     return resp
+   331: 
+   332: 
+   333: # -------- API 形式（可配合前端/移动端） --------
+   334: 
+   335: 
+   336: @router.post("/api/auth/register", response_model=UserProfileOut)
+   337: def api_register(payload: UserCreate, request: Request, response: Response, db: Session = Depends(get_db)):
+   338:     _perform_registration(
+   339:         db,
+   340:         payload.username.strip(),
+   341:         payload.password,
+   342:         payload.display_name,
+   343:         payload.email.strip() if payload.email else None,
+   344:         payload.invite_code,
+   345:         request.headers.get("X-Real-IP") if request.client else None,
+   346:     )
+   347:     user = db.query(User).filter(User.username == payload.username.strip()).first()
+   348:     token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+   349:     # 仅使用 Cookie 会话（HttpOnly + 可配置属性）
+   350:     response.set_cookie(
+   351:         key="access_token",
+   352:         value=token,
+   353:         httponly=True,
+   354:         samesite=settings.COOKIE_SAMESITE,
+   355:         path=settings.COOKIE_PATH or "/",
+   356:         secure=bool(settings.COOKIE_SECURE),
+   357:         domain=settings.COOKIE_DOMAIN or None,
+   358:     )
+   359:     return user
+   360: 
+   361: 
+   362: @router.post("/api/auth/login", response_model=UserProfileOut)
+   363: def api_login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+   364:     user = db.query(User).filter(User.username == payload.username).first()
+   365:     if not user or not verify_password(payload.password, user.hashed_password):
+   366:         raise HTTPException(status_code=400, detail="用户名或密码错误")
+   367:     # 创建会话（支持多设备）
+   368:     session = _create_session(db, user, request, bool(payload.remember_me))
+   369:     # 按记住我设置 Token 过期时间
+   370:     expires_minutes = 30 * 24 * 60 if payload.remember_me else settings.ACCESS_TOKEN_EXPIRE_MINUTES
+   371:     token = create_access_token(str(user.id), expires_minutes, session_id=session.session_id)
+   372:     # 仅使用 Cookie 会话（HttpOnly + 可配置属性）
+   373:     response.set_cookie(
+   374:         key="access_token",
+   375:         value=token,
+   376:         httponly=True,
+   377:         samesite=settings.COOKIE_SAMESITE,
+   378:         path=settings.COOKIE_PATH or "/",
+   379:         secure=bool(settings.COOKIE_SECURE),
+   380:         domain=settings.COOKIE_DOMAIN or None,
+   381:         max_age=expires_minutes * 60,
+   382:     )
+   383:     return user
+   384: 
+   385: 
+   386: @router.get("/api/users/me", response_model=UserProfileOut)
+   387: def api_current_user(current_user: User = Depends(get_current_user)):
+   388:     """返回当前登录用户的基础资料，供前端初始化"""
+   389:     return current_user
+   390: 
+   391: 
+   392: @router.post("/api/auth/logout")
+   393: def api_logout(request: Request, response: Response, db: Session = Depends(get_db)):
+   394:     token = get_token_from_request(request)
+   395:     if token:
+   396:         payload = decode_token(token)
+   397:         if payload and payload.get("sid"):
+   398:             session = (
+   399:                 db.query(UserSession)
+   400:                 .filter(UserSession.session_id == payload["sid"])
+   401:                 .first()
+   402:             )
+   403:             if session:
+   404:                 session.revoked = True
+   405:                 db.add(session)
+   406:                 db.commit()
+   407:     _clear_cookie(response)
+   408:     return {"ok": True}
+   409: 
+   410: 
+   411: @router.post("/api/users/me/avatar", response_model=UserProfileOut)
+   412: def upload_avatar(
+   413:     current_user: User = Depends(get_current_user),
+   414:     db: Session = Depends(get_db),
+   415:     file: UploadFile = File(...),
+   416: ):
+   417:     # 基本校验
+   418:     content_type = (file.content_type or "").lower()
+   419:     if content_type not in {"image/png", "image/jpeg", "image/webp", "image/jpg"}:
+   420:         raise HTTPException(status_code=400, detail="仅支持 PNG/JPEG/WEBP 图片")

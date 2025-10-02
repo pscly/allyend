@@ -75,6 +75,14 @@
           </div>
         </div>
         {% endif %}
+        {% if mode != 'register' %}
+        <div class="auth-field" style="margin-top: 8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#6b7280;">
+            <input type="checkbox" name="remember_me" value="1" />
+            记住我（30 天）
+          </label>
+        </div>
+        {% endif %}
         <button type="submit" class="auth__submit">{{ '注册并进入' if mode == 'register' else '登录系统' }}</button>
       </form>
       <p class="hint auth__switch">

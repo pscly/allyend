@@ -14,6 +14,7 @@ class UserProfileOut(BaseModel):
     username: str
     display_name: Optional[str] = None
     email: Optional[str] = None
+    avatar_url: Optional[str] = None
     role: str
     is_active: bool
     is_root_admin: bool
@@ -37,6 +38,28 @@ class UserCreate(BaseModel):
     display_name: Optional[str] = None
     email: Optional[str] = None
     invite_code: Optional[str] = None
+
+
+class LoginRequest(BaseModel):
+    """登录请求：支持可选记住我"""
+    username: str
+    password: str
+    remember_me: bool = False
+
+
+class SessionOut(BaseModel):
+    id: int
+    session_id: str
+    user_agent: Optional[str] = None
+    ip_address: Optional[str] = None
+    remember_me: bool
+    created_at: datetime
+    last_active_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    current: bool = False
+
+    class Config:
+        from_attributes = True
 
 
 class UserGroupOut(BaseModel):

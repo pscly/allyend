@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { apiClient } from "@/lib/api/client";
+import { endpoints } from "@/lib/api/endpoints";
 
 import type { UserProfile } from "@/lib/api/types";
 
@@ -37,6 +39,12 @@ export const useAuthStore = create<AuthState>()(
   ),
 );
 
-export function logout() {
-  useAuthStore.getState().clear();
+export async function logout() {
+  try {
+    await apiClient.post(endpoints.auth.logout, {});
+  } catch (e) {
+    // 忽略网络错误，尽量完成本地清理
+  } finally {
+    useAuthStore.getState().clear();
+  }
 }

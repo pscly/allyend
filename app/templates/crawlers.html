@@ -35,6 +35,21 @@
 
   <section class="card">
     <div class="card-header">
+      <h3>隐藏的爬虫</h3>
+      <div class="table-actions">
+        <span class="hint">仅在此处显示已隐藏的工程</span>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table" id="hidden-crawlers-table">
+        <thead><tr><th>ID（本账号）</th><th>名称</th><th>最近心跳</th><th>来源 IP</th><th>公开</th><th>快捷链接</th><th>日志用量</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
       <h3>快捷访问链接</h3>
       <div class="table-actions">
         <button type="button" onclick="refreshLinks()">刷新</button>
@@ -74,6 +89,8 @@
       <div class="table-actions">
         <button class="text" type="button" onclick="resetFilters()">重置</button>
         <button type="button" onclick="loadLogs()">查询</button>
+        <button class="text" type="button" onclick="toggleLogFullscreen()">放大</button>
+        <button class="text" type="button" onclick="gotoLogDetail()">详情</button>
       </div>
     </div>
     <div class="filters">
@@ -213,6 +230,8 @@
 
 {% block scripts %}
 <script>
+  // 初始详情 ID（通过后端注入）；无则为 null
+  window.INIT_CRAWLER_ID = {{ initial_crawler_id if initial_crawler_id is not none else 'null' }};
 (() => {
   const levelOptions = (window.LOG_LEVEL_OPTIONS || []).slice().sort((a, b) => a.code - b.code);
   const minSelect = document.getElementById('log-min-level');
@@ -293,13 +312,19 @@
 
   async function loadCrawlers() {
     const data = await fetchJSON('/pa/api/me');
-    crawlersSelect.innerHTML = data.map(crawler => {
+    const visible = data.filter(c => !c.is_hidden);
+    const hidden = data.filter(c => c.is_hidden);
+
+    // 仅将“未隐藏”的工程放入筛选器
+    crawlersSelect.innerHTML = visible.map(crawler => {
       const localId = crawler.local_id;
       const displayName = crawler.name || '未命名爬虫';
       return `<option value="${crawler.id}" selected>[#${localId}] ${displayName}</option>`;
     }).join('');
+
+    // 主列表（未隐藏）
     const tbody = document.querySelector('#crawlers-table tbody');
-    tbody.innerHTML = data.map(crawler => {
+    tbody.innerHTML = visible.map(crawler => {
       const hb = crawler.last_heartbeat ? new Date(crawler.last_heartbeat).toLocaleString() : '-';
       const slug = crawler.public_slug ? `<code>${crawler.public_slug}</code>` : '-';
       const ip = crawler.last_source_ip || '-';
@@ -314,9 +339,40 @@
         <td>${crawler.is_public ? '是' : '否'}</td>
         <td>${slug}</td>
         <td><div class="usage" data-cid="${crawler.id}"><span class="hint">载入中...</span></div></td>
-        <td><button class="text" onclick="showDetail(${crawler.id}, '${safeName}')">详情</button> <button class="text" style="color:#b91c1c; margin-left:8px;" onclick="quickClearLogs(${crawler.id})">清空日志</button></td>
+        <td>
+          <button class="text" onclick="showDetail(${crawler.id}, '${safeName}')">详情</button>
+          <button class="text" style="margin-left:8px;" onclick="hideCrawler(${crawler.id})">隐藏</button>
+          <button class="text" style="color:#b91c1c; margin-left:8px;" onclick="quickClearLogs(${crawler.id})">清空日志</button>
+          <button class="text" style="color:#7f1d1d; margin-left:8px;" onclick="deleteCrawler(${crawler.id})">删除</button>
+        </td>
         </tr>`;
     }).join('');
+
+    // 隐藏列表
+    const hbody = document.querySelector('#hidden-crawlers-table tbody');
+    hbody.innerHTML = hidden.map(crawler => {
+      const hb = crawler.last_heartbeat ? new Date(crawler.last_heartbeat).toLocaleString() : '-';
+      const slug = crawler.public_slug ? `<code>${crawler.public_slug}</code>` : '-';
+      const ip = crawler.last_source_ip || '-';
+      const localId = crawler.local_id;
+      const displayName = crawler.name || '未命名爬虫';
+      const safeName = displayName.replace(/'/g, "");
+      return `<tr>
+        <td title="全局 ID: ${crawler.id}">${localId}</td>
+        <td>${displayName}</td>
+        <td>${hb}</td>
+        <td>${ip}</td>
+        <td>${crawler.is_public ? '是' : '否'}</td>
+        <td>${slug}</td>
+        <td><div class="usage" data-cid="${crawler.id}"><span class="hint">载入中...</span></div></td>
+        <td>
+          <button class="text" onclick="showDetail(${crawler.id}, '${safeName}')">详情</button>
+          <button class="text" style="margin-left:8px;" onclick="unhideCrawler(${crawler.id})">取消隐藏</button>
+          <button class="text" style="color:#7f1d1d; margin-left:8px;" onclick="deleteCrawler(${crawler.id})">删除</button>
+        </td>
+        </tr>`;
+    }).join('');
+
     // 渲染每个爬虫的日志用量（异步逐个拉取）
     loadCrawlersUsage();
   }
@@ -339,7 +395,7 @@
   }
 
   async function loadCrawlersUsage() {
-    const cells = document.querySelectorAll('#crawlers-table .usage[data-cid]');
+    const cells = document.querySelectorAll('#crawlers-table .usage[data-cid], #hidden-crawlers-table .usage[data-cid]');
     cells.forEach(async (el) => {
       const cid = el.getAttribute('data-cid');
       try {
@@ -666,8 +722,93 @@
   window.loadLogs = loadLogs;
   window.resetFilters = resetFilters;
 
+  // ---- 页面增强：隐藏/取消隐藏/删除/放大/详情 ----
+  window.hideCrawler = async (id) => {
+    if (!confirm('确认隐藏该工程？隐藏后将不在主列表显示。')) return;
+    try {
+      await fetchJSON(`/pa/api/me/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_hidden: true })
+      });
+      await loadCrawlers();
+      alert('已隐藏');
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  window.unhideCrawler = async (id) => {
+    try {
+      await fetchJSON(`/pa/api/me/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_hidden: false })
+      });
+      await loadCrawlers();
+      alert('已取消隐藏');
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  window.deleteCrawler = async (id) => {
+    if (!confirm('确认删除工程？将连带清空运行、心跳、日志与命令，且不可恢复！')) return;
+    try {
+      await fetchJSON(`/pa/api/me/${id}`, { method: 'DELETE' });
+      // 如当前详情是该工程，关闭详情
+      if (window.__currentCrawlerId === id) {
+        document.getElementById('detail').style.display = 'none';
+        window.__currentCrawlerId = null;
+      }
+      await loadCrawlers();
+      alert('工程已删除');
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  window.toggleLogFullscreen = () => {
+    const el = document.getElementById('log-list');
+    if (!el) return;
+    const fs = el.getAttribute('data-fs') === '1';
+    if (!fs) {
+      el.style.position = 'fixed';
+      el.style.top = '64px';
+      el.style.left = '24px';
+      el.style.right = '24px';
+      el.style.bottom = '24px';
+      el.style.zIndex = '999';
+      el.style.background = 'var(--color-surface)';
+      el.style.padding = '12px';
+      el.style.overflow = 'auto';
+      el.setAttribute('data-fs', '1');
+    } else {
+      el.removeAttribute('style');
+      el.removeAttribute('data-fs');
+    }
+  };
+
+  window.gotoLogDetail = () => {
+    const id = window.__currentCrawlerId;
+    if (!id) {
+      alert('请先在爬虫列表中点击某一项的“详情”。');
+      return;
+    }
+    // 跳转到支持直达详情的路由
+    window.location.href = `/dashboard/crawlers/${id}`;
+  };
+
+  // 初次加载：
   loadKeys();
-  loadCrawlers().then(loadLogs);
+  loadCrawlers().then(() => {
+    // 若后端注入了初始详情 ID，则自动展开
+    const initId = (window.INIT_CRAWLER_ID || null);
+    if (initId) {
+      try { window.showDetail(initId, ''); } catch(_) {}
+    }
+    return loadLogs();
+  });
   refreshLinks();
 })();
 </script>

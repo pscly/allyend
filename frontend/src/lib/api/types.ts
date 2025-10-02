@@ -19,6 +19,7 @@ export interface UserProfile {
   username: string;
   display_name: string | null;
   email: string | null;
+  avatar_url?: string | null;
   role: "user" | "admin" | "superadmin";
   is_active: boolean;
   is_root_admin?: boolean;

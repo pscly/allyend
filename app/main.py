@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 import logging
-from logging.handlers import RotatingFileHandler
+import os
+import time
+from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from pathlib import Path
 import sys
 
@@ -17,6 +19,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from .config import settings
 from .database import ensure_database_schema, bootstrap_defaults
+from pathlib import Path as _P
 from .routers import auth as auth_router
 from .routers import crawlers as crawlers_router
 from .routers import dashboard as dashboard_router
@@ -25,6 +28,24 @@ from .routers import md as md_router
 from .routers import admin as admin_router
 
 
+
+
+def _apply_timezone() -> None:
+    """根据 .env 中的 TIMEZONE 应用进程时区（影响日志切割的本地午夜）。
+    - 优先使用 IANA 时区名（例如：Asia/Shanghai）。
+    - 在不支持 tzset 的平台上（如少数环境），静默降级为系统本地时区。
+    """
+    try:
+        if settings.TIMEZONE:
+            os.environ["TZ"] = str(settings.TIMEZONE)
+            tz_name = getattr(settings, "TIMEZONE", None)
+
+            # 某些平台（Linux/Unix）可即时生效；Windows 可能不支持
+            if hasattr(time, "tzset"):
+                time.tzset()
+    except Exception:
+        # 保守处理：不中断应用，仅记录告警
+        logging.getLogger(__name__).warning("无法应用时区设置：%s", settings.TIMEZONE)
 
 
 def _configure_logging() -> None:
@@ -37,13 +58,21 @@ def _configure_logging() -> None:
     formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
     # 确保文件日志处理器存在（幂等）
+    # 从按大小切割切换为按天切割：本地午夜（受 _apply_timezone 影响）
     file_handler = None
     for h in root.handlers:
-        if isinstance(h, RotatingFileHandler) and getattr(h, "baseFilename", None) == str(log_file):
+        if isinstance(h, (RotatingFileHandler, TimedRotatingFileHandler)) and getattr(h, "baseFilename", None) == str(log_file):
             file_handler = h
             break
     if file_handler is None:
-        file_handler = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
+        file_handler = TimedRotatingFileHandler(
+            filename=log_file,
+            when="midnight",
+            interval=1,
+            backupCount=14,  # 默认保留 14 天，可按需调整
+            encoding="utf-8",
+            utc=False,  # 使用本地时区（由 _apply_timezone 控制）
+        )
         file_handler.setFormatter(formatter)
         root.addHandler(file_handler)
 
@@ -54,8 +83,8 @@ def _configure_logging() -> None:
     ua_logger.setLevel(logging.INFO)
     ua_logger.disabled = False
     ua_logger.propagate = True
-    # 清理已有处理器（保守处理：只在存在非 RotatingFileHandler 时清空，避免第三方重复挂载）
-    if any(not isinstance(h, RotatingFileHandler) for h in ua_logger.handlers):
+    # 清理已有处理器（保守处理：只在存在非文件轮转处理器时清空，避免第三方重复挂载）
+    if any(not isinstance(h, (RotatingFileHandler, TimedRotatingFileHandler)) for h in ua_logger.handlers):
         ua_logger.handlers.clear()
 
     # 确保控制台处理器存在（幂等）
@@ -69,6 +98,7 @@ def _configure_logging() -> None:
     if root.level == logging.NOTSET or root.level > logging.INFO:
         root.setLevel(logging.INFO)
 
+_apply_timezone()
 _configure_logging()
 app = FastAPI(title=settings.SITE_NAME, version="0.2.0")
 
@@ -97,6 +127,9 @@ app.add_middleware(
 _BASE_DIR = Path(__file__).resolve().parent
 _STATIC_DIR = _BASE_DIR / "static"
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+_AVATAR_DIR = _P(getattr(settings, "FILE_STORAGE_DIR", "data/files")).resolve() / "avatars"
+_AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/avatars", StaticFiles(directory=str(_AVATAR_DIR)), name="avatars")
 
 
 class _AccessLogASGI:

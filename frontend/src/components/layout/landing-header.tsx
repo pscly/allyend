@@ -4,8 +4,10 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { buttonVariants } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { useAuthStore } from "@/store/auth-store";
+import { logout, useAuthStore } from "@/store/auth-store";
 import { useApplyUserTheme } from "@/hooks/use-apply-theme";
 
 // 登录后在首页展示的导航项（保持与受保护区一致）
@@ -82,6 +84,7 @@ export function LandingWelcome({ className }: LandingWelcomeProps) {
 
 export function LandingHeader() {
   const { loggedIn } = useLandingAuthState();
+  const { profile } = useAuthStore();
   return (
     <header className="border-b border-border bg-card/70 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4">
@@ -96,7 +99,47 @@ export function LandingHeader() {
               </Link>
             ))}
           <LandingWelcome />
-          <LandingAuthButton className="h-9 px-4 text-sm" />
+          {loggedIn ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger className="rounded-full">
+                <Avatar className="h-9 w-9">
+                  {profile?.avatar_url ? (
+                    <AvatarImage src={profile.avatar_url} alt={profile.display_name || profile.username || "头像"} />
+                  ) : (
+                    <AvatarFallback>{(profile?.display_name || profile?.username || "U").slice(0, 1).toUpperCase()}</AvatarFallback>
+                  )}
+                </Avatar>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <p className="text-sm font-medium text-foreground">{profile?.display_name || profile?.username}</p>
+                  <p className="text-xs text-muted-foreground">{profile?.email ?? `${profile?.role} 用户`}</p>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard">概览</Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/settings">个人设置</Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/settings/sessions">登录设备</Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    logout();
+                  }}
+                >
+                  退出登录
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <LandingAuthButton className="h-9 px-4 text-sm" />
+          )}
         </nav>
       </div>
     </header>

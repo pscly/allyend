@@ -15,6 +15,7 @@ export const authKeys = {
 interface LoginPayload {
   username: string;
   password: string;
+  remember_me?: boolean;
 }
 
 interface RegisterPayload extends LoginPayload {

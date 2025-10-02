@@ -86,6 +86,46 @@ def crawlers_page(request: Request, current_user: User = Depends(get_current_use
             "user": current_user,
             "crawlers": crawlers,
             "keys": keys,
+            # 初始不指定详情目标
+            "initial_crawler_id": None,
+        },
+    )
+
+
+@router.get("/dashboard/crawlers/{crawler_id}", response_class=HTMLResponse)
+def crawler_detail_page(
+    crawler_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """支持通过 URL 直接打开某个爬虫详情。
+
+    - 仍复用 crawlers.html 模板，通过注入 initial_crawler_id 由前端脚本自动展开详情区域。
+    - 若 ID 不属于当前用户，保持 404 以避免越权。
+    """
+    crawler = (
+        db.query(Crawler)
+        .filter(Crawler.id == crawler_id, Crawler.user_id == current_user.id)
+        .first()
+    )
+    if not crawler:
+        raise HTTPException(status_code=404, detail="爬虫不存在或无权访问")
+
+    keys = (
+        db.query(APIKey)
+        .filter(APIKey.user_id == current_user.id)
+        .order_by(APIKey.created_at.desc())
+        .all()
+    )
+    return templates.TemplateResponse(
+        "crawlers.html",
+        {
+            "request": request,
+            "user": current_user,
+            "crawlers": [crawler],
+            "keys": keys,
+            "initial_crawler_id": crawler.id,
         },
     )
 

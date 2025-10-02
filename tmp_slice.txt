@@ -1,0 +1,31 @@
+        key="access_token",
+        value=token,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
+        path=settings.COOKIE_PATH or "/",
+        secure=bool(settings.COOKIE_SECURE),
+        domain=settings.COOKIE_DOMAIN or None,
+    )
+    return user
+
+
+@router.post("/api/auth/login", response_model=UserProfileOut)
+def api_login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == payload.username).first()
+    if not user or not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="用户名或密码错误")
+    # 创建会话（支持多设备）
+    session = _create_session(db, user, request, bool(payload.remember_me))
+    # 按记住我设置 Token 过期时间
+    expires_minutes = 30 * 24 * 60 if payload.remember_me else settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    token = create_access_token(str(user.id), expires_minutes, session_id=session.session_id)
+    # 仅使用 Cookie 会话（HttpOnly + 可配置属性）
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
+        path=settings.COOKIE_PATH or "/",
+        secure=bool(settings.COOKIE_SECURE),
+        domain=settings.COOKIE_DOMAIN or None,
+        max_age=expires_minutes * 60,

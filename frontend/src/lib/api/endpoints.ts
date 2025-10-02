@@ -3,6 +3,10 @@ export const endpoints = {
     login: "/api/auth/login",
     register: "/api/auth/register",
     profile: "/api/users/me",
+    logout: "/api/auth/logout",
+    sessions: "/api/auth/sessions",
+    sessionById: (id: string) => `/api/auth/sessions/${id}`,
+    avatar: "/api/users/me/avatar",
   },
   files: {
     listMine: "/files/me",

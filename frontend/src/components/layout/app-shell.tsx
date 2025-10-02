@@ -6,7 +6,7 @@ import { LogOut, Menu } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { ThemePresets } from "@/components/layout/theme-presets";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -84,8 +84,9 @@ export function AppShell({ children, className, user }: AppShellProps) {
   }
 
   const handleLogout = () => {
-    logout();
-    router.replace("/login");
+    logout().finally(() => {
+      router.replace("/login");
+    });
   };
 
   const currentPath = normalizePath(pathname);
@@ -168,7 +169,11 @@ export function AppShell({ children, className, user }: AppShellProps) {
             <DropdownMenu>
               <DropdownMenuTrigger className="rounded-full">
                 <Avatar className="h-9 w-9">
-                  <AvatarFallback>{getInitial(user)}</AvatarFallback>
+                  {user?.avatar_url ? (
+                    <AvatarImage src={user.avatar_url} alt={user?.display_name || user?.username || "头像"} />
+                  ) : (
+                    <AvatarFallback>{getInitial(user)}</AvatarFallback>
+                  )}
                 </Avatar>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -184,6 +189,8 @@ export function AppShell({ children, className, user }: AppShellProps) {
                 <DropdownMenuItem onSelect={() => router.push("/dashboard")}>概览</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => router.push("/dashboard/files")}>我的文件</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => router.push("/public")}>公开空间</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push("/settings")}>个人设置</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push("/settings/sessions")}>登录设备</DropdownMenuItem>
                 {hasAdminCapability(user) && (
                   <DropdownMenuItem onSelect={() => router.push("/admin")}>管理中心</DropdownMenuItem>
                 )}

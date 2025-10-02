@@ -9,6 +9,7 @@ services:
       - ./.env
     environment:
       - PORT=${PORT:-9093}
+      - TZ=${TIMEZONE:-Asia/Shanghai}
     volumes:
       - ${DOCKER_DATA_DIR:-./data}:/app/data # 数据库与上传文件目录
       - ${DOCKER_LOG_DIR:-./logs}:/app/logs  # 应用日志目录

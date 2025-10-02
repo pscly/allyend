@@ -22,6 +22,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
     PORT=9093
 
+# 安装时区数据，确保能够使用 IANA 时区名（如 Asia/Shanghai）
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
 # 拷贝依赖环境，并仅复制运行所需代码
 COPY --from=deps /app/.venv /app/.venv
 COPY app ./app

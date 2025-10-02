@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 const schema = z.object({
   username: z.string().min(1, "请输入用户名"),
   password: z.string().min(1, "请输入密码"),
+  remember_me: z.boolean().optional().default(false),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -51,6 +52,7 @@ function LoginForm() {
     defaultValues: {
       username: "",
       password: "",
+      remember_me: false,
     },
   });
 
@@ -59,6 +61,7 @@ function LoginForm() {
       await loginMutation.mutateAsync({
         username: values.username.trim(),
         password: values.password,
+        remember_me: values.remember_me ?? false,
       });
       toast({ title: "登录成功", description: "正在跳转首页" });
       router.replace(redirectTo);
@@ -87,6 +90,12 @@ function LoginForm() {
           {...form.register("password")}
         />
         <FormMessage message={form.formState.errors.password?.message} />
+      </div>
+      <div className="flex items-center justify-between">
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input type="checkbox" {...form.register("remember_me")} />
+          记住我（30 天）
+        </label>
       </div>
       <button
         type="submit"

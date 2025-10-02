@@ -7,23 +7,24 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import UploadFile, File
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from ..auth import create_access_token, get_password_hash, verify_password
+from ..auth import create_access_token, get_password_hash, verify_password, get_token_from_request, decode_token
 from ..config import settings
 from ..constants import ROLE_ADMIN, ROLE_SUPERADMIN, ROLE_USER, THEME_PRESETS, LOG_LEVEL_OPTIONS
 from ..dependencies import get_current_user, get_db
-from ..models import APIKey, Crawler, CrawlerGroup, InviteCode, InviteUsage, SystemSetting, User, UserGroup
-from ..schemas import UserCreate, APIKeyOut, APIKeyCreate, APIKeyUpdate, PublicAPIKeyOut, UserProfileOut
-from ..utils.time_utils import now
+from ..models import APIKey, Crawler, CrawlerGroup, InviteCode, InviteUsage, SystemSetting, User, UserGroup, UserSession
+from ..schemas import UserCreate, APIKeyOut, APIKeyCreate, APIKeyUpdate, PublicAPIKeyOut, UserProfileOut, LoginRequest, SessionOut
+from ..utils.time_utils import now, aware_now
 from ..utils.audit import record_operation, summarize_api_key, summarize_group
 
 
@@ -181,6 +182,7 @@ def login_form(
     response: Response,
     username: str = Form(...),
     password: str = Form(...),
+    remember_me: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
 ):
     user = db.query(User).filter(User.username == username).first()
@@ -195,7 +197,10 @@ def login_form(
             },
             status_code=400,
         )
-    token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    remember = bool(remember_me)
+    session = _create_session(db, user, request, remember)
+    expires_minutes = 30 * 24 * 60 if remember else settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    token = create_access_token(str(user.id), expires_minutes, session_id=session.session_id)
     resp = RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
     # 表单登录也使用同样的 Cookie 策略
     resp.set_cookie(
@@ -206,6 +211,7 @@ def login_form(
         path=settings.COOKIE_PATH or "/",
         secure=bool(settings.COOKIE_SECURE),
         domain=settings.COOKIE_DOMAIN or None,
+        max_age=expires_minutes * 60,
     )
     return resp
 
@@ -275,15 +281,52 @@ def register_form(
     return resp
 
 
-@router.get("/logout")
-def logout():
-    resp = RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
-    # 与设置时一致的 path/domain，确保删除生效
+def _create_session(db: Session, user: User, request: Request, remember_me: bool) -> UserSession:
+    sid = secrets.token_urlsafe(24)
+    expires = aware_now() + (timedelta(days=30) if remember_me else timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
+    session = UserSession(
+        session_id=sid,
+        user=user,
+        user_agent=request.headers.get("User-Agent"),
+        ip_address=request.headers.get("X-Real-IP") if request.client else None,
+        remember_me=remember_me,
+        created_at=aware_now(),
+        last_active_at=aware_now(),
+        expires_at=expires,
+        revoked=False,
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def _clear_cookie(resp: Response) -> None:
     resp.delete_cookie(
         key="access_token",
         path=settings.COOKIE_PATH or "/",
         domain=settings.COOKIE_DOMAIN or None,
     )
+
+
+@router.get("/logout")
+def logout(request: Request, db: Session = Depends(get_db)):
+    # 尝试注销当前会话
+    token = get_token_from_request(request)
+    if token:
+        payload = decode_token(token)
+        if payload and payload.get("sid"):
+            session = (
+                db.query(UserSession)
+                .filter(UserSession.session_id == payload["sid"])
+                .first()
+            )
+            if session:
+                session.revoked = True
+                db.add(session)
+                db.commit()
+    resp = RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    _clear_cookie(resp)
     return resp
 
 
@@ -317,11 +360,15 @@ def api_register(payload: UserCreate, request: Request, response: Response, db: 
 
 
 @router.post("/api/auth/login", response_model=UserProfileOut)
-def api_login(payload: UserCreate, response: Response, db: Session = Depends(get_db)):
+def api_login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == payload.username).first()
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="用户名或密码错误")
-    token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    # 创建会话（支持多设备）
+    session = _create_session(db, user, request, bool(payload.remember_me))
+    # 按记住我设置 Token 过期时间
+    expires_minutes = 30 * 24 * 60 if payload.remember_me else settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    token = create_access_token(str(user.id), expires_minutes, session_id=session.session_id)
     # 仅使用 Cookie 会话（HttpOnly + 可配置属性）
     response.set_cookie(
         key="access_token",
@@ -331,6 +378,7 @@ def api_login(payload: UserCreate, response: Response, db: Session = Depends(get
         path=settings.COOKIE_PATH or "/",
         secure=bool(settings.COOKIE_SECURE),
         domain=settings.COOKIE_DOMAIN or None,
+        max_age=expires_minutes * 60,
     )
     return user
 
@@ -339,6 +387,104 @@ def api_login(payload: UserCreate, response: Response, db: Session = Depends(get
 def api_current_user(current_user: User = Depends(get_current_user)):
     """返回当前登录用户的基础资料，供前端初始化"""
     return current_user
+
+
+@router.post("/api/auth/logout")
+def api_logout(request: Request, response: Response, db: Session = Depends(get_db)):
+    token = get_token_from_request(request)
+    if token:
+        payload = decode_token(token)
+        if payload and payload.get("sid"):
+            session = (
+                db.query(UserSession)
+                .filter(UserSession.session_id == payload["sid"])
+                .first()
+            )
+            if session:
+                session.revoked = True
+                db.add(session)
+                db.commit()
+    _clear_cookie(response)
+    return {"ok": True}
+
+
+@router.post("/api/users/me/avatar", response_model=UserProfileOut)
+def upload_avatar(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    file: UploadFile = File(...),
+):
+    # 基本校验
+    content_type = (file.content_type or "").lower()
+    if content_type not in {"image/png", "image/jpeg", "image/webp", "image/jpg"}:
+        raise HTTPException(status_code=400, detail="仅支持 PNG/JPEG/WEBP 图片")
+    suffix = Path(file.filename or "avatar").suffix.lower() or ".png"
+
+    # 保存到 /avatars/{user_id}/
+    user_dir = Path(settings.FILE_STORAGE_DIR).resolve() / "avatars" / str(current_user.id)
+    user_dir.mkdir(parents=True, exist_ok=True)
+    target_name = f"avatar_{int(aware_now().timestamp())}{suffix}"
+    target_path = user_dir / target_name
+    with target_path.open("wb") as out:
+        while True:
+            chunk = file.file.read(8192)
+            if not chunk:
+                break
+            out.write(chunk)
+    file.file.close()
+
+    # 更新用户头像 URL
+    current_user.avatar_url = f"/avatars/{current_user.id}/{target_name}"
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
+@router.delete("/api/users/me/avatar")
+def delete_avatar(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    current_user.avatar_url = None
+    db.add(current_user)
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/api/auth/sessions", response_model=list[SessionOut])
+def list_sessions(request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    token = get_token_from_request(request)
+    current_sid = None
+    if token:
+        payload = decode_token(token)
+        current_sid = payload.get("sid") if payload else None
+    sessions = (
+        db.query(UserSession)
+        .filter(UserSession.user_id == current_user.id)
+        .order_by(UserSession.last_active_at.desc().nullslast(), UserSession.created_at.desc())
+        .all()
+    )
+    result: list[SessionOut] = []
+    for s in sessions:
+        if s.revoked:
+            continue
+        item = SessionOut.model_validate(s)
+        item.current = (s.session_id == current_sid)
+        result.append(item)
+    return result
+
+
+@router.delete("/api/auth/sessions/{session_id}")
+def revoke_session(session_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    session = (
+        db.query(UserSession)
+        .filter(UserSession.session_id == session_id, UserSession.user_id == current_user.id)
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    session.revoked = True
+    db.add(session)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/api/keys", response_model=list[APIKeyOut])
