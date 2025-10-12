@@ -36,7 +36,7 @@ interface AppShellProps {
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "概览" },
-  { href: "/files", label: "文件" },
+  { href: "/dashboard/files", label: "文件" },
   { href: "/dashboard/crawlers", label: "爬虫" },
   { href: "/public", label: "公开空间" },
 ];
@@ -187,7 +187,7 @@ export function AppShell({ children, className, user }: AppShellProps) {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={() => router.push("/dashboard")}>概览</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => router.push("/files")}>文件</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push("/dashboard/files")}>文件</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => router.push("/public")}>公开空间</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => router.push("/settings")}>个人设置</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => router.push("/settings/sessions")}>登录设备</DropdownMenuItem>
