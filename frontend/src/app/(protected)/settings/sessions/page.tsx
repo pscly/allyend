@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AppShell } from "@/components/layout/app-shell";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { apiClient } from "@/lib/api/client";
@@ -43,8 +42,7 @@ export default function SessionsPage() {
   const user = meQuery.data ?? profile;
 
   return (
-    <AppShell user={user ?? null}>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <h1 className="text-xl font-semibold">登录设备</h1>
         <p className="text-sm text-muted-foreground">在这里查看已登录的设备，并可手动将其他设备下线。</p>
 
@@ -80,7 +78,5 @@ export default function SessionsPage() {
           )}
         </div>
       </div>
-    </AppShell>
   );
 }
-

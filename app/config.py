@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     COOKIE_DOMAIN: str | None = None
     COOKIE_PATH: str = "/"
 
+    # 数据库迁移策略：是否完全由 Alembic 管理（推荐开启）
+    # - True  时：启动时不再执行 ORM 自动建表，改为仅执行 Alembic 升级/校准。
+    # - False 时：保留旧的 ORM 自动建表逻辑（不推荐）。
+    USE_ALEMBIC_ONLY: bool = True
+
     @field_validator("FRONTEND_ORIGINS", mode="before")
     @classmethod
     def _normalize_frontend_origins(cls, value):

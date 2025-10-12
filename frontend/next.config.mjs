@@ -9,6 +9,8 @@ const nextConfig = {
       { source: "/api/:path*", destination: `${backend}/api/:path*` },
       { source: "/pa/:path*", destination: `${backend}/pa/:path*` },
       { source: "/files/:path*", destination: `${backend}/files/:path*` },
+      // 公开配置读取接口转发
+      { source: "/pz", destination: `${backend}/pz` },
       // 透传 /md 到后端（用于通用参数回显/调试）
       { source: "/md", destination: `${backend}/md` },
       { source: "/md/:path*", destination: `${backend}/md/:path*` },

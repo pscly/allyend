@@ -39,6 +39,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/files", label: "文件" },
   { href: "/dashboard/crawlers", label: "爬虫" },
   { href: "/public", label: "公开空间" },
+  { href: "/configs", label: "公开配置" },
 ];
 
 function getInitial(user?: UserProfile | null) {

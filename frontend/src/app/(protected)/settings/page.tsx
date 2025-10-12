@@ -3,7 +3,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
-import { AppShell } from "@/components/layout/app-shell";
 import { buttonVariants } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -53,9 +52,8 @@ export default function SettingsPage() {
   const initial = (user?.display_name || user?.username || "U").slice(0, 1).toUpperCase();
 
   return (
-    <AppShell user={user ?? null}>
-      <div className="space-y-6">
-        <h1 className="text-xl font-semibold">个人设置</h1>
+    <div className="space-y-6">
+      <h1 className="text-xl font-semibold">个人设置</h1>
 
         <section className="flex items-center gap-4">
           <Avatar className="h-16 w-16">
@@ -91,7 +89,6 @@ export default function SettingsPage() {
 
         {/* 预留更多设置项：昵称、邮箱、主题等已在其它入口提供 */}
       </div>
-    </AppShell>
   );
 }
 

@@ -600,6 +600,51 @@ class FileTokenOut(BaseModel):
         from_attributes = True
 
 
+# =====================
+# 应用 JSON 配置 - Pydantic 模型
+# =====================
+
+class AppConfigUpsert(BaseModel):
+    description: Optional[str] = None
+    content: dict
+
+
+class AppConfigOut(BaseModel):
+    app: str
+    description: Optional[str] = None
+    content: dict
+    version: int
+    updated_at: datetime
+    created_at: datetime
+
+
+class AppConfigListItem(BaseModel):
+    app: str
+    description: Optional[str] = None
+    updated_at: datetime
+    read_count: int = 0
+
+
+class AppConfigReadLogOut(BaseModel):
+    app: str
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    created_at: datetime
+
+
+class AppConfigStatsPoint(BaseModel):
+    ts: datetime
+    count: int
+
+
+class AppConfigStatsOut(BaseModel):
+    app: str
+    range_days: int
+    granularity: Literal["hour", "day"]
+    series: list[AppConfigStatsPoint]
+    top_ips: list[tuple[str, int]] = Field(default_factory=list, description="(IP, 次数)")
+
+
 class FileEntryOut(BaseModel):
     id: int
     original_name: str

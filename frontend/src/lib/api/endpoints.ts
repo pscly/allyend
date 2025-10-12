@@ -84,4 +84,14 @@ export const endpoints = {
     recentActivity: "/api/dashboard/activity",
     public: "/public",
   },
+  configs: {
+    list: "/api/configs",
+    byApp: (app: string) => `/api/configs/${app}`,
+    upsert: (app: string) => `/api/configs/${app}`,
+    upload: (app: string) => `/api/configs/${app}/upload`,
+    remove: (app: string) => `/api/configs/${app}`,
+    reads: (app: string) => `/api/configs/${app}/reads`,
+    stats: (app: string) => `/api/configs/${app}/stats`,
+    publicFetch: (app: string) => `/pz?app=${encodeURIComponent(app)}`,
+  },
 };

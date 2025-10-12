@@ -26,6 +26,7 @@ from .routers import dashboard as dashboard_router
 from .routers import files as files_router
 from .routers import md as md_router
 from .routers import admin as admin_router
+from .routers import configs as configs_router
 
 
 
@@ -201,22 +202,42 @@ def _run_alembic_upgrade_head() -> None:
     try:
         from alembic.config import Config  # type: ignore
         from alembic import command  # type: ignore
+        from sqlalchemy import create_engine, inspect
 
         root = Path(__file__).resolve().parent.parent
         cfg = Config(str(root / "alembic.ini"))
         # 使用 app 配置覆盖 alembic.ini，保证本地与容器一致
         cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
-        command.upgrade(cfg, "head")
+
+        # 若不存在 alembic_version 表，说明是“历史 ORM 创建”的库，优先做一次 stamp 以避免重复 DDL 失败
+        eng = create_engine(settings.DATABASE_URL)
+        try:
+            insp = inspect(eng)
+            has_ver = insp.has_table("alembic_version")
+        except Exception:
+            has_ver = False
+
+        if not has_ver:
+            command.stamp(cfg, "head")
+        else:
+            try:
+                command.upgrade(cfg, "head")
+            except Exception:
+                # 兼容已存在相同列/索引导致的失败：直接以当前结构为准进行 stamp
+                command.stamp(cfg, "head")
     except Exception as exc:  # noqa: BLE001
         logging.getLogger(__name__).warning("alembic upgrade 失败：%s", exc)
 
 
 @app.on_event("startup")
 def on_startup():
-    # 1) 先确保基础结构（新装场景）
-    ensure_database_schema()
-    # 2) 再执行 Alembic 迁移（已有库与结构差异统一在这里处理）
-    _run_alembic_upgrade_head()
+    # 1) 迁移策略：优先使用 Alembic 全量管理
+    if getattr(settings, "USE_ALEMBIC_ONLY", True):
+        _run_alembic_upgrade_head()
+    else:
+        # 兼容旧逻辑：先 ORM 自动建表，再 Alembic 升级
+        ensure_database_schema()
+        _run_alembic_upgrade_head()
     # 3) 引导默认数据
     bootstrap_defaults()
     # 4) 迁移执行可能修改了 logging（alembic.ini），此处重新校准日志到控制台+文件
@@ -242,6 +263,8 @@ app.include_router(files_router.router)
 app.include_router(admin_router.router)
 app.include_router(dashboard_router.router)
 app.include_router(md_router.router)
+app.include_router(configs_router.router)
+app.include_router(configs_router.public_router)
 
 
 # 便于 uv run 直接引用
@@ -250,5 +273,3 @@ _asgi_app = _AccessLogASGI(app) if _enable_app_access_log in {"1", "true", "yes"
 
 def get_app():
     return _asgi_app
-
-

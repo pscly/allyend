@@ -565,3 +565,29 @@ class FileAccessLog(Base):
     token_id: Mapped[Optional[int]] = mapped_column(ForeignKey("file_api_tokens.id"), nullable=True)
     token: Mapped[Optional[FileAPIToken]] = relationship("FileAPIToken", back_populates="logs")
 
+
+# =====================
+# 应用 JSON 配置与访问日志
+# =====================
+
+class AppConfig(Base):
+    __tablename__ = "app_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    app: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 存储 JSON 字符串，写入前需校验为合法 JSON
+    content: Mapped[str] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
+class AppConfigReadLog(Base):
+    __tablename__ = "app_config_read_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    app: Mapped[str] = mapped_column(String(64), index=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
