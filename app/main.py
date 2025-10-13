@@ -209,16 +209,26 @@ def _run_alembic_upgrade_head() -> None:
         # 使用 app 配置覆盖 alembic.ini，保证本地与容器一致
         cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
-        # 若不存在 alembic_version 表，说明是“历史 ORM 创建”的库，优先做一次 stamp 以避免重复 DDL 失败
+        # 判定：
+        # - 如不存在 alembic_version 且库中也不存在核心业务表（如 users），说明是“空库”，执行 upgrade 以按迁移完整建表；
+        # - 如不存在 alembic_version 但已存在业务表，视为“历史手动/ORM 建表库”，执行 stamp 以对齐版本；
+        # - 其他情况：直接 upgrade 到 head。
         eng = create_engine(settings.DATABASE_URL)
         try:
             insp = inspect(eng)
             has_ver = insp.has_table("alembic_version")
+            has_users = insp.has_table("users")
         except Exception:
             has_ver = False
+            has_users = False
 
         if not has_ver:
-            command.stamp(cfg, "head")
+            if not has_users:
+                # 空库：执行迁移全量建表
+                command.upgrade(cfg, "head")
+            else:
+                # 既有表但无版本：与现状对齐
+                command.stamp(cfg, "head")
         else:
             try:
                 command.upgrade(cfg, "head")

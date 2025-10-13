@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "f7d2a1c3d4e5"
-down_revision = None  # 若已有历史版本，请改为上一 revision id
+down_revision = "364081709abf"  # 依赖初始化全量建表
 branch_labels = None
 migration_dependencies = None
 

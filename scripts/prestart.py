@@ -66,14 +66,17 @@ def main() -> None:
     url = get_database_url()
     print(f"[prestart] 使用数据库：{url}")
     wait_for_db(url, timeout=float(os.getenv("DB_WAIT_TIMEOUT", "60")))
-    # 先创建/补齐基础结构，再执行迁移，保证初装 PG 也能成功
+    # 当配置为仅 Alembic 管理时，跳过 ORM 自动建表；
+    # 仅在显式关闭 USE_ALEMBIC_ONLY 的情况下，才执行一次 ORM 建表兜底（开发/兼容旧库用途）。
     try:
-        from app.database import ensure_database_schema  # type: ignore
+        from app.config import settings as _settings  # type: ignore
+        if not getattr(_settings, "USE_ALEMBIC_ONLY", True):
+            from app.database import ensure_database_schema  # type: ignore
 
-        ensure_database_schema()
-        print("[prestart] ensure_database_schema 完成")
+            ensure_database_schema()
+            print("[prestart] ensure_database_schema 完成")
     except Exception as exc:  # noqa: BLE001
-        print(f"[prestart] ensure_database_schema 失败：{exc}", file=sys.stderr)
+        print(f"[prestart] ensure_database_schema 跳过/失败：{exc}", file=sys.stderr)
     try:
         run_alembic(url)
     except Exception as exc:  # noqa: BLE001
