@@ -26,7 +26,8 @@ import {
 } from "@/components/ui/sheet";
 import type { UserProfile } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
-import { logout } from "@/store/auth-store";
+import { logout, useAuthStore } from "@/store/auth-store";
+import { useCurrentUserQuery } from "@/features/auth/queries";
 
 interface AppShellProps {
   children: ReactNode;
@@ -36,7 +37,9 @@ interface AppShellProps {
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "概览" },
+  // 弃用，现在该用 /files
   { href: "/dashboard/files", label: "文件" },
+  // { href: "/files", label: "文件" },
   { href: "/dashboard/crawlers", label: "爬虫" },
   { href: "/public", label: "公开空间" },
   { href: "/configs", label: "公开配置" },
@@ -79,8 +82,15 @@ export function AppShell({ children, className, user }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
 
+  // 若未显式传入 user，则尝试使用客户端持久化的 profile 或实时查询
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const persistedProfile = useAuthStore((s) => s.profile);
+  const { data: queriedProfile } = useCurrentUserQuery({ enabled: hydrated && !user });
+  const effectiveUser = user ?? queriedProfile ?? persistedProfile ?? null;
+  const showAnon = hydrated && !effectiveUser;
+
   const items = [...NAV_ITEMS];
-  if (hasAdminCapability(user)) {
+  if (hasAdminCapability(effectiveUser)) {
     items.push({ href: "/admin", label: "管理" });
   }
 
@@ -170,29 +180,30 @@ export function AppShell({ children, className, user }: AppShellProps) {
             <DropdownMenu>
               <DropdownMenuTrigger className="rounded-full">
                 <Avatar className="h-9 w-9">
-                  {user?.avatar_url ? (
-                    <AvatarImage src={user.avatar_url} alt={user?.display_name || user?.username || "头像"} />
+                  {effectiveUser?.avatar_url ? (
+                    <AvatarImage src={effectiveUser.avatar_url} alt={effectiveUser?.display_name || effectiveUser?.username || "头像"} />
                   ) : (
-                    <AvatarFallback>{getInitial(user)}</AvatarFallback>
+                    <AvatarFallback>{getInitial(effectiveUser)}</AvatarFallback>
                   )}
                 </Avatar>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
                   <p className="text-sm font-medium text-foreground">
-                    {user?.display_name || user?.username || "访客"}
+                    {effectiveUser?.display_name || effectiveUser?.username || (showAnon ? "访客" : "")} 
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {user?.email ?? (user ? `${user.role} 用户` : "未登录")}
+                    {effectiveUser?.email ?? (effectiveUser ? `${effectiveUser.role} 用户` : (showAnon ? "未登录" : ""))}
                   </p>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={() => router.push("/dashboard")}>概览</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => router.push("/dashboard/files")}>文件</DropdownMenuItem>
+                {/* <DropdownMenuItem onSelect={() => router.push("/dashboard/files")}>文件</DropdownMenuItem> */}
+                <DropdownMenuItem onSelect={() => router.push("/files")}>文件</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => router.push("/public")}>公开空间</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => router.push("/settings")}>个人设置</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => router.push("/settings/sessions")}>登录设备</DropdownMenuItem>
-                {hasAdminCapability(user) && (
+                {hasAdminCapability(effectiveUser) && (
                   <DropdownMenuItem onSelect={() => router.push("/admin")}>管理中心</DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />

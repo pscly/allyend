@@ -13,7 +13,9 @@ import { useApplyUserTheme } from "@/hooks/use-apply-theme";
 // 登录后在首页展示的导航项（保持与受保护区一致）
 const AUTH_NAV_ITEMS = [
   { href: "/dashboard", label: "概览" },
+  // 弃用，现在该用 /files
   { href: "/dashboard/files", label: "文件" },
+  // { href: "/files", label: "文件" },
   { href: "/dashboard/crawlers", label: "爬虫" },
   { href: "/public", label: "公开空间" },
   { href: "/docs", label: "文档" },
