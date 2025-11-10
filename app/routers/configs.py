@@ -59,6 +59,9 @@ def fetch_public_config(app: str = Query(..., min_length=1, max_length=64), requ
     cfg = db.query(AppConfig).filter(AppConfig.app == app).first()
     if not cfg:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="配置不存在")
+    # 若被禁用，则对外表现为不存在（避免泄露存在性）
+    if cfg.enabled is False:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="配置不存在或已禁用")
 
     # 校验内容是合法 JSON 字符串
     try:
@@ -82,8 +85,19 @@ def fetch_public_config(app: str = Query(..., min_length=1, max_length=64), requ
 
 
 @router.get("")
-def list_configs(db: Session = Depends(get_db), user=Depends(get_current_user)) -> list[AppConfigListItem]:
-    rows = db.query(AppConfig).order_by(AppConfig.updated_at.desc()).all()
+def list_configs(
+    q: str | None = Query(None, description="按 app/描述 模糊搜索"),
+    only_enabled: bool = Query(False, description="仅显示启用项"),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+) -> list[AppConfigListItem]:
+    qry = db.query(AppConfig)
+    if q:
+        like = f"%{q}%"
+        qry = qry.filter((AppConfig.app.ilike(like)) | (AppConfig.description.ilike(like)))
+    if only_enabled:
+        qry = qry.filter(AppConfig.enabled.is_(True))
+    rows = qry.order_by(AppConfig.pinned_at.is_(None), AppConfig.pinned_at.desc(), AppConfig.updated_at.desc()).all()
     # 统计读取次数
     counts: dict[str, int] = {}
     if rows:
@@ -92,7 +106,15 @@ def list_configs(db: Session = Depends(get_db), user=Depends(get_current_user)) 
         c = Counter([a for (a,) in q])
         counts = {k: int(v) for k, v in c.items()}
     return [
-        AppConfigListItem(app=r.app, description=r.description, updated_at=r.updated_at, read_count=counts.get(r.app, 0))
+        AppConfigListItem(
+            app=r.app,
+            description=r.description,
+            enabled=(r.enabled is not False),
+            pinned=(r.pinned_at is not None),
+            pinned_at=r.pinned_at,
+            updated_at=r.updated_at,
+            read_count=counts.get(r.app, 0),
+        )
         for r in rows
     ]
 
@@ -111,6 +133,9 @@ def get_config(app: str, db: Session = Depends(get_db), user=Depends(get_current
         description=cfg.description,
         content=content,
         version=cfg.version,
+        enabled=(cfg.enabled is not False),
+        pinned=(cfg.pinned_at is not None),
+        pinned_at=cfg.pinned_at,
         created_at=cfg.created_at,
         updated_at=cfg.updated_at,
     )
@@ -134,6 +159,30 @@ def upsert_config(app: str, payload: AppConfigUpsert, db: Session = Depends(get_
         cfg.version = (cfg.version or 0) + 1
     db.commit()
     db.refresh(cfg)
+    return get_config(app, db)
+
+
+@router.patch("/{app}/meta")
+def update_meta(
+    app: str,
+    enabled: bool | None = Query(None, description="是否启用"),
+    pinned: bool | None = Query(None, description="是否置顶"),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+) -> AppConfigOut:
+    cfg = db.query(AppConfig).filter(AppConfig.app == app).first()
+    if not cfg:
+        raise HTTPException(404, "配置不存在")
+    changed = False
+    if enabled is not None:
+        cfg.enabled = bool(enabled)
+        changed = True
+    if pinned is not None:
+        cfg.pinned_at = datetime.utcnow() if pinned else None
+        changed = True
+    if changed:
+        db.commit()
+        db.refresh(cfg)
     return get_config(app, db)
 
 
@@ -204,4 +253,3 @@ def stats(
     # Top IP
     top = Counter([r.ip_address or "-" for r in rows]).most_common(10)
     return AppConfigStatsOut(app=app, range_days=days, granularity=granularity, series=series, top_ips=[(ip or "-", int(c)) for ip, c in top])
-

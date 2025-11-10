@@ -1,13 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2, RefreshCw, Search, Eye, EyeOff, Pin, PinOff, Trash2, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { CopyTextButton } from "@/features/public/copy-button";
+import { apiClient } from "@/lib/api/client";
+import { endpoints } from "@/lib/api/endpoints";
+import type { AppConfigDetail, AppConfigListItem } from "@/lib/api/types";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
@@ -132,6 +145,84 @@ export default function RemoteConfigPage() {
     }
   }, [result]);
 
+  // ============
+  // 管理：列表、搜索、置顶、禁用、删除、创建
+  // ============
+  const qc = useQueryClient();
+  const [q, setQ] = useState("");
+  const [onlyEnabled, setOnlyEnabled] = useState(false);
+
+  const listQuery = useQuery<AppConfigListItem[]>({
+    queryKey: ["configs", { q, onlyEnabled }],
+    queryFn: async () =>
+      apiClient.get<AppConfigListItem[]>(endpoints.configs.list, {
+        searchParams: { q: q || undefined, only_enabled: onlyEnabled },
+      }),
+    staleTime: 10_000,
+  });
+
+  // 注意：新建时需要对“全部 App”做重复校验，不能受当前搜索/筛选影响
+  const allAppsQuery = useQuery<AppConfigListItem[]>({
+    queryKey: ["configs_all"],
+    queryFn: async () => apiClient.get<AppConfigListItem[]>(endpoints.configs.list),
+    staleTime: 30_000,
+  });
+
+  const toggleEnabledMutation = useMutation({
+    mutationFn: async ({ app, enabled }: { app: string; enabled: boolean }) =>
+      apiClient.patch<AppConfigDetail>(endpoints.configs.meta(app), undefined, {
+        searchParams: { enabled },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["configs"] });
+    },
+  });
+
+  const togglePinnedMutation = useMutation({
+    mutationFn: async ({ app, pinned }: { app: string; pinned: boolean }) =>
+      apiClient.patch<AppConfigDetail>(endpoints.configs.meta(app), undefined, {
+        searchParams: { pinned },
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["configs"] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (app: string) => apiClient.delete<{ ok: boolean }>(endpoints.configs.remove(app)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["configs"] }),
+  });
+
+  // 创建对话框
+  const [openCreate, setOpenCreate] = useState(false);
+  const [newApp, setNewApp] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [newJson, setNewJson] = useState("{\n  \"example\": true\n}");
+  const existingApps = (allAppsQuery.data || []).map((i) => i.app);
+  const isDup = newApp && existingApps.includes(newApp);
+  const canSubmit = newApp && !isDup && newJson.trim().length > 0;
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      // 验证 JSON
+      let obj: unknown;
+      try {
+        obj = JSON.parse(newJson);
+      } catch (e) {
+        throw new Error("JSON 格式无效，请检查");
+      }
+      return apiClient.put<AppConfigDetail, { description: string | null; content: Record<string, unknown> }>(
+        endpoints.configs.upsert(newApp),
+        { description: newDesc || null, content: obj as Record<string, unknown> },
+      );
+    },
+    onSuccess: () => {
+      setOpenCreate(false);
+      setNewApp("");
+      setNewDesc("");
+      setNewJson("{\n  \"example\": true\n}");
+      qc.invalidateQueries({ queryKey: ["configs"] });
+    },
+  });
+
   return (
     <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -227,6 +318,132 @@ export default function RemoteConfigPage() {
             <li>涉及敏感参数请在服务端加密，客户端仅做解密与呈现，避免泄露明文。</li>
             <li>如遇跨域（CORS）拦截，可在后端新增转发接口再由前端调用。</li>
           </ul>
+        </section>
+
+        {/* 管理区块 */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">我的应用配置</h2>
+            <Dialog open={openCreate} onOpenChange={setOpenCreate}>
+              <DialogTrigger asChild>
+                <Button size="sm">
+                  <Plus className="mr-2 h-4 w-4" /> 新建配置
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>新建应用配置</DialogTitle>
+                  <DialogDescription>应用标识必须唯一，内容为合法 JSON。</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-3">
+                  <div className="grid gap-2">
+                    <Label htmlFor="newApp">应用标识 app（唯一）</Label>
+                    <Input id="newApp" value={newApp} onChange={(e) => setNewApp(e.target.value.trim())} placeholder="例如：my_app_001" />
+                    {isDup && <p className="text-xs text-destructive">该标识已存在，请更换</p>}
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="newDesc">描述（可选）</Label>
+                    <Input id="newDesc" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="简要说明" />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="newJson">配置 JSON</Label>
+                    <textarea id="newJson" className="min-h-[160px] w-full rounded-md border border-border bg-background p-2 text-sm font-mono" value={newJson} onChange={(e) => setNewJson(e.target.value)} spellCheck={false} />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="secondary" onClick={() => setOpenCreate(false)} disabled={createMutation.isPending}>取消</Button>
+                  <Button onClick={() => createMutation.mutate()} disabled={!canSubmit || createMutation.isPending}>
+                    {createMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    提交
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/50 p-3">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input className="pl-8" placeholder="搜索 app 或描述..." value={q} onChange={(e) => setQ(e.target.value)} />
+              </div>
+              <Button
+                variant={onlyEnabled ? "default" : "secondary"}
+                size="sm"
+                onClick={() => setOnlyEnabled((v) => !v)}
+                title={onlyEnabled ? "显示全部" : "仅看已启用"}
+              >
+                {onlyEnabled ? <Eye className="mr-2 h-4 w-4" /> : <EyeOff className="mr-2 h-4 w-4" />} {onlyEnabled ? "仅启用" : "全部"}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => listQuery.refetch()} disabled={listQuery.isFetching}>
+                {listQuery.isFetching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />} 刷新
+              </Button>
+            </div>
+
+            <div className="overflow-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-muted-foreground">
+                    <th className="p-2">App</th>
+                    <th className="p-2">描述</th>
+                    <th className="p-2 whitespace-nowrap">读取次数</th>
+                    <th className="p-2 whitespace-nowrap">更新时间</th>
+                    <th className="p-2 w-[220px]">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {listQuery.isLoading ? (
+                    <tr><td className="p-3 text-muted-foreground" colSpan={5}>加载中...</td></tr>
+                  ) : (listQuery.data || []).length === 0 ? (
+                    <tr><td className="p-3 text-muted-foreground" colSpan={5}>暂无数据</td></tr>
+                  ) : (
+                    (listQuery.data || []).map((item) => (
+                      <tr key={item.app} className="border-t border-border/60">
+                        <td className="p-2 font-mono">{item.app}</td>
+                        <td className="p-2 text-muted-foreground">{item.description || "-"}</td>
+                        <td className="p-2">{item.read_count}</td>
+                        <td className="p-2">{new Date(item.updated_at).toLocaleString()}</td>
+                        <td className="p-2">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant={item.pinned ? "default" : "secondary"}
+                              size="sm"
+                              onClick={() => togglePinnedMutation.mutate({ app: item.app, pinned: !item.pinned })}
+                              disabled={togglePinnedMutation.isPending}
+                              title={item.pinned ? "取消置顶" : "置顶"}
+                            >
+                              {item.pinned ? <Pin className="mr-2 h-4 w-4" /> : <PinOff className="mr-2 h-4 w-4" />} {item.pinned ? "已置顶" : "置顶"}
+                            </Button>
+                            <Button
+                              variant={item.enabled ? "secondary" : "destructive"}
+                              size="sm"
+                              onClick={() => toggleEnabledMutation.mutate({ app: item.app, enabled: !item.enabled })}
+                              disabled={toggleEnabledMutation.isPending}
+                              title={item.enabled ? "禁用" : "启用"}
+                            >
+                              {item.enabled ? <EyeOff className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />} {item.enabled ? "禁用" : "启用"}
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                if (confirm(`确认删除配置 ${item.app} ？此操作不可恢复`)) {
+                                  deleteMutation.mutate(item.app);
+                                }
+                              }}
+                              disabled={deleteMutation.isPending}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> 删除
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </section>
       </div>
     

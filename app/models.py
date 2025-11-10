@@ -579,6 +579,10 @@ class AppConfig(Base):
     # 存储 JSON 字符串，写入前需校验为合法 JSON
     content: Mapped[str] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer, default=1)
+    # 是否启用（用于公开读取 /pz 的开关）
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # 置顶时间（非空表示被置顶；用于排序优先显示）
+    pinned_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
 

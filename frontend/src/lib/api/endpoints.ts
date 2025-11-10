@@ -92,6 +92,7 @@ export const endpoints = {
     remove: (app: string) => `/api/configs/${app}`,
     reads: (app: string) => `/api/configs/${app}/reads`,
     stats: (app: string) => `/api/configs/${app}/stats`,
+    meta: (app: string) => `/api/configs/${app}/meta`,
     publicFetch: (app: string) => `/pz?app=${encodeURIComponent(app)}`,
   },
 };

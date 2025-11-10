@@ -614,6 +614,9 @@ class AppConfigOut(BaseModel):
     description: Optional[str] = None
     content: dict
     version: int
+    enabled: bool = True
+    pinned: Optional[bool] = None
+    pinned_at: Optional[datetime] = None
     updated_at: datetime
     created_at: datetime
 
@@ -621,6 +624,9 @@ class AppConfigOut(BaseModel):
 class AppConfigListItem(BaseModel):
     app: str
     description: Optional[str] = None
+    enabled: bool = True
+    pinned: Optional[bool] = None
+    pinned_at: Optional[datetime] = None
     updated_at: datetime
     read_count: int = 0
 

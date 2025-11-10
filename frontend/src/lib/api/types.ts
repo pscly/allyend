@@ -266,6 +266,32 @@ export interface CrawlerCommand {
   expires_at: string | null;
 }
 
+// =====================
+// 应用 JSON 配置 - 前端类型
+// =====================
+
+export interface AppConfigListItem {
+  app: string;
+  description: string | null;
+  enabled: boolean;
+  pinned?: boolean | null;
+  pinned_at?: string | null;
+  updated_at: string;
+  read_count: number;
+}
+
+export interface AppConfigDetail {
+  app: string;
+  description: string | null;
+  content: Record<string, unknown>;
+  version: number;
+  enabled: boolean;
+  pinned?: boolean | null;
+  pinned_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CrawlerRun {
   id: number;
   status: string;
