@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field   
 
 
 class UserProfileOut(BaseModel):
@@ -28,8 +28,7 @@ class UserProfileOut(BaseModel):
     # 日志配额（字节）：None 表示使用系统默认（前端可调用 /me/logs/usage 获取实际配额）
     log_quota_bytes: Optional[int] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserCreate(BaseModel):
@@ -58,8 +57,7 @@ class SessionOut(BaseModel):
     expires_at: Optional[datetime] = None
     current: bool = False
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserGroupOut(BaseModel):
@@ -70,8 +68,7 @@ class UserGroupOut(BaseModel):
     enable_crawlers: bool
     enable_files: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CrawlerGroupOut(BaseModel):
@@ -83,8 +80,7 @@ class CrawlerGroupOut(BaseModel):
     crawler_count: int = 0
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CrawlerGroupCreate(BaseModel):
@@ -123,8 +119,7 @@ class InviteCodeOut(BaseModel):
     expires_at: Optional[datetime]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class APIKeyOut(BaseModel):
@@ -147,8 +142,7 @@ class APIKeyOut(BaseModel):
     crawler_last_heartbeat: Optional[datetime] = None
     crawler_public_slug: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class APIKeyCreate(BaseModel):
@@ -175,8 +169,7 @@ class PublicAPIKeyOut(BaseModel):
     name: Optional[str]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CrawlerRegisterRequest(BaseModel):
@@ -257,8 +250,7 @@ class CrawlerOut(BaseModel):
     log_max_lines: Optional[int] = None
     log_max_bytes: Optional[int] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CrawlerUpdate(BaseModel):
@@ -281,8 +273,7 @@ class RunOut(BaseModel):
     last_heartbeat: Optional[datetime] = None
     source_ip: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CrawlerHeartbeatOut(BaseModel):
@@ -293,8 +284,7 @@ class CrawlerHeartbeatOut(BaseModel):
     device_name: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CrawlerCommandOut(BaseModel):
@@ -307,8 +297,7 @@ class CrawlerCommandOut(BaseModel):
     processed_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CrawlerCommandCreate(BaseModel):
@@ -337,8 +326,7 @@ class LogOut(BaseModel):
     api_key_id: Optional[int] = None
     api_key_local_id: Optional[int] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OperationAuditLogOut(BaseModel):
@@ -354,8 +342,7 @@ class OperationAuditLogOut(BaseModel):
     actor_ip: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ThemeSettingOut(BaseModel):
@@ -365,8 +352,7 @@ class ThemeSettingOut(BaseModel):
     theme_background: str
     is_dark_mode: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ThemeSettingUpdate(BaseModel):
@@ -377,8 +363,34 @@ class ThemeSettingUpdate(BaseModel):
     is_dark_mode: Optional[bool] = None
 
 
+class DashboardOverviewOut(BaseModel):
+    """仪表盘概览数据（轻量统计）。"""
+
+    crawlers_total: int
+    crawlers_online: int
+    crawlers_offline: int
+    api_keys_total: int
+    files_total: int
+    files_total_bytes: int
+    logs_total: int
+    latest_activity_at: Optional[datetime] = None
+
+
+class DashboardActivityItemOut(BaseModel):
+    """仪表盘最近活动条目。"""
+
+    type: Literal["audit", "file", "crawler_run"]
+    action: str
+    message: str
+    created_at: datetime
+    actor: Optional[str] = None
+    ip_address: Optional[str] = None
+    target_type: Optional[str] = None
+    target_id: Optional[int] = None
+
+
 class QuickLinkCreate(BaseModel):
-    slug: Optional[str] = Field(default=None, min_length=6, max_length=64)
+    slug: Optional[str] = Field(default=None, min_length=6, max_length=64) 
     target_type: Literal["crawler", "api_key", "group"]
     target_id: int
     allow_logs: bool = True
@@ -408,8 +420,7 @@ class QuickLinkOut(BaseModel):
     group_slug: Optional[str] = None
     group_name: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 
@@ -439,8 +450,7 @@ class CrawlerConfigTemplateOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CrawlerConfigAssignmentCreate(BaseModel):
@@ -478,8 +488,7 @@ class CrawlerConfigAssignmentOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CrawlerConfigFetchOut(BaseModel):
@@ -491,8 +500,7 @@ class CrawlerConfigFetchOut(BaseModel):
     content: Optional[str] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AlertChannelConfig(BaseModel):
@@ -556,8 +564,7 @@ class CrawlerAlertRuleOut(BaseModel):
     updated_at: datetime
     last_triggered_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CrawlerAlertEventOut(BaseModel):
@@ -573,8 +580,7 @@ class CrawlerAlertEventOut(BaseModel):
     channel_results: list[dict]
     error: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class FileTokenCreate(BaseModel):
     token: Optional[str] = Field(default=None, description='可选，自定义令牌，默认补齐 up- 前缀')
@@ -596,8 +602,7 @@ class FileTokenOut(BaseModel):
     last_used_at: Optional[datetime]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # =====================
@@ -666,8 +671,7 @@ class FileEntryOut(BaseModel):
     download_name: Optional[str] = None
     download_url: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class FileEntryUpdate(BaseModel):
@@ -692,8 +696,7 @@ class FileAccessLogOut(BaseModel):
     user_id: Optional[int]
     token_id: Optional[int]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SystemSettingOut(BaseModel):
@@ -701,8 +704,7 @@ class SystemSettingOut(BaseModel):
     value: str
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AdminUserOut(BaseModel):

@@ -11,6 +11,7 @@ from .database import SessionLocal
 from .auth import get_token_from_request, decode_access_token, decode_token
 from .models import User, UserSession
 from .utils.time_utils import now
+from .utils.request_utils import get_client_ip
 
 
 def get_db():
@@ -53,8 +54,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="会话已过期")
         # 刷新活跃时间与 IP
         session.last_active_at = now()
-        if request.client and request.headers.get("X-Real-IP"):
-            session.ip_address = request.headers.get("X-Real-IP")
+        client_ip = get_client_ip(request)
+        if client_ip:
+            session.ip_address = client_ip
         db.add(session)
         db.commit()
 

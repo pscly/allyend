@@ -27,19 +27,16 @@ export const crawlerKeys = {
   list: (filters?: Record<string, unknown>) => ["crawlers", "list", filters] as const,
   detail: (id: number | string) => ["crawlers", id, "detail"] as const,
   runs: (id: number | string) => ["crawlers", id, "runs"] as const,
-  logs: (
-    id: number | string,
-    limit: number,
-    q?: string,
-    regex?: boolean,
-  ) => ["crawlers", id, "logs", limit, q ?? "", Boolean(regex)] as const,
+  logs: (id: number | string, limit: number, q?: string, regex?: boolean) =>
+    ["crawlers", id, "logs", limit, q ?? "", Boolean(regex)] as const,
   heartbeats: (
     id: number | string,
     limit: number,
     start?: string | null,
     end?: string | null,
     maxPoints?: number,
-  ) => ["crawlers", id, "heartbeats", limit, start ?? null, end ?? null, maxPoints ?? null] as const,
+  ) =>
+    ["crawlers", id, "heartbeats", limit, start ?? null, end ?? null, maxPoints ?? null] as const,
   commands: (id: number | string, includeFinished: boolean, limit: number) =>
     ["crawlers", id, "commands", includeFinished, limit] as const,
   groups: () => ["crawlers", "groups"] as const,
@@ -47,7 +44,8 @@ export const crawlerKeys = {
   configAssignments: () => ["crawlers", "config", "assignments"] as const,
   configFetch: (id: number | string) => ["crawlers", id, "config"] as const,
   alertRules: () => ["crawlers", "alerts", "rules"] as const,
-  alertEvents: (filters?: Record<string, unknown>) => ["crawlers", "alerts", "events", filters] as const,
+  alertEvents: (filters?: Record<string, unknown>) =>
+    ["crawlers", "alerts", "events", filters] as const,
 };
 
 export const apiKeyQueryKeys = {
@@ -89,13 +87,13 @@ export function useCrawlerGroupsQuery() {
     // v5 移除 keepPreviousData，使用 placeholderData 保留上一次数据
     placeholderData: (prev) => prev,
   });
-
 }
 
 export function useConfigTemplatesQuery() {
   return useQuery<CrawlerConfigTemplate[], ApiError>({
     queryKey: crawlerKeys.configTemplates(),
-    queryFn: async () => apiClient.get<CrawlerConfigTemplate[]>(endpoints.crawlers.config.templates.list),
+    queryFn: async () =>
+      apiClient.get<CrawlerConfigTemplate[]>(endpoints.crawlers.config.templates.list),
     staleTime: 60 * 1000,
     refetchInterval: 60 * 1000,
     placeholderData: (prev) => prev,
@@ -105,7 +103,8 @@ export function useConfigTemplatesQuery() {
 export function useConfigAssignmentsQuery() {
   return useQuery<CrawlerConfigAssignment[], ApiError>({
     queryKey: crawlerKeys.configAssignments(),
-    queryFn: async () => apiClient.get<CrawlerConfigAssignment[]>(endpoints.crawlers.config.assignments.list),
+    queryFn: async () =>
+      apiClient.get<CrawlerConfigAssignment[]>(endpoints.crawlers.config.assignments.list),
     staleTime: 60 * 1000,
     refetchInterval: 60 * 1000,
     placeholderData: (prev) => prev,
@@ -113,9 +112,7 @@ export function useConfigAssignmentsQuery() {
 }
 
 export function useCrawlersQuery(filters: CrawlerListFilters = {}) {
-  const statusKey = filters.statuses?.length
-    ? filters.statuses.join(",")
-    : filters.status ?? "";
+  const statusKey = filters.statuses?.length ? filters.statuses.join(",") : (filters.status ?? "");
   const groupKey = filters.groupIds?.length
     ? filters.groupIds.map((value) => (value === "none" ? "none" : String(value))).join(",")
     : filters.groupId !== undefined
@@ -139,7 +136,7 @@ export function useCrawlersQuery(filters: CrawlerListFilters = {}) {
     if (filters.includeHidden) params.include_hidden = "1";
     if (filters.hiddenOnly) params.hidden_only = "1";
     return params;
-  }, [statusKey, groupKey, apiKeyKey, keywordKey]);
+  }, [statusKey, groupKey, apiKeyKey, keywordKey, filters.includeHidden, filters.hiddenOnly]);
 
   return useQuery<CrawlerSummary[], ApiError>({
     queryKey: crawlerKeys.list(searchParams),
@@ -220,7 +217,13 @@ export function useCrawlerHeartbeatsQuery(
   }
 
   return useQuery<CrawlerHeartbeat[], ApiError>({
-    queryKey: crawlerKeys.heartbeats(crawlerId, limit, start ?? null, end ?? null, maxPoints ?? null),
+    queryKey: crawlerKeys.heartbeats(
+      crawlerId,
+      limit,
+      start ?? null,
+      end ?? null,
+      maxPoints ?? null,
+    ),
     queryFn: async () =>
       apiClient.get<CrawlerHeartbeat[]>(endpoints.crawlers.heartbeats(crawlerId), {
         searchParams,
@@ -251,17 +254,17 @@ export function useCrawlerCommandsQuery(
       }),
     enabled: shouldEnable,
     staleTime: 8 * 1000,
-    refetchInterval: shouldEnable ? options.refetchInterval ?? 12 * 1000 : false,
+    refetchInterval: shouldEnable ? (options.refetchInterval ?? 12 * 1000) : false,
     placeholderData: (prev) => prev,
   });
-
 }
 
 export function useCrawlerConfigFetchQuery(crawlerId: number | string, enabled = true) {
   const shouldEnable = enabled && Boolean(crawlerId);
   return useQuery<CrawlerConfigFetch, ApiError>({
     queryKey: crawlerKeys.configFetch(crawlerId),
-    queryFn: async () => apiClient.get<CrawlerConfigFetch>(endpoints.crawlers.config.fetch(crawlerId)),
+    queryFn: async () =>
+      apiClient.get<CrawlerConfigFetch>(endpoints.crawlers.config.fetch(crawlerId)),
     enabled: shouldEnable,
     staleTime: 30 * 1000,
     refetchInterval: shouldEnable ? 60 * 1000 : false,
@@ -292,7 +295,8 @@ export function useAlertEventsQuery(filters: AlertEventsFilters = {}, enabled = 
   if (filters.limit) searchParams.limit = String(filters.limit);
   return useQuery<CrawlerAlertEvent[], ApiError>({
     queryKey: crawlerKeys.alertEvents(searchParams),
-    queryFn: async () => apiClient.get<CrawlerAlertEvent[]>(endpoints.crawlers.alerts.events, { searchParams }),
+    queryFn: async () =>
+      apiClient.get<CrawlerAlertEvent[]>(endpoints.crawlers.alerts.events, { searchParams }),
     enabled: shouldEnable,
     staleTime: 30 * 1000,
     refetchInterval: shouldEnable ? 30 * 1000 : false,

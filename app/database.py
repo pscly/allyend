@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, text
 from datetime import datetime
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
 
@@ -49,10 +49,10 @@ SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 
 def ensure_database_schema() -> None:
-    """确保数据库结构就绪（无迁移版本，直接按 ORM 创建）。
+    """确保数据库结构就绪（旧逻辑/开发兜底：按 ORM 创建并补齐兼容列）。
 
-    - 初始开发阶段：直接调用 Base.metadata.create_all(engine)
-    - 若后续引入迁移，可替换为 Alembic 升级逻辑
+    - 默认情况下（USE_ALEMBIC_ONLY=True）不应调用本函数；
+    - 仅在显式关闭 USE_ALEMBIC_ONLY 时，作为历史库/开发环境的兜底手段。
     """
     # 延迟导入，避免循环
     from .models import Base as ModelsBase  # noqa: WPS433
@@ -70,7 +70,8 @@ def ensure_database_schema() -> None:
         pass
 
 
-## 兼容层 apply_schema_upgrades 已移除：初期不再使用 Alembic 迁移
+## 兼容层 apply_schema_upgrades 已移除：默认使用 Alembic；
+## ensure_database_schema / _ensure_extra_columns 仅保留用于兼容旧库与开发兜底。
 
 
 def bootstrap_defaults() -> None:

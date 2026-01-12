@@ -6,17 +6,32 @@ from __future__ import annotations
 import secrets
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
-from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
 
 from ..config import settings
 from ..constants import THEME_PRESETS, LOG_LEVEL_OPTIONS
 from ..dependencies import get_current_user, get_optional_user, get_db
-from ..models import Crawler, APIKey, User
-from ..schemas import ThemeSettingOut, ThemeSettingUpdate
+from ..models import (
+    APIKey,
+    Crawler,
+    CrawlerRun,
+    FileAccessLog,
+    FileEntry,
+    LogEntry,
+    OperationAuditLog,
+    User,
+)
+from ..schemas import (
+    DashboardActivityItemOut,
+    DashboardOverviewOut,
+    ThemeSettingOut,
+    ThemeSettingUpdate,
+)
 from ..utils.time_utils import aware_now
 
 
@@ -209,4 +224,168 @@ def update_my_theme(
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.get("/api/dashboard/overview", response_model=DashboardOverviewOut)
+def get_dashboard_overview(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """仪表盘概览：返回轻量统计与最近活动时间。"""
+    crawlers_total = int(
+        db.query(func.count(Crawler.id)).filter(Crawler.user_id == current_user.id).scalar() or 0
+    )
+    crawlers_online = int(
+        db.query(func.count(Crawler.id))
+        .filter(Crawler.user_id == current_user.id, Crawler.status == "online")
+        .scalar()
+        or 0
+    )
+    crawlers_offline = max(0, crawlers_total - crawlers_online)
+
+    api_keys_total = int(
+        db.query(func.count(APIKey.id)).filter(APIKey.user_id == current_user.id).scalar() or 0
+    )
+
+    files_total, files_total_bytes = (
+        db.query(
+            func.count(FileEntry.id),
+            func.coalesce(func.sum(FileEntry.size_bytes), 0),
+        )
+        .filter(FileEntry.owner_id == current_user.id)
+        .first()
+        or (0, 0)
+    )
+
+    logs_total = int(
+        db.query(func.count(LogEntry.id))
+        .join(Crawler, LogEntry.crawler_id == Crawler.id)
+        .filter(Crawler.user_id == current_user.id)
+        .scalar()
+        or 0
+    )
+
+    latest_audit = (
+        db.query(func.max(OperationAuditLog.created_at))
+        .filter(OperationAuditLog.actor_id == current_user.id)
+        .scalar()
+    )
+    latest_file = (
+        db.query(func.max(FileAccessLog.created_at))
+        .filter(FileAccessLog.user_id == current_user.id)
+        .scalar()
+    )
+    latest_run = (
+        db.query(func.max(CrawlerRun.started_at))
+        .join(Crawler, CrawlerRun.crawler_id == Crawler.id)
+        .filter(Crawler.user_id == current_user.id)
+        .scalar()
+    )
+    latest_candidates = [item for item in (latest_audit, latest_file, latest_run) if item]
+    latest_activity_at = max(latest_candidates) if latest_candidates else None
+
+    return DashboardOverviewOut(
+        crawlers_total=crawlers_total,
+        crawlers_online=crawlers_online,
+        crawlers_offline=crawlers_offline,
+        api_keys_total=api_keys_total,
+        files_total=int(files_total or 0),
+        files_total_bytes=int(files_total_bytes or 0),
+        logs_total=logs_total,
+        latest_activity_at=latest_activity_at,
+    )
+
+
+@router.get("/api/dashboard/activity", response_model=list[DashboardActivityItemOut])
+def get_dashboard_activity(
+    limit: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """仪表盘最近活动：合并审计/文件/爬虫运行的轻量事件流。"""
+    audit_logs = (
+        db.query(OperationAuditLog)
+        .filter(OperationAuditLog.actor_id == current_user.id)
+        .order_by(OperationAuditLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    file_logs = (
+        db.query(FileAccessLog)
+        .options(joinedload(FileAccessLog.file))
+        .filter(FileAccessLog.user_id == current_user.id)
+        .order_by(FileAccessLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    runs = (
+        db.query(CrawlerRun)
+        .join(Crawler, CrawlerRun.crawler_id == Crawler.id)
+        .options(joinedload(CrawlerRun.crawler))
+        .filter(Crawler.user_id == current_user.id)
+        .order_by(CrawlerRun.started_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    events: list[DashboardActivityItemOut] = []
+
+    for item in audit_logs:
+        target_suffix = ""
+        if item.target_name:
+            target_suffix = f" {item.target_name}"
+        elif item.target_id is not None:
+            target_suffix = f" #{item.target_id}"
+        message = f"{item.action} {item.target_type}{target_suffix}".strip()
+        events.append(
+            DashboardActivityItemOut(
+                type="audit",
+                action=item.action,
+                message=message,
+                created_at=item.created_at,
+                actor=item.actor_name,
+                ip_address=item.actor_ip,
+                target_type=item.target_type,
+                target_id=item.target_id,
+            )
+        )
+
+    for item in file_logs:
+        file_name = None
+        if item.file and item.file.original_name:
+            file_name = item.file.original_name
+        elif item.file_id is not None:
+            file_name = f"file#{item.file_id}"
+        else:
+            file_name = "file"
+        message = f"{item.action} {file_name}"
+        events.append(
+            DashboardActivityItemOut(
+                type="file",
+                action=item.action,
+                message=message,
+                created_at=item.created_at,
+                actor=current_user.username,
+                ip_address=item.ip_address,
+            )
+        )
+
+    for item in runs:
+        crawler_name = item.crawler.name if item.crawler else f"crawler#{item.crawler_id}"
+        message = f"{crawler_name} run {item.status}"
+        events.append(
+            DashboardActivityItemOut(
+                type="crawler_run",
+                action=item.status,
+                message=message,
+                created_at=item.started_at,
+                actor=current_user.username,
+                ip_address=item.source_ip,
+                target_type="crawler",
+                target_id=item.crawler_id,
+            )
+        )
+
+    events.sort(key=lambda e: e.created_at, reverse=True)
+    return events[:limit]
 

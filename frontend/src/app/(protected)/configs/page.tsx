@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ interface AppConfigItem {
 export default function ConfigsIndexPage() {
   const [appId, setAppId] = useState("");
   const [desc, setDesc] = useState("");
-  const [jsonText, setJsonText] = useState("{\n  \"hello\": \"world\"\n}");
+  const [jsonText, setJsonText] = useState('{\n  "hello": "world"\n}');
   const [error, setError] = useState<string | null>(null);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -39,11 +39,14 @@ export default function ConfigsIndexPage() {
       let obj: unknown;
       try {
         obj = JSON.parse(jsonText);
-      } catch (e) {
+      } catch {
         throw new Error("JSON 语法错误，请检查后再提交");
       }
       if (!appId.trim()) throw new Error("请填写 app 标识");
-      return apiClient.put(endpoints.configs.upsert(appId.trim()), { description: desc || undefined, content: obj });
+      return apiClient.put(endpoints.configs.upsert(appId.trim()), {
+        description: desc || undefined,
+        content: obj,
+      });
     },
     onSuccess: () => {
       listQuery.refetch();
@@ -59,7 +62,7 @@ export default function ConfigsIndexPage() {
     try {
       const obj = JSON.parse(text);
       setJsonText(JSON.stringify(obj, null, 2));
-    } catch (err) {
+    } catch {
       setError("上传的文件不是有效 JSON");
     } finally {
       e.target.value = "";
@@ -78,18 +81,36 @@ export default function ConfigsIndexPage() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="space-y-2">
             <Label htmlFor="appId">app 标识</Label>
-            <Input id="appId" placeholder="例如：001" value={appId} onChange={(e) => setAppId(e.target.value)} />
+            <Input
+              id="appId"
+              placeholder="例如：001"
+              value={appId}
+              onChange={(e) => setAppId(e.target.value)}
+            />
           </div>
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="desc">描述（可选）</Label>
-            <Input id="desc" placeholder="例如：Windows 客户端配置" value={desc} onChange={(e) => setDesc(e.target.value)} />
+            <Input
+              id="desc"
+              placeholder="例如：Windows 客户端配置"
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+            />
           </div>
           <div className="space-y-2 md:col-span-3">
             <div className="flex items-center justify-between">
               <Label htmlFor="jsonText">JSON 内容</Label>
               <div className="flex items-center gap-2">
-                <Button variant="secondary" size="sm" onClick={onPickFile}>上传 JSON 文件</Button>
-                <input ref={fileRef} type="file" accept="application/json" className="hidden" onChange={onFileChange} />
+                <Button variant="secondary" size="sm" onClick={onPickFile}>
+                  上传 JSON 文件
+                </Button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={onFileChange}
+                />
               </div>
             </div>
             <textarea
@@ -99,7 +120,11 @@ export default function ConfigsIndexPage() {
               onChange={(e) => setJsonText(e.target.value)}
               spellCheck={false}
             />
-            {error && <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>}
+            {error && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm text-destructive">
+                {error}
+              </div>
+            )}
             <div className="flex items-center justify-end">
               <Button onClick={() => upsertMutation.mutate()} disabled={upsertMutation.isPending}>
                 {upsertMutation.isPending ? "保存中..." : "保存配置"}
@@ -116,15 +141,27 @@ export default function ConfigsIndexPage() {
             <div key={it.app} className="flex items-center justify-between gap-3 p-3">
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium">{it.app}</div>
-                <div className="truncate text-xs text-muted-foreground">{it.description || "-"}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {it.description || "-"}
+                </div>
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span>读取 {it.read_count}</span>
                 <span>更新 {new Date(it.updated_at).toLocaleString()}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Link className="text-sm text-primary hover:underline" href={`/configs/${encodeURIComponent(it.app)}`}>编辑</Link>
-                <Link className="text-sm text-primary hover:underline" href={`/configs/${encodeURIComponent(it.app)}?tab=stats`}>统计</Link>
+                <Link
+                  className="text-sm text-primary hover:underline"
+                  href={`/configs/${encodeURIComponent(it.app)}`}
+                >
+                  编辑
+                </Link>
+                <Link
+                  className="text-sm text-primary hover:underline"
+                  href={`/configs/${encodeURIComponent(it.app)}?tab=stats`}
+                >
+                  统计
+                </Link>
                 {(() => {
                   const origin = typeof window !== "undefined" ? window.location.origin : "";
                   const url = `${origin}/pz?app=${encodeURIComponent(it.app)}`;
@@ -133,7 +170,9 @@ export default function ConfigsIndexPage() {
               </div>
             </div>
           ))}
-          {listQuery.data?.length === 0 && <div className="p-4 text-center text-sm text-muted-foreground">暂无配置</div>}
+          {listQuery.data?.length === 0 && (
+            <div className="p-4 text-center text-sm text-muted-foreground">暂无配置</div>
+          )}
         </div>
       </section>
     </div>

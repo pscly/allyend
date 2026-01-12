@@ -60,14 +60,18 @@ function useLocalLocation() {
     try {
       const raw = localStorage.getItem(LS_KEY);
       if (raw) setLoc(JSON.parse(raw));
-    } catch {}
+    } catch {
+      // 忽略：localStorage 可能不可用（隐私模式/无权限/SSR）
+    }
   }, []);
 
   const save = useCallback((v: SavedLocation | null) => {
     try {
       if (v) localStorage.setItem(LS_KEY, JSON.stringify(v));
       else localStorage.removeItem(LS_KEY);
-    } catch {}
+    } catch {
+      // 忽略：localStorage 可能不可用（隐私模式/无权限/SSR）
+    }
     setLoc(v);
   }, []);
 
@@ -118,21 +122,27 @@ export function WeatherCard({ className }: { className?: string }) {
   const [candidates, setCandidates] = useState<SavedLocation[]>([]);
   const [searching, setSearching] = useState(false);
 
-  const text = useMemo(() => (weather ? WEATHER_CODE_TEXT[weather.weathercode] ?? "—" : "—"), [weather]);
+  const text = useMemo(
+    () => (weather ? (WEATHER_CODE_TEXT[weather.weathercode] ?? "—") : "—"),
+    [weather],
+  );
 
-  const loadByLocation = useCallback(async (l: SavedLocation) => {
-    setError(null);
-    setLoading(true);
-    try {
-      const w = await fetchWeather(l.latitude, l.longitude);
-      setWeather(w);
-      save(l);
-    } catch (e: any) {
-      setError("天气获取失败，请稍后再试");
-    } finally {
-      setLoading(false);
-    }
-  }, [save]);
+  const loadByLocation = useCallback(
+    async (l: SavedLocation) => {
+      setError(null);
+      setLoading(true);
+      try {
+        const w = await fetchWeather(l.latitude, l.longitude);
+        setWeather(w);
+        save(l);
+      } catch {
+        setError("天气获取失败，请稍后再试");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [save],
+  );
 
   // 首次：优先使用本地保存；否则尝试浏览器定位
   useEffect(() => {
@@ -194,7 +204,7 @@ export function WeatherCard({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "relative rounded-2xl ring-1 ring-inset ring-white/15 bg-white/10 p-4 text-white shadow-[0_10px_36px_rgba(2,6,23,0.16)] backdrop-blur-2xl backdrop-saturate-150 bg-clip-padding",
+        "relative rounded-2xl bg-white/10 bg-clip-padding p-4 text-white shadow-[0_10px_36px_rgba(2,6,23,0.16)] ring-1 ring-inset ring-white/15 backdrop-blur-2xl backdrop-saturate-150",
         "dark:bg-white/10",
         className,
       )}
@@ -204,14 +214,19 @@ export function WeatherCard({ className }: { className?: string }) {
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 rounded-2xl"
-        style={{ background: "linear-gradient(135deg, hsl(var(--primary) / var(--home-glass-alpha, 0)) 0%, transparent 65%)" }}
+        style={{
+          background:
+            "linear-gradient(135deg, hsl(var(--primary) / var(--home-glass-alpha, 0)) 0%, transparent 65%)",
+        }}
       />
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm text-white/90 dark:text-white/90">
             {loc ? `${loc.name}${loc.country ? ` · ${loc.country}` : ""}` : "未选择位置"}
           </p>
-          <p className="text-xs text-white/70">{loading ? "加载中…" : error ? error : "当前天气"}</p>
+          <p className="text-xs text-white/70">
+            {loading ? "加载中…" : error ? error : "当前天气"}
+          </p>
         </div>
         <div className="flex gap-2">
           <Button size="sm" variant="secondary" className="h-8" onClick={onUseMyLocation}>
@@ -224,7 +239,7 @@ export function WeatherCard({ className }: { className?: string }) {
         <div className="leading-none">
           <div className="text-4xl font-bold tracking-tight text-white">
             {weather ? Math.round(weather.temperature) : "—"}
-            <span className="ml-1 text-lg align-top">℃</span>
+            <span className="ml-1 align-top text-lg">℃</span>
           </div>
           <div className="mt-1 text-sm text-white/80">{text}</div>
         </div>
@@ -255,7 +270,9 @@ export function WeatherCard({ className }: { className?: string }) {
               >
                 {c.name}
                 {c.country ? <span className="text-white/60"> · {c.country}</span> : null}
-                <span className="text-white/60">（{c.latitude.toFixed(2)}, {c.longitude.toFixed(2)}）</span>
+                <span className="text-white/60">
+                  （{c.latitude.toFixed(2)}, {c.longitude.toFixed(2)}）
+                </span>
               </button>
             </li>
           ))}

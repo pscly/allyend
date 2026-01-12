@@ -5,7 +5,6 @@ import { ShieldCheck, Users, KeySquare, Settings2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/store/auth-store";
 
 /**
@@ -24,15 +23,48 @@ export default function AdminEntryPage() {
   }, [profile, router]);
 
   const fakeUsers = [
-    { id: 101, username: "alice", role: "user", group: "默认组", is_active: true, created_at: "2025-09-01 10:12" },
-    { id: 102, username: "admin", role: "user", group: "管理员", is_active: true, created_at: "2025-09-10 09:20" },
-    { id: 103, username: "aaaa", role: "user", group: "运营", is_active: false, created_at: "2025-09-20 18:42" },
+    {
+      id: 101,
+      username: "alice",
+      role: "user",
+      group: "默认组",
+      is_active: true,
+      created_at: "2025-09-01 10:12",
+    },
+    {
+      id: 102,
+      username: "admin",
+      role: "user",
+      group: "管理员",
+      is_active: true,
+      created_at: "2025-09-10 09:20",
+    },
+    {
+      id: 103,
+      username: "aaaa",
+      role: "user",
+      group: "运营",
+      is_active: false,
+      created_at: "2025-09-20 18:42",
+    },
   ] as const;
 
   const fakeInvites = [
-    { code: "v7gKQ1xA", note: "运营团队", allow_admin: false, limit: "2/5", expire: "2025-10-31 23:59" },
+    {
+      code: "v7gKQ1xA",
+      note: "运营团队",
+      allow_admin: false,
+      limit: "2/5",
+      expire: "2025-10-31 23:59",
+    },
     { code: "cJ9Pz3LM", note: "测试账号", allow_admin: false, limit: "1/3", expire: "永久有效" },
-    { code: "mH2tN0Wd", note: "临时协作", allow_admin: true, limit: "0/1", expire: "2025-09-30 12:00" },
+    {
+      code: "mH2tN0Wd",
+      note: "临时协作",
+      allow_admin: true,
+      limit: "0/1",
+      expire: "2025-09-30 12:00",
+    },
   ] as const;
 
   return (
@@ -57,10 +89,14 @@ export default function AdminEntryPage() {
           <div className="space-y-3 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">当前模式</span>
-              <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">仅限邀请码</span>
+              <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
+                仅限邀请码
+              </span>
             </div>
             <div className="flex items-center gap-2">
-              <Button size="sm"  variant="secondary">保存</Button>
+              <Button size="sm" variant="secondary">
+                保存
+              </Button>
             </div>
           </div>
         </section>
@@ -73,7 +109,7 @@ export default function AdminEntryPage() {
           </div>
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <Button size="sm" >生成邀请码</Button>
+              <Button size="sm">生成邀请码</Button>
               <Button size="sm" variant="secondary" disabled>
                 刷新
               </Button>
@@ -129,7 +165,9 @@ export default function AdminEntryPage() {
               <div key={u.id} className="grid grid-cols-6 items-center gap-0 p-3 text-sm">
                 <span className="text-muted-foreground">{u.id}</span>
                 <span className="text-foreground/90">{u.username}</span>
-                <span className="text-muted-foreground">{u.role === "user" ? "普通用户" : u.role}</span>
+                <span className="text-muted-foreground">
+                  {u.role === "user" ? "普通用户" : u.role}
+                </span>
                 <span className="text-muted-foreground">{u.group}</span>
                 <span className="text-muted-foreground">{u.is_active ? "正常" : "停用"}</span>
                 <span className="text-muted-foreground">{u.created_at}</span>

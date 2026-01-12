@@ -25,6 +25,7 @@ from ..dependencies import get_current_user, get_db
 from ..models import APIKey, Crawler, CrawlerGroup, InviteCode, InviteUsage, SystemSetting, User, UserGroup, UserSession
 from ..schemas import UserCreate, APIKeyOut, APIKeyCreate, APIKeyUpdate, PublicAPIKeyOut, UserProfileOut, LoginRequest, SessionOut
 from ..utils.time_utils import now, aware_now
+from ..utils.request_utils import get_client_ip
 from ..utils.audit import record_operation, summarize_api_key, summarize_group
 
 
@@ -248,7 +249,7 @@ def register_form(
             display_name,
             email.strip() if email else None,
             invite_code,
-            request.headers.get("X-Real-IP"),
+            get_client_ip(request),
         )
     except HTTPException as exc:
         return templates.TemplateResponse(
@@ -267,7 +268,11 @@ def register_form(
         )
     # 注册成功后直接设置 Cookie 并跳转到控制台
     user = db.query(User).filter(User.username == username.strip()).first()
-    token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    if not user:
+        raise HTTPException(status_code=500, detail="注册成功但未找到用户记录")
+    session = _create_session(db, user, request, remember_me=False)
+    expires_minutes = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    token = create_access_token(str(user.id), expires_minutes, session_id=session.session_id)
     resp = RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
     resp.set_cookie(
         key="access_token",
@@ -277,6 +282,7 @@ def register_form(
         path=settings.COOKIE_PATH or "/",
         secure=bool(settings.COOKIE_SECURE),
         domain=settings.COOKIE_DOMAIN or None,
+        max_age=expires_minutes * 60,
     )
     return resp
 
@@ -288,7 +294,7 @@ def _create_session(db: Session, user: User, request: Request, remember_me: bool
         session_id=sid,
         user=user,
         user_agent=request.headers.get("User-Agent"),
-        ip_address=request.headers.get("X-Real-IP") if request.client else None,
+        ip_address=get_client_ip(request),
         remember_me=remember_me,
         created_at=aware_now(),
         last_active_at=aware_now(),
@@ -342,10 +348,14 @@ def api_register(payload: UserCreate, request: Request, response: Response, db: 
         payload.display_name,
         payload.email.strip() if payload.email else None,
         payload.invite_code,
-        request.headers.get("X-Real-IP") if request.client else None,
+        get_client_ip(request),
     )
     user = db.query(User).filter(User.username == payload.username.strip()).first()
-    token = create_access_token(str(user.id), settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    if not user:
+        raise HTTPException(status_code=500, detail="注册成功但未找到用户记录")
+    session = _create_session(db, user, request, remember_me=False)
+    expires_minutes = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    token = create_access_token(str(user.id), expires_minutes, session_id=session.session_id)
     # 仅使用 Cookie 会话（HttpOnly + 可配置属性）
     response.set_cookie(
         key="access_token",
@@ -355,6 +365,7 @@ def api_register(payload: UserCreate, request: Request, response: Response, db: 
         path=settings.COOKIE_PATH or "/",
         secure=bool(settings.COOKIE_SECURE),
         domain=settings.COOKIE_DOMAIN or None,
+        max_age=expires_minutes * 60,
     )
     return user
 
@@ -541,7 +552,7 @@ def create_key(
         before=None,
         after=summarize_api_key(rec),
         actor=current_user,
-        actor_ip=request.headers.get("X-Real-IP") if request.client else None,
+        actor_ip=get_client_ip(request),
     )
     db.commit()
     db.refresh(rec)
@@ -592,7 +603,7 @@ def update_key(
         before=before,
         after=summarize_api_key(rec),
         actor=current_user,
-        actor_ip=request.headers.get("X-Real-IP") if request.client else None,
+        actor_ip=get_client_ip(request),
     )
     db.commit()
     db.refresh(rec)
@@ -623,7 +634,7 @@ def rotate_key(
         before=before,
         after=summarize_api_key(rec),
         actor=current_user,
-        actor_ip=request.headers.get("X-Real-IP") if request.client else None,
+        actor_ip=get_client_ip(request),
     )
     db.commit()
     db.refresh(rec)
@@ -652,7 +663,7 @@ def delete_key(
         before=before,
         after=None,
         actor=current_user,
-        actor_ip=request.headers.get("X-Real-IP") if request.client else None,
+        actor_ip=get_client_ip(request),
     )
     db.commit()
     return {"ok": True}

@@ -1,3 +1,14 @@
+"""
+临时片段：模型定义尾部（历史备份）。
+
+说明：
+- `scripts/_head_models.py` 与本文件曾用于一次模型重构过程中的“分段对照”。
+- 本文件原始内容以缩进开头，作为 Python 模块会触发 `IndentationError`，从而影响
+  `python -m compileall` / 静态检查等全库质量校验。
+- 为避免影响仓库整体可用性，现将原始内容以原样文本的形式保存在 `_SNIPPET` 中。
+"""
+
+_SNIPPET = r"""
     crawler: Mapped["Crawler"] = relationship("Crawler", back_populates="heartbeat_events")
 
     api_key_id: Mapped[int] = mapped_column(ForeignKey("api_keys.id"))
@@ -247,4 +258,5 @@ class FileAccessLog(Base):
 
     token_id: Mapped[Optional[int]] = mapped_column(ForeignKey("file_api_tokens.id"), nullable=True)
     token: Mapped[Optional[FileAPIToken]] = relationship("FileAPIToken", back_populates="logs")
+"""
 

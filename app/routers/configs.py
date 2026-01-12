@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from ..dependencies import get_current_user, get_db, get_optional_user
+from ..dependencies import get_current_user, get_db
 from ..models import AppConfig, AppConfigReadLog
 from ..schemas import (
     AppConfigListItem,
@@ -31,6 +31,7 @@ from ..schemas import (
     AppConfigStatsPoint,
     AppConfigUpsert,
 )
+from ..utils.request_utils import get_client_ip
 
 
 router = APIRouter(prefix="/api/configs", tags=["configs"])
@@ -38,19 +39,15 @@ public_router = APIRouter(tags=["configs-public"])
 
 
 def _client_ip(request: Request) -> Optional[str]:
-    # 从常见代理头恢复真实 IP
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
-    xrip = request.headers.get("x-real-ip")
-    if xrip:
-        return xrip
-    client = request.client
-    return client.host if client else None
+    return get_client_ip(request)
 
 
 @public_router.get("/pz")
-def fetch_public_config(app: str = Query(..., min_length=1, max_length=64), request: Request = None, db: Session = Depends(get_db)):
+def fetch_public_config(
+    request: Request,
+    app: str = Query(..., min_length=1, max_length=64),
+    db: Session = Depends(get_db),
+):
     """公开读取指定 app 的 JSON 配置。
 
     - 直接以 application/json 返回；

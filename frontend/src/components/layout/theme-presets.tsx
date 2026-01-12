@@ -30,13 +30,62 @@ type Preset = {
 
 // 预置主题，偏向干净的 Dashboard 风格
 const PRESETS: Preset[] = [
-  { key: "aurora", name: "极光", primary: "#7C3AED", secondary: "#22D3EE", background: "#F3F4F6", dark: false },
-  { key: "ocean", name: "海洋", primary: "#2563EB", secondary: "#06B6D4", background: "#EFF6FF", dark: false },
-  { key: "sunset", name: "暮光", primary: "#F97316", secondary: "#EF4444", background: "#FFF7ED", dark: false },
-  { key: "forest", name: "森林", primary: "#16A34A", secondary: "#65A30D", background: "#F0FDF4", dark: false },
-  { key: "sakura", name: "樱花", primary: "#EC4899", secondary: "#8B5CF6", background: "#FFF1F2", dark: false },
-  { key: "graphite", name: "石墨", primary: "#111827", secondary: "#374151", background: "#F9FAFB", dark: false },
-  { key: "night", name: "夜空", primary: "#60A5FA", secondary: "#22D3EE", background: "#0B1220", dark: true },
+  {
+    key: "aurora",
+    name: "极光",
+    primary: "#7C3AED",
+    secondary: "#22D3EE",
+    background: "#F3F4F6",
+    dark: false,
+  },
+  {
+    key: "ocean",
+    name: "海洋",
+    primary: "#2563EB",
+    secondary: "#06B6D4",
+    background: "#EFF6FF",
+    dark: false,
+  },
+  {
+    key: "sunset",
+    name: "暮光",
+    primary: "#F97316",
+    secondary: "#EF4444",
+    background: "#FFF7ED",
+    dark: false,
+  },
+  {
+    key: "forest",
+    name: "森林",
+    primary: "#16A34A",
+    secondary: "#65A30D",
+    background: "#F0FDF4",
+    dark: false,
+  },
+  {
+    key: "sakura",
+    name: "樱花",
+    primary: "#EC4899",
+    secondary: "#8B5CF6",
+    background: "#FFF1F2",
+    dark: false,
+  },
+  {
+    key: "graphite",
+    name: "石墨",
+    primary: "#111827",
+    secondary: "#374151",
+    background: "#F9FAFB",
+    dark: false,
+  },
+  {
+    key: "night",
+    name: "夜空",
+    primary: "#60A5FA",
+    secondary: "#22D3EE",
+    background: "#0B1220",
+    dark: true,
+  },
 ];
 
 // 与 use-apply-theme 同步的小工具：即时预览（无需等待服务端）
@@ -46,7 +95,13 @@ function normalizeHex(input: string | null | undefined): string | null {
   if (!value.startsWith("#")) return null;
   const hex = value.slice(1);
   if (!/^([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(hex)) return null;
-  const normalized = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
+  const normalized =
+    hex.length === 3
+      ? hex
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : hex;
   return `#${normalized.toLowerCase()}`;
 }
 
@@ -130,7 +185,7 @@ export function ThemePresets() {
     applyVariable("--card-foreground", deriveForeground(background, "225 35% 12%"));
     applyVariable("--popover-foreground", deriveForeground(background, "225 35% 12%"));
     // 中文注释：主题强绑定明暗模式
-    setTheme(Boolean(preset.dark) ? "dark" : "light");
+    setTheme(preset.dark ? "dark" : "light");
   };
 
   const handlePick = async (preset: Preset) => {
@@ -148,7 +203,8 @@ export function ThemePresets() {
         isDarkMode: Boolean(preset.dark),
       });
     } catch (error) {
-      const message = error instanceof ApiError ? error.payload?.detail ?? "保存主题失败" : "保存主题失败";
+      const message =
+        error instanceof ApiError ? (error.payload?.detail ?? "保存主题失败") : "保存主题失败";
       toast({ title: "主题保存失败", description: message, variant: "destructive" });
     } finally {
       setOpen(false);
@@ -166,7 +222,9 @@ export function ThemePresets() {
     try {
       localStorage.setItem("home.glass.enabled", enabled ? "1" : "0");
       localStorage.setItem("home.glass.alpha", String(clamped));
-    } catch {}
+    } catch {
+      // 忽略：localStorage 可能不可用（隐私模式/无权限/SSR）
+    }
   };
 
   // 初始化本地设置
@@ -178,9 +236,10 @@ export function ThemePresets() {
       setGlassEnabled(enabled);
       setGlassAlpha(alpha);
       applyGlass(enabled, alpha);
-    } catch {}
+    } catch {
+      // 忽略：localStorage 可能不可用（隐私模式/无权限/SSR）
+    }
     // 仅初始化一次
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -189,7 +248,12 @@ export function ThemePresets() {
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button type="button" variant="ghost" size="icon" className="relative h-9 w-9 rounded-full">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="relative h-9 w-9 rounded-full"
+              >
                 <Palette className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -199,7 +263,9 @@ export function ThemePresets() {
       </TooltipProvider>
 
       <DropdownMenuContent align="end" className="w-72 p-0">
-        <DropdownMenuLabel className="px-4 py-3 text-xs text-muted-foreground">选择主题（即时生效，登录后自动保存）</DropdownMenuLabel>
+        <DropdownMenuLabel className="px-4 py-3 text-xs text-muted-foreground">
+          选择主题（即时生效，登录后自动保存）
+        </DropdownMenuLabel>
         <ScrollArea className="max-h-[320px] px-3 pb-3 pt-1">
           <div className="grid grid-cols-3 gap-3">
             {PRESETS.map((preset) => (
@@ -208,7 +274,9 @@ export function ThemePresets() {
                 onClick={() => void handlePick(preset)}
                 className={cn(
                   "group relative overflow-hidden rounded-xl border bg-card p-2 text-left transition-all hover:shadow-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  currentKey && profile?.theme_name === preset.name ? "ring-2 ring-primary" : undefined,
+                  currentKey && profile?.theme_name === preset.name
+                    ? "ring-2 ring-primary"
+                    : undefined,
                 )}
               >
                 <div
@@ -264,7 +332,9 @@ export function ThemePresets() {
                 className="w-full"
                 disabled={!glassEnabled}
               />
-              <span className="w-10 text-right text-[11px] text-muted-foreground">{Math.round(glassAlpha * 100)}%</span>
+              <span className="w-10 text-right text-[11px] text-muted-foreground">
+                {Math.round(glassAlpha * 100)}%
+              </span>
             </div>
           </div>
         </ScrollArea>

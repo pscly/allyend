@@ -1,6 +1,5 @@
 "use client";
 
-
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -162,7 +161,8 @@ function formatUptime(ratio?: number | null): string {
   return `${percent.toFixed(1)}%`;
 }
 function extractPayloadMetrics(payload: Record<string, unknown> | null | undefined) {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return [] as Array<{ key: string; value: string }>;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload))
+    return [] as Array<{ key: string; value: string }>;
   return Object.entries(payload)
     .filter(([_, value]) => {
       if (typeof value === "number") return Number.isFinite(value);
@@ -220,7 +220,11 @@ export default function CrawlersPage() {
   const statusSummary = useMemo(() => {
     const base: Record<StatusFilter, number> = { online: 0, warning: 0, offline: 0 };
     crawlers.forEach((crawler) => {
-      if (crawler.status === "online" || crawler.status === "warning" || crawler.status === "offline") {
+      if (
+        crawler.status === "online" ||
+        crawler.status === "warning" ||
+        crawler.status === "offline"
+      ) {
         base[crawler.status as StatusFilter] += 1;
       }
     });
@@ -278,7 +282,13 @@ export default function CrawlersPage() {
   const createQuickLinkForm = useForm<CreateQuickLinkForm>({
     resolver: zodResolver(createQuickLinkSchema),
     // targetId 在表单类型中为 number（zod 已 transform），默认用 0 占位，提交时校验 > 0
-    defaultValues: { targetType: "crawler", targetId: 0, slug: "", description: "", allowLogs: true },
+    defaultValues: {
+      targetType: "crawler",
+      targetId: 0,
+      slug: "",
+      description: "",
+      allowLogs: true,
+    },
   });
   const editQuickLinkForm = useForm<UpdateQuickLinkForm>({
     resolver: zodResolver(updateQuickLinkSchema),
@@ -326,7 +336,13 @@ export default function CrawlersPage() {
     setCreateKeyDialogOpen(open);
     if (open) {
       setGeneratedKey(null);
-      createKeyForm.reset({ name: "", description: "", groupId: "none", allowedIps: "", isPublic: false });
+      createKeyForm.reset({
+        name: "",
+        description: "",
+        groupId: "none",
+        allowedIps: "",
+        isPublic: false,
+      });
     }
   };
 
@@ -342,9 +358,19 @@ export default function CrawlersPage() {
       const created = await createKeyMutation.mutateAsync(payload);
       setGeneratedKey(created.key);
       toast({ title: "Key 已创建", description: created.name ?? created.key });
-      createKeyForm.reset({ name: "", description: "", groupId: "none", allowedIps: "", isPublic: false });
+      createKeyForm.reset({
+        name: "",
+        description: "",
+        groupId: "none",
+        allowedIps: "",
+        isPublic: false,
+      });
     } catch (error) {
-      toast({ title: "创建失败", description: getErrorMessage(error, "生成 Key 失败"), variant: "destructive" });
+      toast({
+        title: "创建失败",
+        description: getErrorMessage(error, "生成 Key 失败"),
+        variant: "destructive",
+      });
     }
   });
 
@@ -380,7 +406,11 @@ export default function CrawlersPage() {
       toast({ title: "Key 已更新", description: editingKey.name ?? `Key #${editingKey.local_id}` });
       setEditKeyDialogOpen(false);
     } catch (error) {
-      toast({ title: "更新失败", description: getErrorMessage(error, "更新 Key 失败"), variant: "destructive" });
+      toast({
+        title: "更新失败",
+        description: getErrorMessage(error, "更新 Key 失败"),
+        variant: "destructive",
+      });
     } finally {
       setBusyKeyId(null);
     }
@@ -390,9 +420,16 @@ export default function CrawlersPage() {
     setBusyKeyId(key.id);
     try {
       await updateKeyMutation.mutateAsync({ keyId: key.id, payload: { active: !key.active } });
-      toast({ title: key.active ? "Key 已禁用" : "Key 已启用", description: key.name ?? `Key #${key.local_id}` });
+      toast({
+        title: key.active ? "Key 已禁用" : "Key 已启用",
+        description: key.name ?? `Key #${key.local_id}`,
+      });
     } catch (error) {
-      toast({ title: "操作失败", description: getErrorMessage(error, "更新 Key 状态失败"), variant: "destructive" });
+      toast({
+        title: "操作失败",
+        description: getErrorMessage(error, "更新 Key 状态失败"),
+        variant: "destructive",
+      });
     } finally {
       setBusyKeyId(null);
     }
@@ -401,38 +438,60 @@ export default function CrawlersPage() {
   const handleToggleKeyPublic = async (key: ApiKey) => {
     setBusyKeyId(key.id);
     try {
-      await updateKeyMutation.mutateAsync({ keyId: key.id, payload: { is_public: !key.is_public } });
-      toast({ title: key.is_public ? "已关闭公开" : "已公开 Key", description: key.name ?? `Key #${key.local_id}` });
+      await updateKeyMutation.mutateAsync({
+        keyId: key.id,
+        payload: { is_public: !key.is_public },
+      });
+      toast({
+        title: key.is_public ? "已关闭公开" : "已公开 Key",
+        description: key.name ?? `Key #${key.local_id}`,
+      });
     } catch (error) {
-      toast({ title: "操作失败", description: getErrorMessage(error, "更新公开状态失败"), variant: "destructive" });
+      toast({
+        title: "操作失败",
+        description: getErrorMessage(error, "更新公开状态失败"),
+        variant: "destructive",
+      });
     } finally {
       setBusyKeyId(null);
     }
   };
 
   const handleRotateKey = async (key: ApiKey) => {
-    const confirmed = window.confirm(`确定要重置 Key ${key.name ?? `#${key.local_id}`} 吗？旧值将立即失效。`);
+    const confirmed = window.confirm(
+      `确定要重置 Key ${key.name ?? `#${key.local_id}`} 吗？旧值将立即失效。`,
+    );
     if (!confirmed) return;
     setBusyKeyId(key.id);
     try {
       const rotated = await rotateKeyMutation.mutateAsync(key.id);
       toast({ title: "Key 已重置", description: rotated.key });
     } catch (error) {
-      toast({ title: "重置失败", description: getErrorMessage(error, "重置 Key 失败"), variant: "destructive" });
+      toast({
+        title: "重置失败",
+        description: getErrorMessage(error, "重置 Key 失败"),
+        variant: "destructive",
+      });
     } finally {
       setBusyKeyId(null);
     }
   };
 
   const handleDeleteKey = async (key: ApiKey) => {
-    const confirmed = window.confirm(`确定要删除 Key ${key.name ?? `#${key.local_id}`} 吗？此操作无法恢复。`);
+    const confirmed = window.confirm(
+      `确定要删除 Key ${key.name ?? `#${key.local_id}`} 吗？此操作无法恢复。`,
+    );
     if (!confirmed) return;
     setBusyKeyId(key.id);
     try {
       await deleteKeyMutation.mutateAsync(key.id);
       toast({ title: "Key 已删除", description: key.name ?? `Key #${key.local_id}` });
     } catch (error) {
-      toast({ title: "删除失败", description: getErrorMessage(error, "删除 Key 失败"), variant: "destructive" });
+      toast({
+        title: "删除失败",
+        description: getErrorMessage(error, "删除 Key 失败"),
+        variant: "destructive",
+      });
     } finally {
       setBusyKeyId(null);
     }
@@ -478,7 +537,11 @@ export default function CrawlersPage() {
       }
       setGroupDialogOpen(false);
     } catch (error) {
-      toast({ title: "保存失败", description: getErrorMessage(error, "保存分组失败"), variant: "destructive" });
+      toast({
+        title: "保存失败",
+        description: getErrorMessage(error, "保存分组失败"),
+        variant: "destructive",
+      });
     }
   };
 
@@ -490,13 +553,21 @@ export default function CrawlersPage() {
       await deleteGroupMutation.mutateAsync();
       toast({ title: "分组已删除", description: group.name });
     } catch (error) {
-      toast({ title: "删除失败", description: getErrorMessage(error, "删除分组失败"), variant: "destructive" });
+      toast({
+        title: "删除失败",
+        description: getErrorMessage(error, "删除分组失败"),
+        variant: "destructive",
+      });
     } finally {
       setGroupForDeleteId(null);
     }
   };
 
-  const openCreateQuickLink = (options?: { targetType: "crawler" | "api_key" | "group"; targetId: number; description?: string }) => {
+  const openCreateQuickLink = (options?: {
+    targetType: "crawler" | "api_key" | "group";
+    targetId: number;
+    description?: string;
+  }) => {
     setEditingQuickLink(null);
     setQuickLinkDialogOpen(true);
     createQuickLinkForm.reset({
@@ -526,7 +597,11 @@ export default function CrawlersPage() {
       toast({ title: "公开页已创建", description: created.slug });
       setQuickLinkDialogOpen(false);
     } catch (error) {
-      toast({ title: "创建失败", description: getErrorMessage(error, "创建公开页失败"), variant: "destructive" });
+      toast({
+        title: "创建失败",
+        description: getErrorMessage(error, "创建公开页失败"),
+        variant: "destructive",
+      });
     }
   });
 
@@ -555,7 +630,11 @@ export default function CrawlersPage() {
       toast({ title: "公开页已更新", description: editingQuickLink.slug });
       setQuickLinkDialogOpen(false);
     } catch (error) {
-      toast({ title: "更新失败", description: getErrorMessage(error, "更新公开页失败"), variant: "destructive" });
+      toast({
+        title: "更新失败",
+        description: getErrorMessage(error, "更新公开页失败"),
+        variant: "destructive",
+      });
     } finally {
       setBusyLinkId(null);
     }
@@ -564,10 +643,17 @@ export default function CrawlersPage() {
   const handleToggleLinkActive = async (link: QuickLink) => {
     setBusyLinkId(link.id);
     try {
-      await updateQuickLinkMutation.mutateAsync({ linkId: link.id, payload: { is_active: !link.is_active } });
+      await updateQuickLinkMutation.mutateAsync({
+        linkId: link.id,
+        payload: { is_active: !link.is_active },
+      });
       toast({ title: link.is_active ? "已停用公开页" : "已启用公开页", description: link.slug });
     } catch (error) {
-      toast({ title: "操作失败", description: getErrorMessage(error, "更新公开页状态失败"), variant: "destructive" });
+      toast({
+        title: "操作失败",
+        description: getErrorMessage(error, "更新公开页状态失败"),
+        variant: "destructive",
+      });
     } finally {
       setBusyLinkId(null);
     }
@@ -576,10 +662,17 @@ export default function CrawlersPage() {
   const handleToggleLinkLogs = async (link: QuickLink) => {
     setBusyLinkId(link.id);
     try {
-      await updateQuickLinkMutation.mutateAsync({ linkId: link.id, payload: { allow_logs: !link.allow_logs } });
+      await updateQuickLinkMutation.mutateAsync({
+        linkId: link.id,
+        payload: { allow_logs: !link.allow_logs },
+      });
       toast({ title: link.allow_logs ? "已关闭日志" : "已开放日志", description: link.slug });
     } catch (error) {
-      toast({ title: "操作失败", description: getErrorMessage(error, "更新日志权限失败"), variant: "destructive" });
+      toast({
+        title: "操作失败",
+        description: getErrorMessage(error, "更新日志权限失败"),
+        variant: "destructive",
+      });
     } finally {
       setBusyLinkId(null);
     }
@@ -593,7 +686,11 @@ export default function CrawlersPage() {
       await deleteQuickLinkMutation.mutateAsync(link.id);
       toast({ title: "公开页已删除", description: link.slug });
     } catch (error) {
-      toast({ title: "删除失败", description: getErrorMessage(error, "删除公开页失败"), variant: "destructive" });
+      toast({
+        title: "删除失败",
+        description: getErrorMessage(error, "删除公开页失败"),
+        variant: "destructive",
+      });
     } finally {
       setBusyLinkId(null);
     }
@@ -628,14 +725,20 @@ export default function CrawlersPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground">{STATUS_LABELS[status]}</p>
-                    <p className="mt-2 text-3xl font-semibold text-foreground">{statusSummary[status]}</p>
+                    <p className="mt-2 text-3xl font-semibold text-foreground">
+                      {statusSummary[status]}
+                    </p>
                   </div>
                   <div className="rounded-full bg-background/60 p-3 text-muted-foreground">
                     <BarChart3 className="h-5 w-5" />
                   </div>
                 </div>
                 <p className="mt-4 text-xs text-muted-foreground">
-                  {status === "online" ? "5 分钟内收到心跳" : status === "warning" ? "15 分钟内无心跳" : "超过 15 分钟未在线"}
+                  {status === "online"
+                    ? "5 分钟内收到心跳"
+                    : status === "warning"
+                      ? "15 分钟内无心跳"
+                      : "超过 15 分钟未在线"}
                 </p>
               </div>
             ))}
@@ -660,7 +763,11 @@ export default function CrawlersPage() {
                       className="mr-2 inline-flex h-2 w-2 rounded-full"
                       style={{
                         backgroundColor:
-                          status === "online" ? "#10b981" : status === "warning" ? "#f59e0b" : "#ef4444",
+                          status === "online"
+                            ? "#10b981"
+                            : status === "warning"
+                              ? "#f59e0b"
+                              : "#ef4444",
                       }}
                     />
                     {STATUS_LABELS[status]}
@@ -672,7 +779,9 @@ export default function CrawlersPage() {
                   <Button variant="outline" size="sm" className="gap-2">
                     <Layers className="h-4 w-4" />
                     分组
-                    {groupFilters.length ? <span className="text-xs text-primary">({groupFilters.length})</span> : null}
+                    {groupFilters.length ? (
+                      <span className="text-xs text-primary">({groupFilters.length})</span>
+                    ) : null}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-56">
@@ -700,7 +809,9 @@ export default function CrawlersPage() {
                   <Button variant="outline" size="sm" className="gap-2">
                     <LinkIcon className="h-4 w-4" />
                     来源 Key
-                    {apiKeyFilters.length ? <span className="text-xs text-primary">({apiKeyFilters.length})</span> : null}
+                    {apiKeyFilters.length ? (
+                      <span className="text-xs text-primary">({apiKeyFilters.length})</span>
+                    ) : null}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-60">
@@ -764,7 +875,9 @@ export default function CrawlersPage() {
             ) : crawlers.length === 0 ? (
               <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-3xl border border-border/70 bg-card/70 p-8 text-center">
                 <AlertTriangle className="h-8 w-8 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">没有符合条件的爬虫。试试调整筛选条件或创建新的 Key。</p>
+                <p className="text-sm text-muted-foreground">
+                  没有符合条件的爬虫。试试调整筛选条件或创建新的 Key。
+                </p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Button
                     size="sm"
@@ -787,7 +900,13 @@ export default function CrawlersPage() {
                     key={crawler.id}
                     crawler={crawler}
                     toast={toast}
-                    onCreateQuickLink={(target) => openCreateQuickLink({ targetType: "crawler", targetId: target.id, description: `${target.name} 状态页` })}
+                    onCreateQuickLink={(target) =>
+                      openCreateQuickLink({
+                        targetType: "crawler",
+                        targetId: target.id,
+                        description: `${target.name} 状态页`,
+                      })
+                    }
                   />
                 ))}
               </div>
@@ -799,7 +918,9 @@ export default function CrawlersPage() {
             <header className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-foreground">API Key 管理</h2>
-                <p className="text-sm text-muted-foreground">Key 是爬虫唯一身份凭据，可分组、禁用、重置并控制公开范围。</p>
+                <p className="text-sm text-muted-foreground">
+                  Key 是爬虫唯一身份凭据，可分组、禁用、重置并控制公开范围。
+                </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" onClick={() => handleOpenCreateKey(true)} className="gap-2">
@@ -817,7 +938,11 @@ export default function CrawlersPage() {
                   }}
                   disabled={apiKeysQuery.isFetching || groupsQuery.isFetching}
                 >
-                  {apiKeysQuery.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                  {apiKeysQuery.isFetching ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCcw className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
             </header>
@@ -842,7 +967,9 @@ export default function CrawlersPage() {
             <header className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-medium text-foreground">分组概览</h3>
-                <p className="text-xs text-muted-foreground">用于按业务、环境或地域组织 Key 和爬虫。</p>
+                <p className="text-xs text-muted-foreground">
+                  用于按业务、环境或地域组织 Key 和爬虫。
+                </p>
               </div>
               <Button variant="outline" size="sm" onClick={() => openGroupDialog()}>
                 <Plus className="mr-2 h-4 w-4" /> 新增分组
@@ -860,7 +987,9 @@ export default function CrawlersPage() {
               ))}
               <div className="rounded-2xl border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
                 <p className="font-medium text-foreground">未分组</p>
-                <p className="mt-2 text-2xl font-semibold text-foreground">{groupUsage.ungrouped}</p>
+                <p className="mt-2 text-2xl font-semibold text-foreground">
+                  {groupUsage.ungrouped}
+                </p>
                 <p className="mt-3 text-xs">建议为常驻爬虫建立分组，方便筛选和授权。</p>
               </div>
             </div>
@@ -888,9 +1017,11 @@ export default function CrawlersPage() {
                   onToggleActive={handleToggleLinkActive}
                   onToggleLogs={handleToggleLinkLogs}
                   onDelete={handleDeleteQuickLink}
-                  onCopy={(link) => toast({ title: "已复制公开地址", description: buildPublicUrl(link.slug) })}
+                  onCopy={(link) =>
+                    toast({ title: "已复制公开地址", description: buildPublicUrl(link.slug) })
+                  }
                   // 使用当前页面的访问域名进行拼接，SSR 时退回配置
-                  baseUrl={typeof window !== 'undefined' ? window.location.origin : env.appBaseUrl}
+                  baseUrl={typeof window !== "undefined" ? window.location.origin : env.appBaseUrl}
                 />
               </div>
             </ScrollArea>
@@ -913,14 +1044,22 @@ export default function CrawlersPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>创建 API Key</DialogTitle>
-            <DialogDescription>生成唯一凭证，分配至对应业务分组后可用于爬虫认证。</DialogDescription>
+            <DialogDescription>
+              生成唯一凭证，分配至对应业务分组后可用于爬虫认证。
+            </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={handleCreateKey}>
             <div className="space-y-2">
               <Label htmlFor="keyName">名称</Label>
-              <Input id="keyName" placeholder="例如：京东-手机类目" {...createKeyForm.register("name")} />
+              <Input
+                id="keyName"
+                placeholder="例如：京东-手机类目"
+                {...createKeyForm.register("name")}
+              />
               {createKeyForm.formState.errors.name ? (
-                <p className="text-xs text-destructive">{createKeyForm.formState.errors.name.message}</p>
+                <p className="text-xs text-destructive">
+                  {createKeyForm.formState.errors.name.message}
+                </p>
               ) : null}
             </div>
             <div className="space-y-2">
@@ -949,7 +1088,11 @@ export default function CrawlersPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="keyIps">IP 白名单（可选）</Label>
-              <Input id="keyIps" placeholder="127.0.0.1, 192.168.1.2" {...createKeyForm.register("allowedIps")} />
+              <Input
+                id="keyIps"
+                placeholder="127.0.0.1, 192.168.1.2"
+                {...createKeyForm.register("allowedIps")}
+              />
             </div>
             <label className="flex items-center gap-2 text-sm text-foreground">
               <input
@@ -990,10 +1133,13 @@ export default function CrawlersPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isEditKeyDialogOpen} onOpenChange={(next) => {
-        setEditKeyDialogOpen(next);
-        if (!next) setEditingKey(null);
-      }}>
+      <Dialog
+        open={isEditKeyDialogOpen}
+        onOpenChange={(next) => {
+          setEditKeyDialogOpen(next);
+          if (!next) setEditingKey(null);
+        }}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>编辑 Key</DialogTitle>
@@ -1032,26 +1178,36 @@ export default function CrawlersPage() {
               <Input id="editKeyIps" {...editKeyForm.register("allowedIps")} />
             </div>
             <label className="flex items-center gap-2 text-sm text-foreground">
-              <input type="checkbox" className="h-4 w-4 rounded border border-input" {...editKeyForm.register("isPublic")} />
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border border-input"
+                {...editKeyForm.register("isPublic")}
+              />
               允许公开展示基本状态
             </label>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditKeyDialogOpen(false)}>
                 取消
               </Button>
-              <Button type="submit" disabled={updateKeyMutation.isPending || busyKeyId === editingKey?.id}>
+              <Button
+                type="submit"
+                disabled={updateKeyMutation.isPending || busyKeyId === editingKey?.id}
+              >
                 {updateKeyMutation.isPending || busyKeyId === editingKey?.id ? "保存中..." : "保存"}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
-      <Dialog open={isGroupDialogOpen} onOpenChange={(next) => {
-        setGroupDialogOpen(next);
-        if (!next) {
-          setEditingGroup(null);
-        }
-      }}>
+      <Dialog
+        open={isGroupDialogOpen}
+        onOpenChange={(next) => {
+          setGroupDialogOpen(next);
+          if (!next) {
+            setEditingGroup(null);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editingGroup ? "编辑分组" : "新建分组"}</DialogTitle>
@@ -1060,15 +1216,28 @@ export default function CrawlersPage() {
           <form className="space-y-4" onSubmit={handleSubmitGroup}>
             <div className="space-y-2">
               <Label htmlFor="groupName">名称</Label>
-              <Input id="groupName" value={groupName} onChange={(event) => setGroupName(event.target.value)} />
+              <Input
+                id="groupName"
+                value={groupName}
+                onChange={(event) => setGroupName(event.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="groupSlug">Slug（可选）</Label>
-              <Input id="groupSlug" value={groupSlug} onChange={(event) => setGroupSlug(event.target.value)} />
+              <Input
+                id="groupSlug"
+                value={groupSlug}
+                onChange={(event) => setGroupSlug(event.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="groupColor">颜色（可选）</Label>
-              <Input id="groupColor" value={groupColor} onChange={(event) => setGroupColor(event.target.value)} placeholder="#2563eb" />
+              <Input
+                id="groupColor"
+                value={groupColor}
+                onChange={(event) => setGroupColor(event.target.value)}
+                placeholder="#2563eb"
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="groupDescription">描述</Label>
@@ -1083,20 +1252,28 @@ export default function CrawlersPage() {
               <Button type="button" variant="outline" onClick={() => setGroupDialogOpen(false)}>
                 取消
               </Button>
-              <Button type="submit" disabled={createGroupMutation.isPending || updateGroupMutation.isPending}>
-                {createGroupMutation.isPending || updateGroupMutation.isPending ? "保存中..." : "保存"}
+              <Button
+                type="submit"
+                disabled={createGroupMutation.isPending || updateGroupMutation.isPending}
+              >
+                {createGroupMutation.isPending || updateGroupMutation.isPending
+                  ? "保存中..."
+                  : "保存"}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isQuickLinkDialogOpen} onOpenChange={(next) => {
-        setQuickLinkDialogOpen(next);
-        if (!next) {
-          setEditingQuickLink(null);
-        }
-      }}>
+      <Dialog
+        open={isQuickLinkDialogOpen}
+        onOpenChange={(next) => {
+          setQuickLinkDialogOpen(next);
+          if (!next) {
+            setEditingQuickLink(null);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingQuickLink ? "编辑公开页" : "创建公开页"}</DialogTitle>
@@ -1107,7 +1284,8 @@ export default function CrawlersPage() {
           {editingQuickLink ? (
             <form className="space-y-4" onSubmit={handleUpdateQuickLink}>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <p>目标：
+                <p>
+                  目标：
                   {editingQuickLink.target_type === "crawler"
                     ? ` 爬虫 #${editingQuickLink.crawler_local_id}`
                     : editingQuickLink.target_type === "api_key"
@@ -1117,7 +1295,11 @@ export default function CrawlersPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="editSlug">Slug</Label>
-                <Input id="editSlug" placeholder="自定义访问路径" {...editQuickLinkForm.register("slug")} />
+                <Input
+                  id="editSlug"
+                  placeholder="自定义访问路径"
+                  {...editQuickLinkForm.register("slug")}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="editDesc">描述</Label>
@@ -1128,19 +1310,36 @@ export default function CrawlersPage() {
                 />
               </div>
               <label className="flex items-center gap-2 text-sm text-foreground">
-                <input type="checkbox" className="h-4 w-4 rounded border border-input" {...editQuickLinkForm.register("allowLogs")} />
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border border-input"
+                  {...editQuickLinkForm.register("allowLogs")}
+                />
                 允许公开查看日志
               </label>
               <label className="flex items-center gap-2 text-sm text-foreground">
-                <input type="checkbox" className="h-4 w-4 rounded border border-input" {...editQuickLinkForm.register("isActive")} />
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border border-input"
+                  {...editQuickLinkForm.register("isActive")}
+                />
                 启用访问
               </label>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setQuickLinkDialogOpen(false)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setQuickLinkDialogOpen(false)}
+                >
                   取消
                 </Button>
-                <Button type="submit" disabled={updateQuickLinkMutation.isPending || busyLinkId === editingQuickLink.id}>
-                  {updateQuickLinkMutation.isPending || busyLinkId === editingQuickLink.id ? "保存中..." : "保存"}
+                <Button
+                  type="submit"
+                  disabled={updateQuickLinkMutation.isPending || busyLinkId === editingQuickLink.id}
+                >
+                  {updateQuickLinkMutation.isPending || busyLinkId === editingQuickLink.id
+                    ? "保存中..."
+                    : "保存"}
                 </Button>
               </DialogFooter>
             </form>
@@ -1187,7 +1386,11 @@ export default function CrawlersPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="createSlug">Slug</Label>
-                <Input id="createSlug" placeholder="可自定义访问路径" {...createQuickLinkForm.register("slug")} />
+                <Input
+                  id="createSlug"
+                  placeholder="可自定义访问路径"
+                  {...createQuickLinkForm.register("slug")}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="createDesc">描述</Label>
@@ -1198,11 +1401,19 @@ export default function CrawlersPage() {
                 />
               </div>
               <label className="flex items-center gap-2 text-sm text-foreground">
-                <input type="checkbox" className="h-4 w-4 rounded border border-input" {...createQuickLinkForm.register("allowLogs")} />
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border border-input"
+                  {...createQuickLinkForm.register("allowLogs")}
+                />
                 允许公开查看日志
               </label>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setQuickLinkDialogOpen(false)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setQuickLinkDialogOpen(false)}
+                >
                   取消
                 </Button>
                 <Button type="submit" disabled={createQuickLinkMutation.isPending}>
@@ -1226,7 +1437,10 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
   const updateCrawlerMutation = useUpdateCrawlerMutation(crawler.id);
   const createCommandMutation = useCreateCrawlerCommandMutation(crawler.id);
 
-  const metrics = useMemo(() => extractPayloadMetrics(crawler.heartbeat_payload), [crawler.heartbeat_payload]);
+  const metrics = useMemo(
+    () => extractPayloadMetrics(crawler.heartbeat_payload),
+    [crawler.heartbeat_payload],
+  );
   const publicLink = crawler.public_slug ? buildPublicUrl(crawler.public_slug) : null;
 
   const handleTogglePublic = async () => {
@@ -1237,7 +1451,11 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
         description: crawler.name,
       });
     } catch (error) {
-      toast({ title: "操作失败", description: getErrorMessage(error, "更新公开状态失败"), variant: "destructive" });
+      toast({
+        title: "操作失败",
+        description: getErrorMessage(error, "更新公开状态失败"),
+        variant: "destructive",
+      });
     }
   };
 
@@ -1256,10 +1474,14 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
 
   const handleTogglePinned = async () => {
     try {
-      await updateCrawlerMutation.mutateAsync({ pinned: !Boolean(crawler.pinned) });
+      await updateCrawlerMutation.mutateAsync({ pinned: !crawler.pinned });
       toast({ title: crawler.pinned ? "已取消置顶" : "已置顶", description: crawler.name });
     } catch (error) {
-      toast({ title: "操作失败", description: getErrorMessage(error, "更新置顶状态失败"), variant: "destructive" });
+      toast({
+        title: "操作失败",
+        description: getErrorMessage(error, "更新置顶状态失败"),
+        variant: "destructive",
+      });
     }
   };
 
@@ -1268,7 +1490,11 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
       await createCommandMutation.mutateAsync({ command: "restart" });
       toast({ title: "重启指令已下发", description: crawler.name });
     } catch (error) {
-      toast({ title: "下发失败", description: getErrorMessage(error, "发送重启失败"), variant: "destructive" });
+      toast({
+        title: "下发失败",
+        description: getErrorMessage(error, "发送重启失败"),
+        variant: "destructive",
+      });
     }
   };
 
@@ -1277,7 +1503,11 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
       await createCommandMutation.mutateAsync({ command: "shutdown" });
       toast({ title: "停机指令已下发", description: crawler.name });
     } catch (error) {
-      toast({ title: "下发失败", description: getErrorMessage(error, "发送停机失败"), variant: "destructive" });
+      toast({
+        title: "下发失败",
+        description: getErrorMessage(error, "发送停机失败"),
+        variant: "destructive",
+      });
     }
   };
 
@@ -1286,10 +1516,18 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
     const text = cmd?.trim();
     if (!text) return;
     try {
-      await createCommandMutation.mutateAsync({ command: "run_shell", payload: { cmd: text }, expires_in_seconds: 300 });
+      await createCommandMutation.mutateAsync({
+        command: "run_shell",
+        payload: { cmd: text },
+        expires_in_seconds: 300,
+      });
       toast({ title: "执行命令已下发", description: text });
     } catch (error) {
-      toast({ title: "下发失败", description: getErrorMessage(error, "发送执行命令失败"), variant: "destructive" });
+      toast({
+        title: "下发失败",
+        description: getErrorMessage(error, "发送执行命令失败"),
+        variant: "destructive",
+      });
     }
   };
 
@@ -1312,7 +1550,11 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
           <p className="flex items-center gap-2 text-xs text-muted-foreground">
             <LinkIcon className="h-3.5 w-3.5" />
             {crawler.api_key_name}
-            {crawler.api_key_active === false ? <span className="rounded bg-rose-500/15 px-2 py-0.5 text-[10px] text-rose-500">Key 已禁用</span> : null}
+            {crawler.api_key_active === false ? (
+              <span className="rounded bg-rose-500/15 px-2 py-0.5 text-[10px] text-rose-500">
+                Key 已禁用
+              </span>
+            ) : null}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1415,13 +1657,26 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
         </div>
       </header>
       <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
-        <StatBlock label="最后心跳" value={`${formatRelativeTime(crawler.last_heartbeat)} · ${formatDateTime(crawler.last_heartbeat)}`} />
+        <StatBlock
+          label="最后心跳"
+          value={`${formatRelativeTime(crawler.last_heartbeat)} · ${formatDateTime(crawler.last_heartbeat)}`}
+        />
         <StatBlock label="最后来源 IP" value={crawler.last_source_ip ?? "未知"} />
         <StatBlock label="所在分组" value={crawler.group?.name ?? "未分组"} />
         <StatBlock label="可用性" value={formatUptime(crawler.uptime_ratio)} />
-        <StatBlock label="心跳状态" value={crawler.status_changed_at ? `更新于 ${formatRelativeTime(crawler.status_changed_at)}` : "—"} />
+        <StatBlock
+          label="心跳状态"
+          value={
+            crawler.status_changed_at
+              ? `更新于 ${formatRelativeTime(crawler.status_changed_at)}`
+              : "—"
+          }
+        />
         {crawler.config_assignment_name ? (
-          <StatBlock label="配置指派" value={`${crawler.config_assignment_name} v${crawler.config_assignment_version ?? "-"}`} />
+          <StatBlock
+            label="配置指派"
+            value={`${crawler.config_assignment_name} v${crawler.config_assignment_version ?? "-"}`}
+          />
         ) : (
           <StatBlock label="配置指派" value="未指派" />
         )}
@@ -1431,7 +1686,10 @@ function CrawlerCard({ crawler, toast, onCreateQuickLink }: CrawlerCardProps) {
           <h4 className="text-xs font-medium text-muted-foreground">最新指标</h4>
           <div className="grid gap-2 sm:grid-cols-2">
             {metrics.map((metric) => (
-              <div key={metric.key} className="rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-xs">
+              <div
+                key={metric.key}
+                className="rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-xs"
+              >
                 <p className="text-muted-foreground">{metric.key}</p>
                 <p className="mt-1 font-medium text-foreground">{metric.value}</p>
               </div>
@@ -1479,10 +1737,21 @@ function GroupCard({ group, crawlerCount, onEdit, onDelete }: GroupCardProps) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={(event) => { event.preventDefault(); onEdit(); }}>
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault();
+                onEdit();
+              }}
+            >
               <Edit className="mr-2 h-4 w-4" /> 编辑
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={(event) => { event.preventDefault(); onDelete(); }} className="text-destructive">
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault();
+                onDelete();
+              }}
+              className="text-destructive"
+            >
               <Trash2 className="mr-2 h-4 w-4" /> 删除
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -1497,7 +1766,9 @@ function GroupCard({ group, crawlerCount, onEdit, onDelete }: GroupCardProps) {
           创建于 {formatDateTime(group.created_at)}
         </div>
       </div>
-      {group.description ? <p className="text-xs text-muted-foreground">{group.description}</p> : null}
+      {group.description ? (
+        <p className="text-xs text-muted-foreground">{group.description}</p>
+      ) : null}
     </div>
   );
 }
@@ -1515,15 +1786,3 @@ function StatBlock({ label, value }: StatBlockProps) {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-

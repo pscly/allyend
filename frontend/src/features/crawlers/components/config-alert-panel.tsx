@@ -20,6 +20,10 @@ import {
   useUpdateConfigAssignmentMutation,
   useUpdateConfigTemplateMutation,
 } from "@/features/crawlers/mutations";
+import type {
+  CreateAlertRuleInput,
+  CreateConfigAssignmentInput,
+} from "@/features/crawlers/mutations";
 import {
   createAlertRuleSchema,
   createConfigAssignmentSchema,
@@ -64,7 +68,11 @@ interface ConfigAlertPanelProps {
   groups: CrawlerGroup[];
   apiKeys: ApiKey[];
   crawlers: CrawlerSummary[];
-  toast: (options: { title: string; description?: string; variant?: "default" | "destructive" }) => void;
+  toast: (options: {
+    title: string;
+    description?: string;
+    variant?: "default" | "destructive";
+  }) => void;
 }
 
 const ALERT_STATUS_LABEL: Record<string, string> = {
@@ -179,8 +187,14 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
     },
   });
 
-  const configTemplates = useMemo(() => configTemplatesQuery.data ?? [], [configTemplatesQuery.data]);
-  const configAssignments = useMemo(() => configAssignmentsQuery.data ?? [], [configAssignmentsQuery.data]);
+  const configTemplates = useMemo(
+    () => configTemplatesQuery.data ?? [],
+    [configTemplatesQuery.data],
+  );
+  const configAssignments = useMemo(
+    () => configAssignmentsQuery.data ?? [],
+    [configAssignmentsQuery.data],
+  );
   const alertRules = useMemo(() => alertRulesQuery.data ?? [], [alertRulesQuery.data]);
   const alertEvents = useMemo(() => alertEventsQuery.data ?? [], [alertEventsQuery.data]);
 
@@ -229,8 +243,20 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
 
   const resetTemplateForms = () => {
     setEditingTemplate(null);
-    createTemplateForm.reset({ name: "", description: "", format: "json", content: "", isActive: true });
-    editTemplateForm.reset({ name: "", description: "", format: "json", content: "", isActive: true });
+    createTemplateForm.reset({
+      name: "",
+      description: "",
+      format: "json",
+      content: "",
+      isActive: true,
+    });
+    editTemplateForm.reset({
+      name: "",
+      description: "",
+      format: "json",
+      content: "",
+      isActive: true,
+    });
   };
 
   const resetAssignmentForms = () => {
@@ -320,8 +346,13 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
 
   useEffect(() => {
     if (editingAlertRule) {
-      const emailTxt = editingAlertRule.channels?.filter((channel) => channel.type === "email").map((channel) => channel.target).join(", ") ?? "";
-      const webhookTxt = editingAlertRule.channels?.find((channel) => channel.type === "webhook")?.target ?? "";
+      const emailTxt =
+        editingAlertRule.channels
+          ?.filter((channel) => channel.type === "email")
+          .map((channel) => channel.target)
+          .join(", ") ?? "";
+      const webhookTxt =
+        editingAlertRule.channels?.find((channel) => channel.type === "webhook")?.target ?? "";
       editAlertRuleForm.reset({
         name: editingAlertRule.name,
         description: editingAlertRule.description ?? "",
@@ -374,7 +405,13 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
         {
           onSuccess: () => {
             toast({ title: "配置模板已创建" });
-            createTemplateForm.reset({ name: "", description: "", format: "json", content: "", isActive: true });
+            createTemplateForm.reset({
+              name: "",
+              description: "",
+              format: "json",
+              content: "",
+              isActive: true,
+            });
           },
           onError: () => toast({ title: "模板创建失败", variant: "destructive" }),
         },
@@ -382,15 +419,18 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
     }
   };
 
-  const handleSubmitAssignment = (values: UpdateConfigAssignmentForm | CreateConfigAssignmentForm) => {
+  const handleSubmitAssignment = (
+    values: UpdateConfigAssignmentForm | CreateConfigAssignmentForm,
+  ) => {
     const targetId = Number(values.targetId);
     if (!Number.isFinite(targetId)) {
       toast({ title: "请选择有效的目标", variant: "destructive" });
       return;
     }
-    const templateId = values.templateId === null || values.templateId === undefined || values.templateId === 0
-      ? null
-      : Number(values.templateId);
+    const templateId =
+      values.templateId === null || values.templateId === undefined || values.templateId === 0
+        ? null
+        : Number(values.templateId);
     const content = values.content?.trim() ?? "";
     if (!templateId && content.length === 0) {
       toast({ title: "请填写配置内容或选择模板", variant: "destructive" });
@@ -418,7 +458,7 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
         },
       );
     } else {
-      createAssignmentMutation.mutate(payload as import("@/features/crawlers/mutations").CreateConfigAssignmentInput, {
+      createAssignmentMutation.mutate(payload as CreateConfigAssignmentInput, {
         onSuccess: () => {
           toast({ title: "配置指派已创建" });
           resetAssignmentForms();
@@ -437,12 +477,16 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
       trigger_type: values.triggerType,
       target_type: values.targetType,
       target_ids: values.targetIds ?? [],
-      payload_field: values.triggerType === "payload_threshold" ? values.payloadField?.trim() || undefined : undefined,
+      payload_field:
+        values.triggerType === "payload_threshold"
+          ? values.payloadField?.trim() || undefined
+          : undefined,
       comparator:
         values.triggerType === "payload_threshold"
-          ? (normalizedComparator as import("@/features/crawlers/mutations").CreateAlertRuleInput["comparator"]) 
+          ? (normalizedComparator as CreateAlertRuleInput["comparator"])
           : undefined,
-      threshold: values.triggerType === "payload_threshold" ? values.threshold ?? undefined : undefined,
+      threshold:
+        values.triggerType === "payload_threshold" ? (values.threshold ?? undefined) : undefined,
       consecutive_failures: values.consecutiveFailures,
       cooldown_minutes: values.cooldownMinutes,
       channels,
@@ -461,7 +505,7 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
       );
     } else {
       // 创建时字段均为必需类型
-      createAlertRuleMutation.mutate(payload as unknown as import("@/features/crawlers/mutations").CreateAlertRuleInput, {
+      createAlertRuleMutation.mutate(payload as unknown as CreateAlertRuleInput, {
         onSuccess: () => {
           toast({ title: "告警规则已创建" });
           resetAlertRuleForms();
@@ -573,11 +617,20 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
             <p className="text-xs text-muted-foreground">维护 JSON/YAML 模板，支持版本化和复用。</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={resetTemplateForms} disabled={!editingTemplate}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetTemplateForms}
+              disabled={!editingTemplate}
+            >
               取消编辑
             </Button>
             <Button variant="outline" size="sm" onClick={handleRefreshAll}>
-              {configTemplatesQuery.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+              {configTemplatesQuery.isFetching ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCcw className="h-4 w-4" />
+              )}
             </Button>
           </div>
         </header>
@@ -597,17 +650,27 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
               {editingTemplate ? `编辑模板：${editingTemplate.name}` : "新建模板"}
             </p>
             {(editingTemplate ? editTemplateForm : createTemplateForm).formState.errors.name ? (
-              <p className="text-xs text-destructive">{(editingTemplate ? editTemplateForm : createTemplateForm).formState.errors.name?.message}</p>
+              <p className="text-xs text-destructive">
+                {
+                  (editingTemplate ? editTemplateForm : createTemplateForm).formState.errors.name
+                    ?.message
+                }
+              </p>
             ) : null}
             <Label className="space-y-2 text-xs text-muted-foreground">
               名称
-              <Input {...(editingTemplate ? editTemplateForm : createTemplateForm).register("name")} placeholder="如：默认采集配置" />
+              <Input
+                {...(editingTemplate ? editTemplateForm : createTemplateForm).register("name")}
+                placeholder="如：默认采集配置"
+              />
             </Label>
             <Label className="space-y-2 text-xs text-muted-foreground">
               描述
               <textarea
                 className="min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                {...(editingTemplate ? editTemplateForm : createTemplateForm).register("description")}
+                {...(editingTemplate ? editTemplateForm : createTemplateForm).register(
+                  "description",
+                )}
               />
             </Label>
             <div className="flex items-center gap-2">
@@ -628,11 +691,24 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
               />
             </Label>
             <label className="flex items-center gap-2 text-xs text-foreground">
-              <input type="checkbox" className="h-4 w-4 rounded border border-input" {...(editingTemplate ? editTemplateForm : createTemplateForm).register("isActive")} />
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border border-input"
+                {...(editingTemplate ? editTemplateForm : createTemplateForm).register("isActive")}
+              />
               启用模板
             </label>
-            <Button type="submit" size="sm" className="w-full" disabled={createTemplateMutation.isPending || updateTemplateMutation.isPending}>
-              {createTemplateMutation.isPending || updateTemplateMutation.isPending ? "保存中..." : editingTemplate ? "保存模板" : "创建模板"}
+            <Button
+              type="submit"
+              size="sm"
+              className="w-full"
+              disabled={createTemplateMutation.isPending || updateTemplateMutation.isPending}
+            >
+              {createTemplateMutation.isPending || updateTemplateMutation.isPending
+                ? "保存中..."
+                : editingTemplate
+                  ? "保存模板"
+                  : "创建模板"}
             </Button>
           </form>
           <div className="space-y-3">
@@ -645,22 +721,38 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
                 {configTemplates.map((template) => (
-                  <div key={template.id} className="space-y-2 rounded-2xl border border-border/60 bg-card/70 p-4">
+                  <div
+                    key={template.id}
+                    className="space-y-2 rounded-2xl border border-border/60 bg-card/70 p-4"
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="text-sm font-medium text-foreground">{template.name}</p>
-                        <p className="text-[11px] text-muted-foreground">{template.format.toUpperCase()} · v{template.updated_at}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {template.format.toUpperCase()} · v{template.updated_at}
+                        </p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => setEditingTemplate(template)}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingTemplate(template)}
+                        >
                           编辑
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDeleteTemplate(template)} className="text-destructive">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteTemplate(template)}
+                          className="text-destructive"
+                        >
                           删除
                         </Button>
                       </div>
                     </div>
-                    {template.description ? <p className="text-xs text-muted-foreground">{template.description}</p> : null}
+                    {template.description ? (
+                      <p className="text-xs text-muted-foreground">{template.description}</p>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -673,10 +765,17 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-foreground">配置指派</h3>
-            <p className="text-xs text-muted-foreground">将模板或自定义配置分发到爬虫、Key 或分组。</p>
+            <p className="text-xs text-muted-foreground">
+              将模板或自定义配置分发到爬虫、Key 或分组。
+            </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={resetAssignmentForms} disabled={!editingAssignment}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetAssignmentForms}
+              disabled={!editingAssignment}
+            >
               取消编辑
             </Button>
           </div>
@@ -698,13 +797,20 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
             </p>
             <Label className="space-y-2 text-xs text-muted-foreground">
               名称
-              <Input {...(editingAssignment ? editAssignmentForm : createAssignmentForm).register("name")} placeholder="如：生产环境-采集策略" />
+              <Input
+                {...(editingAssignment ? editAssignmentForm : createAssignmentForm).register(
+                  "name",
+                )}
+                placeholder="如：生产环境-采集策略"
+              />
             </Label>
             <Label className="space-y-2 text-xs text-muted-foreground">
               描述
               <textarea
                 className="min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                {...(editingAssignment ? editAssignmentForm : createAssignmentForm).register("description")}
+                {...(editingAssignment ? editAssignmentForm : createAssignmentForm).register(
+                  "description",
+                )}
               />
             </Label>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -712,7 +818,9 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
                 目标类型
                 <select
                   className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  {...(editingAssignment ? editAssignmentForm : createAssignmentForm).register("targetType")}
+                  {...(editingAssignment ? editAssignmentForm : createAssignmentForm).register(
+                    "targetType",
+                  )}
                 >
                   <option value="crawler">爬虫</option>
                   <option value="api_key">API Key</option>
@@ -723,10 +831,14 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
                 目标
                 <select
                   className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  {...(editingAssignment ? editAssignmentForm : createAssignmentForm).register("targetId")}
+                  {...(editingAssignment ? editAssignmentForm : createAssignmentForm).register(
+                    "targetId",
+                  )}
                 >
                   <option value="">请选择</option>
-                  {renderTargetOptions(editingAssignment ? editAssignmentTargetType : createAssignmentTargetType)}
+                  {renderTargetOptions(
+                    editingAssignment ? editAssignmentTargetType : createAssignmentTargetType,
+                  )}
                 </select>
               </label>
             </div>
@@ -734,7 +846,9 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
               指定模板（可选）
               <select
                 className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                {...(editingAssignment ? editAssignmentForm : createAssignmentForm).register("templateId")}
+                {...(editingAssignment ? editAssignmentForm : createAssignmentForm).register(
+                  "templateId",
+                )}
               >
                 <option value="">不使用模板</option>
                 {configTemplates.map((template) => (
@@ -748,15 +862,32 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
               配置内容（覆盖模板时填写）
               <textarea
                 className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                {...(editingAssignment ? editAssignmentForm : createAssignmentForm).register("content")}
+                {...(editingAssignment ? editAssignmentForm : createAssignmentForm).register(
+                  "content",
+                )}
               />
             </Label>
             <label className="flex items-center gap-2 text-xs text-foreground">
-              <input type="checkbox" className="h-4 w-4 rounded border border-input" {...(editingAssignment ? editAssignmentForm : createAssignmentForm).register("isActive")} />
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border border-input"
+                {...(editingAssignment ? editAssignmentForm : createAssignmentForm).register(
+                  "isActive",
+                )}
+              />
               启用指派
             </label>
-            <Button type="submit" size="sm" className="w-full" disabled={createAssignmentMutation.isPending || updateAssignmentMutation.isPending}>
-              {createAssignmentMutation.isPending || updateAssignmentMutation.isPending ? "保存中..." : editingAssignment ? "保存指派" : "创建指派"}
+            <Button
+              type="submit"
+              size="sm"
+              className="w-full"
+              disabled={createAssignmentMutation.isPending || updateAssignmentMutation.isPending}
+            >
+              {createAssignmentMutation.isPending || updateAssignmentMutation.isPending
+                ? "保存中..."
+                : editingAssignment
+                  ? "保存指派"
+                  : "创建指派"}
             </Button>
           </form>
           <div className="space-y-3">
@@ -769,36 +900,51 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
             ) : (
               <div className="space-y-3">
                 {configAssignments.map((assignment) => (
-                  <div key={assignment.id} className="space-y-2 rounded-2xl border border-border/60 bg-card/70 p-4">
+                  <div
+                    key={assignment.id}
+                    className="space-y-2 rounded-2xl border border-border/60 bg-card/70 p-4"
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="text-sm font-medium text-foreground">{assignment.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {assignment.target_type.toUpperCase()} · {resolveAssignmentTargetLabel(assignment)}
+                          {assignment.target_type.toUpperCase()} ·{" "}
+                          {resolveAssignmentTargetLabel(assignment)}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => {
-                          setEditingAssignment(assignment);
-                          editAssignmentForm.reset({
-                            name: assignment.name,
-                            description: assignment.description ?? "",
-                            targetType: assignment.target_type,
-                            targetId: assignment.target_id,
-                            format: assignment.format,
-                            content: assignment.content ?? "",
-                            templateId: assignment.template_id ?? null,
-                            isActive: assignment.is_active,
-                          });
-                        }}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditingAssignment(assignment);
+                            editAssignmentForm.reset({
+                              name: assignment.name,
+                              description: assignment.description ?? "",
+                              targetType: assignment.target_type,
+                              targetId: assignment.target_id,
+                              format: assignment.format,
+                              content: assignment.content ?? "",
+                              templateId: assignment.template_id ?? null,
+                              isActive: assignment.is_active,
+                            });
+                          }}
+                        >
                           编辑
                         </Button>
-                        <Button variant="ghost" size="sm" className="text-destructive" onClick={() => handleDeleteAssignment(assignment)}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive"
+                          onClick={() => handleDeleteAssignment(assignment)}
+                        >
                           删除
                         </Button>
                       </div>
                     </div>
-                    {assignment.description ? <p className="text-xs text-muted-foreground">{assignment.description}</p> : null}
+                    {assignment.description ? (
+                      <p className="text-xs text-muted-foreground">{assignment.description}</p>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -811,13 +957,19 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-foreground">告警策略</h3>
-            <p className="text-xs text-muted-foreground">针对离线或指标异常触发告警，可配置邮件与 Webhook。</p>
+            <p className="text-xs text-muted-foreground">
+              针对离线或指标异常触发告警，可配置邮件与 Webhook。
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <select
               className="rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               value={alertRuleFilterId}
-              onChange={(event) => setAlertRuleFilterId(event.target.value === "all" ? "all" : Number(event.target.value))}
+              onChange={(event) =>
+                setAlertRuleFilterId(
+                  event.target.value === "all" ? "all" : Number(event.target.value),
+                )
+              }
             >
               <option value="all">全部规则</option>
               {alertRules.map((rule) => (
@@ -837,7 +989,12 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
               <option value="failed">失败</option>
               <option value="skipped">已跳过</option>
             </select>
-            <Button variant="ghost" size="sm" onClick={resetAlertRuleForms} disabled={!editingAlertRule}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetAlertRuleForms}
+              disabled={!editingAlertRule}
+            >
               取消编辑
             </Button>
           </div>
@@ -859,13 +1016,18 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
             </p>
             <Label className="space-y-2 text-xs text-muted-foreground">
               名称
-              <Input {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register("name")} placeholder="如：离线告警" />
+              <Input
+                {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register("name")}
+                placeholder="如：离线告警"
+              />
             </Label>
             <Label className="space-y-2 text-xs text-muted-foreground">
               描述
               <textarea
                 className="min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register("description")}
+                {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register(
+                  "description",
+                )}
               />
             </Label>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -873,7 +1035,9 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
                 触发类型
                 <select
                   className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register("triggerType")}
+                  {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register(
+                    "triggerType",
+                  )}
                 >
                   <option value="status_offline">离线告警</option>
                   <option value="payload_threshold">指标阈值</option>
@@ -883,7 +1047,9 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
                 目标范围
                 <select
                   className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register("targetType")}
+                  {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register(
+                    "targetType",
+                  )}
                 >
                   <option value="all">全部</option>
                   <option value="crawler">指定爬虫</option>
@@ -897,26 +1063,44 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
               <select
                 multiple
                 className="h-24 w-full rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register("targetIds")}
+                {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register(
+                  "targetIds",
+                )}
               >
-                {renderTargetOptions(editingAlertRule ? editAlertTargetType : createAlertTargetType)}
+                {renderTargetOptions(
+                  editingAlertRule ? editAlertTargetType : createAlertTargetType,
+                )}
               </select>
             </Label>
-            {(editingAlertRule ? editAlertTriggerType : createAlertTriggerType) === "payload_threshold" ? (
+            {(editingAlertRule ? editAlertTriggerType : createAlertTriggerType) ===
+            "payload_threshold" ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <Label className="space-y-2 text-xs text-muted-foreground">
                   指标字段
-                  <Input {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register("payloadField")} placeholder="如：errors" />
+                  <Input
+                    {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register(
+                      "payloadField",
+                    )}
+                    placeholder="如：errors"
+                  />
                 </Label>
                 <Label className="space-y-2 text-xs text-muted-foreground">
                   阈值
-                  <Input type="number" step="0.01" {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register("threshold")} />
+                  <Input
+                    type="number"
+                    step="0.01"
+                    {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register(
+                      "threshold",
+                    )}
+                  />
                 </Label>
                 <Label className="space-y-2 text-xs text-muted-foreground">
                   比较符
                   <select
                     className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register("comparator")}
+                    {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register(
+                      "comparator",
+                    )}
                   >
                     <option value="gt">大于</option>
                     <option value="ge">大于等于</option>
@@ -931,12 +1115,24 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
             <div className="grid gap-3 sm:grid-cols-2">
               <Label className="space-y-2 text-xs text-muted-foreground">
                 连续失败次数
-                <Input type="number" min={1} max={10} {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register("consecutiveFailures")}
+                <Input
+                  type="number"
+                  min={1}
+                  max={10}
+                  {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register(
+                    "consecutiveFailures",
+                  )}
                 />
               </Label>
               <Label className="space-y-2 text-xs text-muted-foreground">
                 冷却时间（分钟）
-                <Input type="number" min={0} max={1440} {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register("cooldownMinutes")}
+                <Input
+                  type="number"
+                  min={0}
+                  max={1440}
+                  {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register(
+                    "cooldownMinutes",
+                  )}
                 />
               </Label>
             </div>
@@ -944,19 +1140,41 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
               邮件通知（逗号分隔）
               <textarea
                 className="min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register("emailRecipients")}
+                {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register(
+                  "emailRecipients",
+                )}
               />
             </Label>
             <Label className="space-y-2 text-xs text-muted-foreground">
               Webhook URL
-              <Input placeholder="https://example.com/webhook" {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register("webhookUrl")} />
+              <Input
+                placeholder="https://example.com/webhook"
+                {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register(
+                  "webhookUrl",
+                )}
+              />
             </Label>
             <label className="flex items-center gap-2 text-xs text-foreground">
-              <input type="checkbox" className="h-4 w-4 rounded border border-input" {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register("isActive")} />
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border border-input"
+                {...(editingAlertRule ? editAlertRuleForm : createAlertRuleForm).register(
+                  "isActive",
+                )}
+              />
               启用规则
             </label>
-            <Button type="submit" size="sm" className="w-full" disabled={createAlertRuleMutation.isPending || updateAlertRuleMutation.isPending}>
-              {createAlertRuleMutation.isPending || updateAlertRuleMutation.isPending ? "保存中..." : editingAlertRule ? "保存规则" : "创建规则"}
+            <Button
+              type="submit"
+              size="sm"
+              className="w-full"
+              disabled={createAlertRuleMutation.isPending || updateAlertRuleMutation.isPending}
+            >
+              {createAlertRuleMutation.isPending || updateAlertRuleMutation.isPending
+                ? "保存中..."
+                : editingAlertRule
+                  ? "保存规则"
+                  : "创建规则"}
             </Button>
           </form>
           <div className="space-y-4">
@@ -974,7 +1192,10 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
                       <div className="space-y-1">
                         <p className="text-sm font-medium text-foreground">{rule.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {rule.trigger_type === "status_offline" ? "离线" : `指标 ${rule.payload_field ?? "无"}`} · {renderAlertTargetLabel(rule)}
+                          {rule.trigger_type === "status_offline"
+                            ? "离线"
+                            : `指标 ${rule.payload_field ?? "无"}`}{" "}
+                          · {renderAlertTargetLabel(rule)}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -994,22 +1215,37 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
                               threshold: rule.threshold ?? undefined,
                               consecutiveFailures: rule.consecutive_failures ?? undefined,
                               cooldownMinutes: rule.cooldown_minutes ?? undefined,
-                              emailRecipients: rule.channels?.filter((channel) => channel.type === "email").map((channel) => channel.target).join(", ") ?? "",
-                              webhookUrl: rule.channels?.find((channel) => channel.type === "webhook")?.target ?? "",
+                              emailRecipients:
+                                rule.channels
+                                  ?.filter((channel) => channel.type === "email")
+                                  .map((channel) => channel.target)
+                                  .join(", ") ?? "",
+                              webhookUrl:
+                                rule.channels?.find((channel) => channel.type === "webhook")
+                                  ?.target ?? "",
                               isActive: rule.is_active,
                             });
                           }}
                         >
                           编辑
                         </Button>
-                        <Button variant="ghost" size="sm" className="text-destructive" onClick={() => handleDeleteAlertRule(rule)}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive"
+                          onClick={() => handleDeleteAlertRule(rule)}
+                        >
                           删除
                         </Button>
                       </div>
                     </div>
-                    {rule.description ? <p className="mt-2 text-xs text-muted-foreground">{rule.description}</p> : null}
+                    {rule.description ? (
+                      <p className="mt-2 text-xs text-muted-foreground">{rule.description}</p>
+                    ) : null}
                     {rule.last_triggered_at ? (
-                      <p className="mt-2 text-[11px] text-muted-foreground">上次触发：{formatDateTime(rule.last_triggered_at)}</p>
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        上次触发：{formatDateTime(rule.last_triggered_at)}
+                      </p>
                     ) : null}
                   </div>
                 ))}
@@ -1027,15 +1263,24 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
               ) : (
                 <div className="space-y-2">
                   {alertEvents.map((event) => (
-                    <div key={event.id} className="rounded-xl border border-border/60 bg-card/70 p-3 text-xs">
+                    <div
+                      key={event.id}
+                      className="rounded-xl border border-border/60 bg-card/70 p-3 text-xs"
+                    >
                       <div className="flex items-center justify-between">
-                        <span className="font-medium text-foreground">{event.crawler_name ?? `爬虫 #${event.crawler_id}`}</span>
-                        <span className="text-[11px] text-muted-foreground">{formatDateTime(event.triggered_at)}</span>
+                        <span className="font-medium text-foreground">
+                          {event.crawler_name ?? `爬虫 #${event.crawler_id}`}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {formatDateTime(event.triggered_at)}
+                        </span>
                       </div>
                       <p className="mt-1 text-[11px] text-muted-foreground">
                         状态：{ALERT_STATUS_LABEL[event.status] ?? event.status}
                       </p>
-                      {event.message ? <p className="mt-1 text-muted-foreground">{event.message}</p> : null}
+                      {event.message ? (
+                        <p className="mt-1 text-muted-foreground">{event.message}</p>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -1047,8 +1292,3 @@ export function ConfigAlertPanel({ groups, apiKeys, crawlers, toast }: ConfigAle
     </div>
   );
 }
-
-
-
-
-

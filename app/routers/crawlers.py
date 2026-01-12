@@ -92,6 +92,7 @@ from ..schemas import (
 )
 from ..utils.time_utils import now
 from ..utils.audit import record_operation, summarize_group
+from ..utils.request_utils import get_client_ip, ip_in_allowlist
 
 
 api_router = APIRouter(prefix="/pa/api", tags=["pa-crawlers"])
@@ -368,9 +369,7 @@ def _ensure_quick_slug(db: Session, slug: Optional[str] = None) -> str:
 
 
 def _get_client_ip(request: Request) -> Optional[str]:
-    if request.client:
-        return request.headers.get("X-Real-IP")
-    return None
+    return get_client_ip(request)
 
 
 def _compute_status(last_heartbeat: Optional[datetime]) -> str:
@@ -975,10 +974,8 @@ def _require_api_key(
     if not key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API Key 无效")
     client_ip = _get_client_ip(request)
-    if key.allowed_ips:
-        allowed = {ip.strip() for ip in key.allowed_ips.split(",") if ip.strip()}
-        if allowed and client_ip not in allowed:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="来源 IP 不在白名单内")
+    if key.allowed_ips and not ip_in_allowlist(client_ip, key.allowed_ips):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="来源 IP 不在白名单内")
     key.last_used_at = now()
     key.last_used_ip = client_ip
     db.commit()
@@ -1043,7 +1040,8 @@ def _update_crawler_status(
     if status != crawler.status:
         crawler.status = status
         crawler.status_changed_at = now()
-    elif crawler.status != status:
+    # 兼容历史数据：确保有一个“状态变更时间”
+    if crawler.status_changed_at is None:
         crawler.status_changed_at = now()
 
 
@@ -1391,7 +1389,7 @@ def create_group(
         before=None,
         after=summarize_group(group),
         actor=current_user,
-        actor_ip=request.headers.get("X-Real-IP") if request.client else None,
+        actor_ip=_get_client_ip(request),
     )
     db.commit()
     db.refresh(group)
@@ -1446,7 +1444,7 @@ def update_group(
         before=before,
         after=summarize_group(group),
         actor=current_user,
-        actor_ip=request.headers.get("X-Real-IP") if request.client else None,
+        actor_ip=_get_client_ip(request),
     )
     db.commit()
     db.refresh(group)
@@ -1485,7 +1483,7 @@ def delete_group(
         before=before,
         after=None,
         actor=current_user,
-        actor_ip=request.headers.get("X-Real-IP") if request.client else None,
+        actor_ip=_get_client_ip(request),
     )
     db.commit()
     return {"ok": True}

@@ -12,7 +12,6 @@ import type {
   RegistrationMode,
   RegistrationSettings,
 } from "@/lib/api/types";
-import { useAuthStore } from "@/store/auth-store";
 
 import { adminKeys } from "./queries";
 
@@ -58,17 +57,20 @@ export function useCreateInviteMutation() {
   const queryClient = useQueryClient();
 
   return useMutation<InviteCode, ApiError, CreateInviteInput>({
-    mutationFn: async ({ note, allowAdmin = false, maxUses = null, expiresInMinutes = null, targetGroupId = null }) =>
-      apiClient.post<InviteCode>(
-        endpoints.admin.invites,
-        {
-          note,
-          allow_admin: allowAdmin,
-          max_uses: maxUses,
-          expires_in_minutes: expiresInMinutes,
-          target_group_id: targetGroupId,
-        },
-      ),
+    mutationFn: async ({
+      note,
+      allowAdmin = false,
+      maxUses = null,
+      expiresInMinutes = null,
+      targetGroupId = null,
+    }) =>
+      apiClient.post<InviteCode>(endpoints.admin.invites, {
+        note,
+        allow_admin: allowAdmin,
+        max_uses: maxUses,
+        expires_in_minutes: expiresInMinutes,
+        target_group_id: targetGroupId,
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: adminKeys.invites() });
     },
@@ -79,7 +81,8 @@ export function useDeleteInviteMutation() {
   const queryClient = useQueryClient();
 
   return useMutation<{ ok: boolean }, ApiError, number>({
-    mutationFn: async (inviteId) => apiClient.delete<{ ok: boolean }>(endpoints.admin.inviteById(inviteId)),
+    mutationFn: async (inviteId) =>
+      apiClient.delete<{ ok: boolean }>(endpoints.admin.inviteById(inviteId)),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: adminKeys.invites() });
     },

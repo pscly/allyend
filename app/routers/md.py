@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Request, UploadFile
 
 from ..utils.time_utils import aware_now
+from ..utils.request_utils import get_client_ip
 
 
 router = APIRouter()
@@ -105,16 +106,7 @@ async def md(request: Request) -> Dict[str, Any]:
     #     "4":request.headers.get("X-Forwarded-For"),   # 140.xxxxx, 140.xxxxx
     #     "5":request.headers.get("X-client_ip"),   # None
     # },
-    ip = request.headers.get("X-Real-IP")
-    # if not ip:
-    fwd = (
-        request.headers.get("CF-Connecting-IP")
-        or request.headers.get("X-Real-IP")
-        or request.headers.get("X-client_ip")
-        or request.headers.get("x-forwarded-for")
-    )
-    if fwd:
-        ip = fwd.split(",")[0].strip()
+    ip = get_client_ip(request)
 
     return {
         "data": params,

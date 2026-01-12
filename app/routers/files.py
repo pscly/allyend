@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import hashlib
-import ipaddress
 import re
 import secrets
 from pathlib import Path
@@ -28,6 +27,7 @@ from ..schemas import (
     FileUploadResponse,
 )
 from ..utils.time_utils import now
+from ..utils.request_utils import get_client_ip, ip_in_allowlist
 
 router = APIRouter(tags=["files"])
 
@@ -90,6 +90,7 @@ def files_list(request: Request, current_user: Optional[User] = Depends(get_opti
 
 @router.get("/files/manage", response_class=HTMLResponse)
 def files_manage(request: Request, current_user: User = Depends(get_current_user)):
+    _ensure_files_feature(current_user)
     return templates.TemplateResponse("files_manage.html", {"request": request, "user": current_user})
 
 
@@ -101,26 +102,23 @@ def _ensure_storage_dir(subdir: Optional[str] = None) -> Path:
 
 
 def _get_client_ip(request: Request) -> Optional[str]:
-    if request.client and request.headers.get("X-Real-IP"):
-        return request.headers.get("X-Real-IP")
-    return None
+    return get_client_ip(request)
 
 
 def _check_token_ip(token: FileAPIToken, request: Request) -> None:
     client_ip = _get_client_ip(request)
-    if not client_ip:
+    if token.allowed_ips and not ip_in_allowlist(client_ip, token.allowed_ips):
+        raise HTTPException(status_code=403, detail="IP 未被允许访问该令牌")
+    if token.allowed_cidrs and not ip_in_allowlist(client_ip, token.allowed_cidrs):
+        raise HTTPException(status_code=403, detail="IP 段未被允许访问该令牌")
+
+
+def _ensure_files_feature(user: User) -> None:
+    """分组级文件功能开关。"""
+    if user.role in {ROLE_ADMIN, ROLE_SUPERADMIN}:
         return
-    if token.allowed_ips:
-        ip_list = [ip.strip() for ip in token.allowed_ips.split(",") if ip.strip()]
-        if ip_list and client_ip not in ip_list:
-            raise HTTPException(status_code=403, detail="IP 未被允许访问该令牌")
-    if token.allowed_cidrs:
-        cidrs = [cidr.strip() for cidr in token.allowed_cidrs.split(",") if cidr.strip()]
-        if cidrs:
-            ip_obj = ipaddress.ip_address(client_ip)
-            allowed = any(ip_obj in ipaddress.ip_network(cidr, strict=False) for cidr in cidrs)
-            if not allowed:
-                raise HTTPException(status_code=403, detail="IP 段未被允许访问该令牌")
+    if user.group and not user.group.enable_files:
+        raise HTTPException(status_code=403, detail="当前分组未启用文件服务")
 
 
 def _save_upload_file(upload: UploadFile) -> tuple[str, int, str]:
@@ -262,6 +260,12 @@ def _log_action(
 
 
 def _ensure_file_permission(file: FileEntry, current_user: Optional[User], token: Optional[FileAPIToken]) -> None:
+    # 分组功能开关：仅对“需要权限校验”的访问生效（public 文件任何人可读）
+    if token and token.user:
+        _ensure_files_feature(token.user)
+    if current_user and file.visibility != "public":
+        _ensure_files_feature(current_user)
+
     if file.visibility == "disabled":
         if token:
             raise HTTPException(status_code=403, detail="文件已被禁用")
@@ -375,6 +379,7 @@ def user_upload(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_files_feature(current_user)
     if visibility not in ALLOWED_VISIBILITY:
         raise HTTPException(status_code=400, detail="可见性参数非法")
     storage_name, size, checksum = _save_upload_file(upload)
@@ -409,6 +414,7 @@ def list_my_files(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_files_feature(current_user)
     query = db.query(FileEntry).filter(FileEntry.owner_id == current_user.id)
     if scope in ALLOWED_VISIBILITY:
         query = query.filter(FileEntry.visibility == scope)
@@ -423,6 +429,7 @@ def delete_my_file(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_files_feature(current_user)
     file = db.query(FileEntry).filter(FileEntry.id == file_id).first()
     if not file:
         raise HTTPException(status_code=404, detail="文件不存在")
@@ -445,6 +452,7 @@ def update_my_file(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_files_feature(current_user)
     file = db.query(FileEntry).filter(FileEntry.id == file_id).first()
     if not file:
         raise HTTPException(status_code=404, detail="文件不存在")
@@ -491,6 +499,7 @@ def create_file_token(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_files_feature(current_user)
     token_value = _generate_token_value(db, payload.token)
     token = FileAPIToken(
         token=token_value,
@@ -512,6 +521,7 @@ def list_file_tokens(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_files_feature(current_user)
     tokens = (
         db.query(FileAPIToken)
         .filter(FileAPIToken.user_id == current_user.id)
@@ -524,15 +534,16 @@ def list_file_tokens(
 @router.patch("/files/tokens/{token_id}", response_model=FileTokenOut)
 def update_file_token(
     token_id: int,
+    request: Request,
     is_active: Optional[bool] = Form(default=None),
     name: Optional[str] = Form(default=None),
     description: Optional[str] = Form(default=None),
     allowed_ips: Optional[str] = Form(default=None),
     allowed_cidrs: Optional[str] = Form(default=None),
-    request: Request = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_files_feature(current_user)
     token = (
         db.query(FileAPIToken)
         .filter(FileAPIToken.id == token_id, FileAPIToken.user_id == current_user.id)
@@ -562,6 +573,7 @@ def list_access_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_files_feature(current_user)
     base_query = db.query(FileAccessLog).order_by(FileAccessLog.created_at.desc())
     if current_user.role in {ROLE_ADMIN, ROLE_SUPERADMIN}:
         logs = base_query.limit(limit).all()
@@ -627,6 +639,7 @@ def token_upload(
     if not token:
         raise HTTPException(status_code=403, detail="令牌无效或已禁用")
     _check_token_ip(token, request)
+    _ensure_files_feature(token.user)
     if visibility not in ALLOWED_VISIBILITY:
         raise HTTPException(status_code=400, detail="可见性参数非法")
 
@@ -714,6 +727,7 @@ def files_entry(
         )
         if token:
             _check_token_ip(token, request)
+            _ensure_files_feature(token.user)
             token.usage_count += 1
             token.last_used_at = now()
             files = (

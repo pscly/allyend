@@ -7,19 +7,19 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import time
+from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from pathlib import Path
-import sys
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from .config import settings
-from .database import ensure_database_schema, bootstrap_defaults
-from pathlib import Path as _P
+from .database import bootstrap_defaults, ensure_database_schema, engine
 from .routers import auth as auth_router
 from .routers import crawlers as crawlers_router
 from .routers import dashboard as dashboard_router
@@ -39,7 +39,6 @@ def _apply_timezone() -> None:
     try:
         if settings.TIMEZONE:
             os.environ["TZ"] = str(settings.TIMEZONE)
-            tz_name = getattr(settings, "TIMEZONE", None)
 
             # 某些平台（Linux/Unix）可即时生效；Windows 可能不支持
             if hasattr(time, "tzset"):
@@ -101,7 +100,38 @@ def _configure_logging() -> None:
 
 _apply_timezone()
 _configure_logging()
-app = FastAPI(title=settings.SITE_NAME, version="0.2.0")
+
+
+@asynccontextmanager
+async def lifespan(fastapi_app: FastAPI):
+    # 测试环境（pytest）下不做自动迁移/自举，避免污染本地 data/app.db 并影响用例隔离
+    if os.getenv("PYTEST_CURRENT_TEST") or "pytest" in sys.modules:
+        logging.getLogger("allyend.boot").info("检测到 pytest 环境，跳过启动迁移与默认数据自举")
+        yield
+        return
+
+    # 1) 迁移策略：优先使用 Alembic 全量管理
+    if getattr(settings, "USE_ALEMBIC_ONLY", True):
+        _run_alembic_upgrade_head()
+    else:
+        # 兼容旧逻辑：先 ORM 自动建表，再 Alembic 升级
+        ensure_database_schema()
+        _run_alembic_upgrade_head()
+
+    # 2) 引导默认数据
+    bootstrap_defaults()
+
+    # 3) 迁移执行可能修改了 logging（alembic.ini），此处重新校准日志到控制台+文件
+    _configure_logging()
+    logging.getLogger("allyend.boot").info(
+        "应用启动完成，日志系统就绪（APP_ACCESS_LOG=%s）",
+        _enable_app_access_log,
+    )
+
+    yield
+
+
+app = FastAPI(title=settings.SITE_NAME, version="0.2.0", lifespan=lifespan)
 
 # CORS（按需开放）
 cors_origins = settings.FRONTEND_ORIGINS or ["http://localhost:3000"]
@@ -128,7 +158,7 @@ app.add_middleware(
 _BASE_DIR = Path(__file__).resolve().parent
 _STATIC_DIR = _BASE_DIR / "static"
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
-_AVATAR_DIR = _P(getattr(settings, "FILE_STORAGE_DIR", "data/files")).resolve() / "avatars"
+_AVATAR_DIR = Path(settings.FILE_STORAGE_DIR or "data/files").resolve() / "avatars"
 _AVATAR_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/avatars", StaticFiles(directory=str(_AVATAR_DIR)), name="avatars")
 
@@ -193,69 +223,68 @@ _enable_app_access_log = str(getattr(settings, "APP_ACCESS_LOG", "true")).strip(
 
 
 def _run_alembic_upgrade_head() -> None:
-    """在本地/开发模式下自动执行 Alembic 升级。
+    """启动时执行 Alembic 迁移/校准（保守兜底）。
 
-    - 优先使用应用配置中的 DATABASE_URL；
-    - 通过代码调用 Alembic，避免必须手动执行命令；
-    - 幂等：若已在 head，不会做任何变更。
+    默认行为：
+    - 执行 `alembic upgrade head`，将数据库迁移到最新版本。
+
+    兜底策略（仅在“比较确定”的情况下才会 stamp）：
+    - 若升级失败且检测到“历史库”（无 `alembic_version` 但存在 `users`），执行 `stamp head`；
+    - 若升级失败且检测到“版本链异常”（当前 revision 在迁移文件中不存在），执行 `stamp head`。
+
+    无法确认安全时：直接抛出异常，避免在未知状态下继续启动。
     """
+    from alembic import command  # type: ignore
+    from alembic.config import Config  # type: ignore
+    from sqlalchemy import inspect
+
+    logger = logging.getLogger(__name__)
+    root = Path(__file__).resolve().parent.parent
+    cfg = Config(str(root / "alembic.ini"))
+    # 使用 app 配置覆盖 alembic.ini，保证本地与容器一致
+    cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+
     try:
-        from alembic.config import Config  # type: ignore
-        from alembic import command  # type: ignore
-        from sqlalchemy import create_engine, inspect
-
-        root = Path(__file__).resolve().parent.parent
-        cfg = Config(str(root / "alembic.ini"))
-        # 使用 app 配置覆盖 alembic.ini，保证本地与容器一致
-        cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
-
-        # 判定：
-        # - 如不存在 alembic_version 且库中也不存在核心业务表（如 users），说明是“空库”，执行 upgrade 以按迁移完整建表；
-        # - 如不存在 alembic_version 但已存在业务表，视为“历史手动/ORM 建表库”，执行 stamp 以对齐版本；
-        # - 其他情况：直接 upgrade 到 head。
-        eng = create_engine(settings.DATABASE_URL)
-        try:
-            insp = inspect(eng)
-            has_ver = insp.has_table("alembic_version")
-            has_users = insp.has_table("users")
-        except Exception:
-            has_ver = False
-            has_users = False
-
-        if not has_ver:
-            if not has_users:
-                # 空库：执行迁移全量建表
-                command.upgrade(cfg, "head")
-            else:
-                # 既有表但无版本：与现状对齐
-                command.stamp(cfg, "head")
-        else:
-            try:
-                command.upgrade(cfg, "head")
-            except Exception:
-                # 兼容已存在相同列/索引导致的失败：直接以当前结构为准进行 stamp
-                command.stamp(cfg, "head")
+        command.upgrade(cfg, "head")
+        return
     except Exception as exc:  # noqa: BLE001
-        logging.getLogger(__name__).warning("alembic upgrade 失败：%s", exc)
+        # 读取当前库表结构信息（用于判断是否为“历史库”/是否具备版本表）
+        try:
+            tables = set(inspect(engine).get_table_names())
+        except Exception:  # noqa: BLE001
+            tables = set()
+
+        has_version_table = "alembic_version" in tables
+        has_core_tables = "users" in tables
+
+        # 兜底 1：无 alembic_version 但已有核心业务表
+        # 典型场景：早期版本通过 ORM create_all/手工建表，后续引入 Alembic。
+        if (not has_version_table) and has_core_tables:
+            logger.warning(
+                "alembic upgrade 失败，检测到历史库（无 alembic_version 且存在 users），将执行 stamp head：%s",
+                exc,
+            )
+            command.stamp(cfg, "head")
+            return
+
+        # 兜底 2：版本链异常（当前版本号指向不存在的 revision）
+        # 典型场景：迁移文件被清理/缺失，导致无法从现有 revision 继续 upgrade。
+        missing_revision_markers = (
+            "Can't locate revision identified by",
+            "No such revision or branch",
+        )
+        if has_version_table and any(marker in str(exc) for marker in missing_revision_markers):
+            logger.warning(
+                "alembic upgrade 失败，检测到版本链异常，将执行 stamp head 以对齐版本号：%s",
+                exc,
+            )
+            command.stamp(cfg, "head")
+            return
+
+        logger.exception("alembic upgrade 失败，拒绝自动 stamp：%s", exc)
+        raise
 
 
-@app.on_event("startup")
-def on_startup():
-    # 1) 迁移策略：优先使用 Alembic 全量管理
-    if getattr(settings, "USE_ALEMBIC_ONLY", True):
-        _run_alembic_upgrade_head()
-    else:
-        # 兼容旧逻辑：先 ORM 自动建表，再 Alembic 升级
-        ensure_database_schema()
-        _run_alembic_upgrade_head()
-    # 3) 引导默认数据
-    bootstrap_defaults()
-    # 4) 迁移执行可能修改了 logging（alembic.ini），此处重新校准日志到控制台+文件
-    _configure_logging()
-    logging.getLogger("allyend.boot").info(
-        "应用启动完成，日志系统就绪（APP_ACCESS_LOG=%s）",
-        _enable_app_access_log,
-    )
 
 
 # 健康检查与就绪探针（便于排查“卡住”）

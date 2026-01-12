@@ -6,7 +6,6 @@ import { apiClient } from "@/lib/api/client";
 import type { ApiError } from "@/lib/api/client";
 import { endpoints } from "@/lib/api/endpoints";
 import type { FileEntry, FileToken, FileUploadResponse } from "@/lib/api/types";
-import { useAuthStore } from "@/store/auth-store";
 import { filesKeys } from "@/features/files/queries";
 
 interface UploadFileInput {
@@ -65,7 +64,8 @@ export function useDeleteFileMutation() {
   const queryClient = useQueryClient();
 
   return useMutation<{ ok: boolean }, ApiError, number>({
-    mutationFn: async (fileId) => apiClient.delete<{ ok: boolean }>(endpoints.files.deleteFile(fileId)),
+    mutationFn: async (fileId) =>
+      apiClient.delete<{ ok: boolean }>(endpoints.files.deleteFile(fileId)),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: filesKeys.list() });
     },
@@ -77,13 +77,10 @@ export function useUpdateFileMutation() {
 
   return useMutation<FileEntry, ApiError, UpdateFileInput>({
     mutationFn: async ({ fileId, description, visibility }) =>
-      apiClient.patch<FileEntry>(
-        endpoints.files.updateFile(fileId),
-        {
-          description: description ?? undefined,
-          visibility,
-        },
-      ),
+      apiClient.patch<FileEntry>(endpoints.files.updateFile(fileId), {
+        description: description ?? undefined,
+        visibility,
+      }),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: filesKeys.list() }),
@@ -98,16 +95,13 @@ export function useCreateTokenMutation() {
 
   return useMutation<FileToken, ApiError, CreateTokenInput>({
     mutationFn: async ({ token: rawToken, name, description, allowedIps, allowedCidrs }) =>
-      apiClient.post<FileToken>(
-        endpoints.files.tokens,
-        {
-          token: rawToken,
-          name,
-          description,
-          allowed_ips: allowedIps,
-          allowed_cidrs: allowedCidrs,
-        },
-      ),
+      apiClient.post<FileToken>(endpoints.files.tokens, {
+        token: rawToken,
+        name,
+        description,
+        allowed_ips: allowedIps,
+        allowed_cidrs: allowedCidrs,
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: filesKeys.tokens() });
     },

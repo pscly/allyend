@@ -20,6 +20,12 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+]
+
 [tool.uv]
 # 当前仓库不作为可安装包，仅使用依赖管理
 package = false

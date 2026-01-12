@@ -43,40 +43,54 @@ export default function SessionsPage() {
 
   return (
     <div className="space-y-6">
-        <h1 className="text-xl font-semibold">登录设备</h1>
-        <p className="text-sm text-muted-foreground">在这里查看已登录的设备，并可手动将其他设备下线。</p>
+      <h1 className="text-xl font-semibold">登录设备</h1>
+      <p className="text-sm text-muted-foreground">
+        在这里查看已登录的设备，并可手动将其他设备下线。
+      </p>
+      {user ? (
+        <div className="text-sm text-muted-foreground">
+          当前账号：{user.display_name || user.username} · 角色：{user.role}
+        </div>
+      ) : null}
 
-        <div className="divide-y rounded-md border">
-          {(sessionsQuery.data ?? []).map((s) => (
-            <div key={s.session_id} className="flex items-center justify-between gap-4 p-3">
-              <div className="space-y-1">
-                <div className="text-sm font-medium">
-                  {s.current ? (
-                    <span className="mr-2 rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-800">当前设备</span>
-                  ) : null}
-                  {s.user_agent || "未知设备"}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  IP: {s.ip_address || "-"} • 最近活跃: {s.last_active_at || s.created_at} • 到期: {s.expires_at || "-"}
-                </div>
+      <div className="divide-y rounded-md border">
+        {(sessionsQuery.data ?? []).map((s) => (
+          <div key={s.session_id} className="flex items-center justify-between gap-4 p-3">
+            <div className="space-y-1">
+              <div className="text-sm font-medium">
+                {s.current ? (
+                  <span className="mr-2 rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-800">
+                    当前设备
+                  </span>
+                ) : null}
+                {s.user_agent || "未知设备"}
               </div>
-              <div className="flex items-center gap-2">
-                {s.remember_me && <span className="rounded bg-primary/10 px-2 py-0.5 text-xs text-primary">记住我</span>}
-                {!s.current && (
-                  <button
-                    className={cn(buttonVariants({ variant: "destructive", size: "sm" }))}
-                    onClick={() => revokeMutation.mutate(s.session_id)}
-                  >
-                    下线该设备
-                  </button>
-                )}
+              <div className="text-xs text-muted-foreground">
+                IP: {s.ip_address || "-"} • 最近活跃: {s.last_active_at || s.created_at} • 到期:{" "}
+                {s.expires_at || "-"}
               </div>
             </div>
-          ))}
-          {sessionsQuery.data?.length === 0 && (
-            <div className="p-4 text-center text-sm text-muted-foreground">暂无其他设备会话</div>
-          )}
-        </div>
+            <div className="flex items-center gap-2">
+              {s.remember_me && (
+                <span className="rounded bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                  记住我
+                </span>
+              )}
+              {!s.current && (
+                <button
+                  className={cn(buttonVariants({ variant: "destructive", size: "sm" }))}
+                  onClick={() => revokeMutation.mutate(s.session_id)}
+                >
+                  下线该设备
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {sessionsQuery.data?.length === 0 && (
+          <div className="p-4 text-center text-sm text-muted-foreground">暂无其他设备会话</div>
+        )}
       </div>
+    </div>
   );
 }

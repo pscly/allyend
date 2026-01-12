@@ -10,3 +10,8 @@ Thumbs.db
 
 data/*
 logs/*
+
+# 临时输出/调试产物（不应提交）
+next-start.err
+next-start.log
+tmp_*.txt

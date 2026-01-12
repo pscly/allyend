@@ -40,11 +40,11 @@ export const useAuthStore = create<AuthState>()(
 );
 
 export async function logout() {
+  // 优先清理本地状态，避免网络延迟导致 UI 仍显示为已登录
+  useAuthStore.getState().clear();
   try {
     await apiClient.post(endpoints.auth.logout, {});
-  } catch (e) {
-    // 忽略网络错误，尽量完成本地清理
-  } finally {
-    useAuthStore.getState().clear();
+  } catch {
+    // 忽略网络错误：服务端退出失败不影响本地已退出状态
   }
 }
